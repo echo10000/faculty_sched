@@ -2,7 +2,9 @@ from datetime import time
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.core.exceptions import PermissionDenied
 from django.test import TestCase
+from django.test import RequestFactory
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
@@ -10,6 +12,7 @@ from academics.models import Curriculum, Subject
 from core.models import College, Department, Program
 from faculty.models import Designation, Faculty, FacultyQualification
 from faculty.services import compute_department_load_summary, compute_faculty_load
+from scheduling.views import FacultyTimetableView
 from scheduling.models import Assignment, Block, Room, Term, TimeSlot
 
 
@@ -110,3 +113,9 @@ class FacultyDashboardTests(TestCase):
 
         response = self.client.get(f"/scheduling/faculty/{self.other_faculty.id}/timetable/")
         self.assertEqual(response.status_code, 403)
+
+    def test_faculty_user_is_denied_another_facultys_timetable_by_view_permission(self):
+        request = RequestFactory().get(f"/scheduling/faculty/{self.other_faculty.id}/timetable/")
+        request.user = self.user
+        with self.assertRaises(PermissionDenied):
+            FacultyTimetableView.as_view()(request, faculty_id=self.other_faculty.id)
