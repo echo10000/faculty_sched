@@ -182,3 +182,38 @@ class SchedulingInputPreparationTests(TestCase):
                     self.assertNotEqual(left["faculty_id"], right["faculty_id"])
                     self.assertNotEqual(left["room_id"], right["room_id"])
                     self.assertNotEqual(left["block_id"], right["block_id"])
+
+    def test_batch_commit_saves_valid_rows_when_another_row_is_invalid(self):
+        demand = next(
+            demand
+            for demand in prepare_scheduling_inputs(self.term).demands
+            if demand.faculty_ids and demand.room_ids and demand.time_slot_ids
+        )
+        block = Block.objects.get(pk=demand.block_id)
+        user = User.objects.create_user(username="scheduler", password="password")
+        AdminProfile.objects.create(
+            user=user,
+            role=AdminProfile.Role.DEPARTMENT_ADMIN,
+            department=block.curriculum.program.department,
+        )
+        self.client.force_login(user)
+        payload = {
+            "term_id": self.term.id,
+            "row_count": 2,
+            "accept_0": "on",
+            "block_0": demand.block_id,
+            "subject_0": demand.subject_id,
+            "faculty_0": demand.faculty_ids[0],
+            "room_0": demand.room_ids[0],
+            "time_slot_0": demand.time_slot_ids[0],
+            "accept_1": "on",
+            "block_1": demand.block_id,
+            "subject_1": demand.subject_id,
+            "faculty_1": "",
+            "room_1": demand.room_ids[0],
+            "time_slot_1": demand.time_slot_ids[0],
+        }
+        response = self.client.post("/scheduling/autoschedule/commit/", payload, follow=True)
+        self.assertEqual(Assignment.objects.filter(block=block, subject_id=demand.subject_id).count(), 1)
+        self.assertContains(response, "Created 1 assignment")
+        self.assertContains(response, "Row 2")

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Auto-schedule suggestions</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; color: #1f2937; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+    th, td { border: 1px solid #d1d5db; padding: .55rem; text-align: left; }
+    th { background: #f3f4f6; } .unfilled { color: #9a3412; } .messages { padding-left: 1.25rem; }
+  </style>
+</head>
+<body>
+  <h1>Auto-schedule suggestions: {{ term }}</h1>
+  {% if messages %}<ul class="messages">{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
+  <form method="post" action="{% url 'scheduling:commit-auto-schedule-suggestions' %}">
+    {% csrf_token %}
+    <input type="hidden" name="term_id" value="{{ term.id }}">
+    <input type="hidden" name="row_count" value="{{ rows|length }}">
+    <table>
+      <thead><tr><th>Accept</th><th>Block / Subject</th><th>Faculty</th><th>Room</th><th>Time slot</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+          {% if row.show_block_header %}<tr><th colspan="6">{{ row.block }}</th></tr>{% endif %}
+          <tr>
+            <td><input type="checkbox" name="accept_{{ row.index }}" {% if not row.unfilled %}checked{% endif %}></td>
+            <td>{{ row.subject.code }} — {{ row.subject.title }}<input type="hidden" name="block_{{ row.index }}" value="{{ row.block.id }}"><input type="hidden" name="subject_{{ row.index }}" value="{{ row.subject.id }}"></td>
+            <td><select name="faculty_{{ row.index }}"><option value="">Choose faculty</option>{% for faculty in faculties %}<option value="{{ faculty.id }}" {% if faculty.id == row.proposal.faculty_id %}selected{% endif %}>{{ faculty }}</option>{% endfor %}</select></td>
+            <td><select name="room_{{ row.index }}"><option value="">Choose room</option>{% for room in rooms %}<option value="{{ room.id }}" {% if room.id == row.proposal.room_id %}selected{% endif %}>{{ room.name }}</option>{% endfor %}</select></td>
+            <td><select name="time_slot_{{ row.index }}"><option value="">Choose time</option>{% for slot in time_slots %}<option value="{{ slot.id }}" {% if slot.id == row.proposal.time_slot_id %}selected{% endif %}>{{ slot }}</option>{% endfor %}</select></td>
+            <td class="{% if row.unfilled %}unfilled{% endif %}">{% if row.unfilled %}Unfilled: {{ row.reason }}{% else %}Suggested{% endif %}</td>
+          </tr>
+        {% empty %}<tr><td colspan="6">No unassigned demand is available for this term.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    <button type="submit">Commit Selected</button>
+  </form>
+</body>
+</html>
