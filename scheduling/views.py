@@ -387,6 +387,8 @@ class UnlockAssignmentView(LoginRequiredMixin, TemplateView):
         AssignmentStatusLog.objects.create(
             assignment=assignment,
             changed_by=request.user,
+            old_status=Assignment.Status.APPROVED,
+            new_status=Assignment.Status.DRAFT,
             reason=reason,
         )
         messages.success(request, "Assignment unlocked and returned to draft.")

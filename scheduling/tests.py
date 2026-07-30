@@ -190,6 +190,24 @@ class AssignmentValidationTests(TestCase):
         assignment.refresh_from_db()
         self.assertEqual(assignment.status, Assignment.Status.PENDING_APPROVAL)
 
+    def test_non_dean_cannot_unlock_an_approved_assignment(self):
+        assignment = self.make_assignment()
+        dean = self.make_admin_user("approval-dean", AdminProfile.Role.DEAN)
+        Assignment.objects.filter(pk=assignment.pk).update(
+            status=Assignment.Status.APPROVED,
+            approved_by=dean,
+        )
+        user = self.make_admin_user("not-unlock-dean", AdminProfile.Role.DEPARTMENT_ADMIN)
+        self.client.force_login(user)
+        response = self.client.post(
+            f"/scheduling/assignments/{assignment.id}/unlock/",
+            {"reason": "Unauthorized change."},
+        )
+        self.assertEqual(response.status_code, 403)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, Assignment.Status.APPROVED)
+        self.assertFalse(assignment.status_logs.exists())
+
     def test_dean_unlock_returns_assignment_to_draft_and_logs_reason(self):
         assignment = self.make_assignment()
         dean = self.make_admin_user("unlock-dean", AdminProfile.Role.DEAN)
@@ -207,6 +225,8 @@ class AssignmentValidationTests(TestCase):
         self.assertEqual(assignment.status, Assignment.Status.DRAFT)
         log = assignment.status_logs.get()
         self.assertEqual(log.changed_by, dean)
+        self.assertEqual(log.old_status, Assignment.Status.APPROVED)
+        self.assertEqual(log.new_status, Assignment.Status.DRAFT)
         self.assertEqual(log.reason, "Correct the assigned room.")
 
 

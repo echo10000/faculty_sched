@@ -161,6 +161,8 @@ class Assignment(models.Model):
 class AssignmentStatusLog(models.Model):
     assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name="status_logs")
     changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="assignment_status_logs")
+    old_status = models.CharField(max_length=20, choices=Assignment.Status.choices)
+    new_status = models.CharField(max_length=20, choices=Assignment.Status.choices)
     reason = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
