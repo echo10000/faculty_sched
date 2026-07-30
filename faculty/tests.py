@@ -2,6 +2,8 @@ from datetime import time
 from decimal import Decimal
 
 from django.test import TestCase
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from academics.models import Curriculum, Subject
 from core.models import College, Department, Program
@@ -69,5 +71,7 @@ class FacultyLoadServiceTests(TestCase):
         self.assertEqual(load["status"], "overload")
 
     def test_department_summary_includes_every_faculty(self):
-        summary = compute_department_load_summary(self.department, self.term)
+        with CaptureQueriesContext(connection) as queries:
+            summary = compute_department_load_summary(self.department, self.term)
         self.assertEqual({entry["faculty"] for entry in summary}, {self.underload, self.on_target, self.overload})
+        self.assertEqual(len(queries), 1)
