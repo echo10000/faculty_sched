@@ -8,6 +8,9 @@
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     th, td { border: 1px solid #d1d5db; padding: .7rem; vertical-align: top; }
     th { background: #f3f4f6; } .time { font-weight: 600; white-space: nowrap; }
+    .badge { display: inline-block; border-radius: 999px; font-size: .75rem; margin-top: .35rem; padding: .15rem .45rem; }
+    .status-draft { background: #e5e7eb; color: #4b5563; } .status-pending_approval { background: #fef3c7; color: #92400e; }
+    .status-approved { background: #dcfce7; color: #166534; }
   </style>
 </head>
 <body>
@@ -16,7 +19,7 @@
     <thead><tr><th>Time</th>{% for day in days %}<th>{{ day }}</th>{% endfor %}</tr></thead>
     <tbody>
       {% for row in grid_rows %}
-        <tr><td class="time">{{ row.label }}</td>{% for cell in row.cells %}<td>{% if cell.assignment %}{{ cell.assignment.subject.code }}<br>{{ cell.assignment.block }}<br>{{ cell.assignment.room.name }}{% endif %}</td>{% endfor %}</tr>
+        <tr><td class="time">{{ row.label }}</td>{% for cell in row.cells %}<td>{% if cell.assignment %}{{ cell.assignment.subject.code }}<br>{{ cell.assignment.block }}<br>{{ cell.assignment.room.name }}<br><span class="badge status-{{ cell.assignment.status }}">{% if cell.assignment.status == "approved" %}Approved · locked{% elif cell.assignment.status == "pending_approval" %}Awaiting review{% else %}Draft{% endif %}</span>{% endif %}</td>{% endfor %}</tr>
       {% empty %}<tr><td colspan="7">No assignments have been scheduled for the active term.</td></tr>{% endfor %}
     </tbody>
   </table>

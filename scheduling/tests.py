@@ -127,6 +127,21 @@ class AssignmentValidationTests(TestCase):
         self.assertContains(response, "Room 101")
         self.assertContains(response, "41 enrolled students")
 
+    def test_dashboard_filters_to_pending_approval_assignments(self):
+        assignment = self.make_assignment()
+        Assignment.objects.filter(pk=assignment.pk).update(status=Assignment.Status.PENDING_APPROVAL)
+        user = User.objects.create_user(username="pending-admin", password="password")
+        AdminProfile.objects.create(
+            user=user,
+            role=AdminProfile.Role.DEPARTMENT_ADMIN,
+            department=self.department,
+        )
+        self.client.force_login(user)
+        response = self.client.get("/scheduling/?status=pending_approval")
+        items = list(response.context["assignment_status_items"])
+        self.assertEqual([item.pk for item in items], [assignment.pk])
+        self.assertContains(response, "Awaiting review")
+
     def make_admin_user(self, username, role):
         user = User.objects.create_user(username=username, password="password")
         AdminProfile.objects.create(

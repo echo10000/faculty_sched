@@ -150,6 +150,7 @@ class ConflictDashboardView(LoginRequiredMixin, TemplateView):
         if active_term is None:
             context["capacity_conflicts"] = []
             context["load_warnings"] = []
+            context["assignment_status_items"] = []
             return context
 
         assignments = Assignment.objects.filter(term=active_term).select_related(
@@ -160,9 +161,17 @@ class ConflictDashboardView(LoginRequiredMixin, TemplateView):
             assignments,
             "block__curriculum__program__department",
         )
+        status_filter = self.request.GET.get("status")
+        valid_statuses = {choice[0] for choice in Assignment.Status.choices}
+        if status_filter not in valid_statuses:
+            status_filter = None
+        if status_filter:
+            assignments = assignments.filter(status=status_filter)
+        context["status_filter"] = status_filter
         context["capacity_conflicts"] = assignments.annotate(
             block_enrolled_count=Count("block__students", distinct=True)
         ).filter(room__capacity__lt=F("block_enrolled_count"))
+        context["assignment_status_items"] = assignments.order_by("status", "block", "start_time")
 
         departments = Department.objects.filter(
             faculty_members__in=department_scoped_queryset(
