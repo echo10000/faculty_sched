@@ -23,6 +23,9 @@ the approved suggestions are saved.
 """
 
 from dataclasses import dataclass
+from datetime import time
+from decimal import Decimal
+from itertools import combinations
 from typing import TYPE_CHECKING
 
 from django.db.models import Count
@@ -62,6 +65,25 @@ class SchedulingInputs:
     term_id: int
     time_slots: tuple[TimeSlotInput, ...]
     demands: tuple[SchedulingDemand, ...]
+
+
+@dataclass(frozen=True)
+class _Candidate:
+    demand_index: int
+    faculty_id: int
+    subject_id: int
+    block_id: int
+    room_id: int
+    time_slot_id: int
+    units_tenths: int
+
+
+def _slots_overlap(left: TimeSlotInput, right: TimeSlotInput) -> bool:
+    return (
+        left.day_of_week == right.day_of_week
+        and left.start_time < right.end_time
+        and left.end_time > right.start_time
+    )
 
 
 def prepare_scheduling_inputs(term: "Term") -> SchedulingInputs:
@@ -148,3 +170,177 @@ def prepare_scheduling_inputs(term: "Term") -> SchedulingInputs:
             )
 
     return SchedulingInputs(term_id=term.id, time_slots=time_slots, demands=tuple(demands))
+
+
+def generate_schedule_suggestions(term: "Term", block_ids=None) -> dict:
+    """Generate unsaved, conflict-free proposals for a term.
+
+    ``block_ids`` is an optional testing/preview limiter.  It does not change
+    the public whole-term behaviour when omitted.
+    """
+    inputs = prepare_scheduling_inputs(term)
+    selected_block_ids = set(block_ids) if block_ids is not None else None
+    demands = [
+        demand
+        for demand in inputs.demands
+        if selected_block_ids is None or demand.block_id in selected_block_ids
+    ]
+    slots_by_id = {slot.id: slot for slot in inputs.time_slots}
+    model = cp_model.CpModel()
+
+    existing = list(
+        Assignment.objects.filter(term=term).values(
+            "faculty_id", "room_id", "block_id", "day_of_week", "start_time", "end_time"
+        )
+    )
+    candidates = []
+    unavailable_reasons = {}
+    for demand_index, demand in enumerate(demands):
+        if not demand.faculty_ids:
+            unavailable_reasons[demand_index] = "No qualified active faculty are available."
+            continue
+        if not demand.room_ids:
+            unavailable_reasons[demand_index] = "No room meets the capacity and room-type requirements."
+            continue
+        if not demand.time_slot_ids:
+            unavailable_reasons[demand_index] = "No time slots are defined."
+            continue
+
+        for faculty_id in demand.faculty_ids:
+            for room_id in demand.room_ids:
+                for time_slot_id in demand.time_slot_ids:
+                    slot = slots_by_id[time_slot_id]
+                    conflicts_existing = any(
+                        slot.day_of_week == assignment["day_of_week"]
+                        and slot.start_time < assignment["end_time"].isoformat()
+                        and slot.end_time > assignment["start_time"].isoformat()
+                        and (
+                            faculty_id == assignment["faculty_id"]
+                            or room_id == assignment["room_id"]
+                            or demand.block_id == assignment["block_id"]
+                        )
+                        for assignment in existing
+                    )
+                    if not conflicts_existing:
+                        candidates.append(
+                            _Candidate(
+                                demand_index=demand_index,
+                                faculty_id=faculty_id,
+                                subject_id=demand.subject_id,
+                                block_id=demand.block_id,
+                                room_id=room_id,
+                                time_slot_id=time_slot_id,
+                                units_tenths=int(Decimal(demand.units) * 10),
+                            )
+                        )
+
+    variables = [model.NewBoolVar(f"assignment_{index}") for index in range(len(candidates))]
+    candidate_indices_by_demand = {}
+    for index, candidate in enumerate(candidates):
+        candidate_indices_by_demand.setdefault(candidate.demand_index, []).append(index)
+    for demand_index, indices in candidate_indices_by_demand.items():
+        # At-most-one retains feasibility when options conflict globally.  The
+        # objective below strongly prefers filling each demand where possible.
+        model.AddAtMostOne(variables[index] for index in indices)
+
+    def add_resource_overlap_constraints(resource_attribute):
+        by_resource = {}
+        for index, candidate in enumerate(candidates):
+            by_resource.setdefault(getattr(candidate, resource_attribute), []).append(index)
+        for indices in by_resource.values():
+            for left_index, right_index in combinations(indices, 2):
+                if _slots_overlap(
+                    slots_by_id[candidates[left_index].time_slot_id],
+                    slots_by_id[candidates[right_index].time_slot_id],
+                ):
+                    model.Add(variables[left_index] + variables[right_index] <= 1)
+
+    add_resource_overlap_constraints("faculty_id")
+    add_resource_overlap_constraints("room_id")
+    add_resource_overlap_constraints("block_id")
+
+    faculty_ids = sorted({candidate.faculty_id for candidate in candidates})
+    existing_units = {
+        faculty_id: 0
+        for faculty_id in faculty_ids
+    }
+    for assignment in Assignment.objects.filter(term=term, faculty_id__in=faculty_ids).values(
+        "faculty_id", "units_credited"
+    ):
+        existing_units[assignment["faculty_id"]] += int(Decimal(assignment["units_credited"]) * 10)
+
+    from faculty.models import Faculty
+
+    faculty_targets = {
+        faculty.id: int(faculty.effective_load_units * 10)
+        for faculty in Faculty.objects.filter(id__in=faculty_ids).select_related("designation")
+    }
+    total_units_off_target = []
+    max_new_units = sum(candidate.units_tenths for candidate in candidates)
+    for faculty_id in faculty_ids:
+        selected_units = sum(
+            candidate.units_tenths * variables[index]
+            for index, candidate in enumerate(candidates)
+            if candidate.faculty_id == faculty_id
+        )
+        total_units = model.NewIntVar(0, existing_units[faculty_id] + max_new_units, f"load_{faculty_id}")
+        model.Add(total_units == existing_units[faculty_id] + selected_units)
+        deviation = model.NewIntVar(0, existing_units[faculty_id] + max_new_units + faculty_targets[faculty_id], f"deviation_{faculty_id}")
+        model.AddAbsEquality(deviation, total_units - faculty_targets[faculty_id])
+        total_units_off_target.append(deviation)
+
+    coverage_weight = sum(
+        existing_units[faculty_id] + max_new_units + faculty_targets[faculty_id]
+        for faculty_id in faculty_ids
+    ) + 1
+    model.Minimize(
+        sum(total_units_off_target) - coverage_weight * sum(variables)
+    )
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = 30
+    solver.parameters.num_search_workers = 8
+    status = solver.Solve(model)
+    feasible_statuses = (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    if status not in feasible_statuses:
+        return {
+            "proposals": [],
+            "unfilled": [
+                {
+                    "block_id": demand.block_id,
+                    "subject_id": demand.subject_id,
+                    "reason": "No feasible schedule could be found within the solver time limit.",
+                }
+                for demand in demands
+            ],
+        }
+
+    proposals = [
+        {
+            "faculty_id": candidate.faculty_id,
+            "subject_id": candidate.subject_id,
+            "block_id": candidate.block_id,
+            "room_id": candidate.room_id,
+            "time_slot_id": candidate.time_slot_id,
+        }
+        for index, candidate in enumerate(candidates)
+        if solver.Value(variables[index])
+    ]
+    filled_demand_indices = {
+        candidate.demand_index
+        for index, candidate in enumerate(candidates)
+        if solver.Value(variables[index])
+    }
+    unfilled = [
+        {
+            "block_id": demand.block_id,
+            "subject_id": demand.subject_id,
+            "reason": unavailable_reasons.get(
+                demand_index,
+                "No non-conflicting combination could be selected.",
+            ),
+        }
+        for demand_index, demand in enumerate(demands)
+        if demand_index not in filled_demand_indices
+    ]
+    return {"proposals": proposals, "unfilled": unfilled}

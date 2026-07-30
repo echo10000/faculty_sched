@@ -13,7 +13,7 @@ from accounts.models import AdminProfile
 from core.models import College, Department, Program
 from faculty.models import Faculty, FacultyQualification
 from scheduling.models import Assignment, Block, Room, Term, TimeSlot
-from scheduling.autoscheduler import prepare_scheduling_inputs
+from scheduling.autoscheduler import generate_schedule_suggestions, prepare_scheduling_inputs
 
 
 class AssignmentValidationTests(TestCase):
@@ -163,3 +163,22 @@ class SchedulingInputPreparationTests(TestCase):
             (eligible_demand.block_id, eligible_demand.subject_id),
             {(demand.block_id, demand.subject_id) for demand in refreshed_inputs.demands},
         )
+
+    def test_solver_returns_non_conflicting_proposals_for_two_blocks(self):
+        block_ids = list(Block.objects.filter(term=self.term).values_list("id", flat=True)[:2])
+        result = generate_schedule_suggestions(self.term, block_ids=block_ids)
+        self.assertTrue(result["proposals"])
+        slot_by_id = {slot.id: slot for slot in TimeSlot.objects.all()}
+        for left_index, left in enumerate(result["proposals"]):
+            for right in result["proposals"][left_index + 1:]:
+                left_slot = slot_by_id[left["time_slot_id"]]
+                right_slot = slot_by_id[right["time_slot_id"]]
+                overlap = (
+                    left_slot.day_of_week == right_slot.day_of_week
+                    and left_slot.start_time < right_slot.end_time
+                    and left_slot.end_time > right_slot.start_time
+                )
+                if overlap:
+                    self.assertNotEqual(left["faculty_id"], right["faculty_id"])
+                    self.assertNotEqual(left["room_id"], right["room_id"])
+                    self.assertNotEqual(left["block_id"], right["block_id"])
