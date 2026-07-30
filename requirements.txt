@@ -1,3 +1,4 @@
 Django>=5.1,<6.0
 psycopg2-binary>=2.9,<3.0
 python-decouple>=3.8,<4.0
+ortools>=9.11,<10.0
