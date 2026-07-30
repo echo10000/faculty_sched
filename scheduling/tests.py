@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.db import IntegrityError
 from django.test import TestCase
 from unittest.mock import patch
@@ -12,6 +13,7 @@ from accounts.models import AdminProfile
 from core.models import College, Department, Program
 from faculty.models import Faculty, FacultyQualification
 from scheduling.models import Assignment, Block, Room, Term, TimeSlot
+from scheduling.autoscheduler import prepare_scheduling_inputs
 
 
 class AssignmentValidationTests(TestCase):
@@ -124,3 +126,40 @@ class AssignmentValidationTests(TestCase):
         response = self.client.get("/scheduling/")
         self.assertContains(response, "Room 101")
         self.assertContains(response, "41 enrolled students")
+
+
+class SchedulingInputPreparationTests(TestCase):
+    def setUp(self):
+        call_command("seed_demo_data")
+        self.term = Term.objects.get(is_active=True)
+        TimeSlot.objects.create(day_of_week="MON", start_time=time(9), end_time=time(10, 30))
+        TimeSlot.objects.create(day_of_week="WED", start_time=time(13), end_time=time(14, 30))
+
+    def test_seed_data_produces_unfilled_demands_with_plain_options(self):
+        inputs = prepare_scheduling_inputs(self.term)
+        eligible_demand = next(
+            demand
+            for demand in inputs.demands
+            if demand.faculty_ids and demand.room_ids and demand.time_slot_ids
+        )
+        self.assertTrue(inputs.time_slots)
+        self.assertIsInstance(eligible_demand.block_id, int)
+        self.assertTrue(eligible_demand.faculty_ids)
+        self.assertTrue(eligible_demand.room_ids)
+        self.assertEqual(eligible_demand.time_slot_ids, tuple(slot.id for slot in inputs.time_slots))
+
+        block = Block.objects.get(pk=eligible_demand.block_id)
+        Assignment.objects.create(
+            faculty_id=eligible_demand.faculty_ids[0],
+            subject_id=eligible_demand.subject_id,
+            block=block,
+            room_id=eligible_demand.room_ids[0],
+            term=self.term,
+            time_slot_id=eligible_demand.time_slot_ids[0],
+            units_credited=Decimal(eligible_demand.units),
+        )
+        refreshed_inputs = prepare_scheduling_inputs(self.term)
+        self.assertNotIn(
+            (eligible_demand.block_id, eligible_demand.subject_id),
+            {(demand.block_id, demand.subject_id) for demand in refreshed_inputs.demands},
+        )
