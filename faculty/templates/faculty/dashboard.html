@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>My faculty dashboard</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; color: #1f2937; }
+    .summary { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1.5rem 0; }
+    .card { background: #f3f4f6; border-radius: .5rem; padding: .75rem 1rem; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border: 1px solid #d1d5db; padding: .7rem; vertical-align: top; }
+    th { background: #f3f4f6; } .time { font-weight: 600; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <h1>My schedule: {{ faculty }}</h1>
+  <p>{{ term }}</p>
+  <section class="summary" aria-label="Load summary">
+    <div class="card">Base load: {{ load.base_load }}</div>
+    <div class="card">Designation release: {{ load.units_released }}</div>
+    <div class="card">Assigned: {{ load.assigned_units }}</div>
+    <div class="card">Status: {{ load.status }}</div>
+  </section>
+  <table>
+    <thead><tr><th>Time</th>{% for day in days %}<th>{{ day }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in grid_rows %}
+        <tr><td class="time">{{ row.label }}</td>{% for cell in row.cells %}<td>{% if cell.assignment %}{{ cell.assignment.subject.code }}<br>{{ cell.assignment.block }}<br>{{ cell.assignment.room.name }}{% endif %}</td>{% endfor %}</tr>
+      {% empty %}<tr><td colspan="7">No assignments have been scheduled for the active term.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

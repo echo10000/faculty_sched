@@ -1,6 +1,7 @@
 from datetime import time
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -75,3 +76,37 @@ class FacultyLoadServiceTests(TestCase):
             summary = compute_department_load_summary(self.department, self.term)
         self.assertEqual({entry["faculty"] for entry in summary}, {self.underload, self.on_target, self.overload})
         self.assertEqual(len(queries), 1)
+
+
+class FacultyDashboardTests(TestCase):
+    def setUp(self):
+        college = College.objects.create(name="College", code="COL")
+        department = Department.objects.create(college=college, name="Computing", code="COMP")
+        program = Program.objects.create(department=department, name="Computing", code="BSCS")
+        curriculum = Curriculum.objects.create(program=program, version_year=2026)
+        self.term = Term.objects.create(academic_year="2026-2027", term_name="1st", is_active=True)
+        self.user = User.objects.create_user(username="faculty-user", password="password")
+        self.faculty = Faculty.objects.create(
+            user=self.user,
+            employee_id="FAC-SELF",
+            first_name="Self",
+            last_name="Faculty",
+            home_department=department,
+            employment_type="full_time",
+        )
+        self.other_faculty = Faculty.objects.create(
+            employee_id="FAC-OTHER",
+            first_name="Other",
+            last_name="Faculty",
+            home_department=department,
+            employment_type="full_time",
+        )
+
+    def test_faculty_user_can_view_only_their_dashboard(self):
+        self.client.force_login(self.user)
+        response = self.client.get("/faculty/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "My schedule: Faculty, Self")
+
+        response = self.client.get(f"/scheduling/faculty/{self.other_faculty.id}/timetable/")
+        self.assertEqual(response.status_code, 403)

@@ -22,5 +22,6 @@ from scheduling.views import ConflictDashboardView
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("", ConflictDashboardView.as_view(), name="home"),
+    path("faculty/", include("faculty.urls")),
     path("scheduling/", include("scheduling.urls")),
 ]
