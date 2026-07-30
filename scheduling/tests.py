@@ -127,6 +127,73 @@ class AssignmentValidationTests(TestCase):
         self.assertContains(response, "Room 101")
         self.assertContains(response, "41 enrolled students")
 
+    def make_admin_user(self, username, role):
+        user = User.objects.create_user(username=username, password="password")
+        AdminProfile.objects.create(
+            user=user,
+            role=role,
+            department=None if role in (AdminProfile.Role.DEAN, AdminProfile.Role.SUPER_ADMIN) else self.department,
+        )
+        return user
+
+    def test_draft_assignments_submit_for_approval(self):
+        assignment = self.make_assignment()
+        user = self.make_admin_user("department-admin", AdminProfile.Role.DEPARTMENT_ADMIN)
+        self.client.force_login(user)
+        response = self.client.post("/scheduling/assignments/submit/", {
+            "term_id": self.term.id,
+            "block_id": self.block_one.id,
+        })
+        self.assertEqual(response.status_code, 302)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, Assignment.Status.PENDING_APPROVAL)
+
+    def test_pending_assignments_are_approved_by_dean(self):
+        assignment = self.make_assignment()
+        Assignment.objects.filter(pk=assignment.pk).update(status=Assignment.Status.PENDING_APPROVAL)
+        dean = self.make_admin_user("dean", AdminProfile.Role.DEAN)
+        self.client.force_login(dean)
+        self.client.post("/scheduling/assignments/approve/", {
+            "term_id": self.term.id,
+            "block_id": self.block_one.id,
+        })
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, Assignment.Status.APPROVED)
+        self.assertEqual(assignment.approved_by, dean)
+        self.assertIsNotNone(assignment.approved_at)
+
+    def test_non_dean_cannot_approve_assignments(self):
+        assignment = self.make_assignment()
+        Assignment.objects.filter(pk=assignment.pk).update(status=Assignment.Status.PENDING_APPROVAL)
+        user = self.make_admin_user("not-dean", AdminProfile.Role.DEPARTMENT_ADMIN)
+        self.client.force_login(user)
+        response = self.client.post("/scheduling/assignments/approve/", {
+            "term_id": self.term.id,
+            "block_id": self.block_one.id,
+        })
+        self.assertEqual(response.status_code, 403)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, Assignment.Status.PENDING_APPROVAL)
+
+    def test_dean_unlock_returns_assignment_to_draft_and_logs_reason(self):
+        assignment = self.make_assignment()
+        dean = self.make_admin_user("unlock-dean", AdminProfile.Role.DEAN)
+        Assignment.objects.filter(pk=assignment.pk).update(
+            status=Assignment.Status.APPROVED,
+            approved_by=dean,
+        )
+        self.client.force_login(dean)
+        response = self.client.post(
+            f"/scheduling/assignments/{assignment.id}/unlock/",
+            {"reason": "Correct the assigned room."},
+        )
+        self.assertEqual(response.status_code, 302)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, Assignment.Status.DRAFT)
+        log = assignment.status_logs.get()
+        self.assertEqual(log.changed_by, dean)
+        self.assertEqual(log.reason, "Correct the assigned room.")
+
 
 class SchedulingInputPreparationTests(TestCase):
     def setUp(self):

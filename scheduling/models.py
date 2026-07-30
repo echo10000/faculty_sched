@@ -95,6 +95,11 @@ class TimeSlot(models.Model):
 
 
 class Assignment(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        PENDING_APPROVAL = "pending_approval", "Pending approval"
+        APPROVED = "approved", "Approved"
+
     faculty = models.ForeignKey(Faculty, on_delete=models.PROTECT, related_name="assignments")
     subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name="assignments")
     block = models.ForeignKey(Block, on_delete=models.PROTECT, related_name="assignments")
@@ -111,6 +116,15 @@ class Assignment(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="approved_assignments",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
 
     # Populated from time_slot by the database trigger in migration 0003.
     # These indexed values let PostgreSQL enforce overlap constraints without a join.
@@ -142,3 +156,16 @@ class Assignment(models.Model):
 
     def __str__(self):
         return f"{self.subject.code} / {self.block} / {self.time_slot}"
+
+
+class AssignmentStatusLog(models.Model):
+    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name="status_logs")
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="assignment_status_logs")
+    reason = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.assignment} unlocked by {self.changed_by}"

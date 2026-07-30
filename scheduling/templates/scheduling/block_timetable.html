@@ -12,6 +12,7 @@
 </head>
 <body>
   <h1>{{ title }}</h1>
+  {% if messages %}<ul>{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
   <table>
     <thead><tr><th>Time</th>{% for day in days %}<th>{{ day }}</th>{% endfor %}</tr></thead>
     <tbody>

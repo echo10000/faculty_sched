@@ -6,11 +6,13 @@ from django.db import IntegrityError
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.utils import timezone
 from django.views.generic import DetailView
 from django.views.generic import TemplateView
 from django.db.models import Count, F
 
 from accounts.permissions import department_scoped_queryset
+from accounts.models import AdminProfile
 
 from core.models import Department
 from faculty.services import compute_department_load_summary
@@ -19,11 +21,36 @@ from academics.models import CurriculumSubject, Subject
 from faculty.models import Faculty
 
 from .autoscheduler import generate_schedule_suggestions
-from .models import Assignment, Block, Room, Term, TimeSlot
+from .models import Assignment, AssignmentStatusLog, Block, Room, Term, TimeSlot
 from .services import validate_assignment
 
 
 DAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT")
+
+
+def require_workflow_role(user, *roles):
+    try:
+        profile = user.admin_profile
+    except AdminProfile.DoesNotExist as exc:
+        raise PermissionDenied("An administrator profile is required.") from exc
+    if profile.role not in roles:
+        raise PermissionDenied("Your role cannot perform this workflow action.")
+    return profile
+
+
+def get_scoped_block(user, term, block_id):
+    block = get_object_or_404(
+        Block.objects.filter(term=term).select_related("curriculum__program__department"),
+        pk=block_id,
+    )
+    allowed = department_scoped_queryset(
+        user,
+        Block.objects.filter(term=term),
+        "curriculum__program__department",
+    ).filter(pk=block.pk).exists()
+    if not allowed:
+        raise PermissionDenied("You cannot act on a block outside your department.")
+    return block
 
 
 def build_timetable_grid(assignments):
@@ -271,3 +298,87 @@ class CommitAutoScheduleSuggestionsView(LoginRequiredMixin, TemplateView):
         if created_count:
             messages.success(request, f"Created {created_count} assignment(s).")
         return redirect(f"{reverse('scheduling:auto-schedule-suggestions')}?term={term.id}")
+
+
+class SubmitForApprovalView(LoginRequiredMixin, TemplateView):
+    """Move a block's validated drafts into dean-review status."""
+
+    def post(self, request, *args, **kwargs):
+        require_workflow_role(
+            request.user,
+            AdminProfile.Role.DEPARTMENT_ADMIN,
+            AdminProfile.Role.DEPT_CHAIR,
+        )
+        term = get_object_or_404(Term, pk=request.POST.get("term_id"))
+        block = get_scoped_block(request.user, term, request.POST.get("block_id"))
+        assignments = list(Assignment.objects.filter(
+            block=block, term=term, status=Assignment.Status.DRAFT
+        ).select_related("faculty", "subject", "room", "time_slot"))
+        errors = []
+        for assignment in assignments:
+            try:
+                validate_assignment(
+                    assignment.faculty,
+                    assignment.subject,
+                    assignment.block,
+                    assignment.room,
+                    assignment.term,
+                    assignment.time_slot,
+                    assignment.units_credited,
+                    exclude_assignment_id=assignment.id,
+                )
+            except ValidationError as exc:
+                errors.append(f"{assignment.subject.code}: {'; '.join(exc.messages)}")
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+            return redirect("scheduling:block-timetable", block_id=block.id)
+        updated = Assignment.objects.filter(pk__in=[assignment.id for assignment in assignments]).update(
+            status=Assignment.Status.PENDING_APPROVAL,
+            approved_by=None,
+            approved_at=None,
+        )
+        messages.success(request, f"Submitted {updated} assignment(s) for approval.")
+        return redirect("scheduling:block-timetable", block_id=block.id)
+
+
+class ApproveAssignmentsView(LoginRequiredMixin, TemplateView):
+    def post(self, request, *args, **kwargs):
+        require_workflow_role(request.user, AdminProfile.Role.DEAN)
+        term = get_object_or_404(Term, pk=request.POST.get("term_id"))
+        block = get_scoped_block(request.user, term, request.POST.get("block_id"))
+        updated = Assignment.objects.filter(
+            block=block,
+            term=term,
+            status=Assignment.Status.PENDING_APPROVAL,
+        ).update(
+            status=Assignment.Status.APPROVED,
+            approved_by=request.user,
+            approved_at=timezone.now(),
+        )
+        messages.success(request, f"Approved {updated} assignment(s).")
+        return redirect("scheduling:block-timetable", block_id=block.id)
+
+
+class UnlockAssignmentView(LoginRequiredMixin, TemplateView):
+    def post(self, request, assignment_id, *args, **kwargs):
+        require_workflow_role(request.user, AdminProfile.Role.DEAN)
+        assignment = get_object_or_404(Assignment, pk=assignment_id)
+        reason = request.POST.get("reason", "").strip()
+        if not reason:
+            messages.error(request, "An unlock reason is required.")
+            return redirect("scheduling:block-timetable", block_id=assignment.block_id)
+        if assignment.status != Assignment.Status.APPROVED:
+            messages.error(request, "Only approved assignments can be unlocked.")
+            return redirect("scheduling:block-timetable", block_id=assignment.block_id)
+        assignment.status = Assignment.Status.DRAFT
+        assignment.approved_by = None
+        assignment.approved_at = None
+        assignment.save(update_fields=["status", "approved_by", "approved_at", "updated_at"])
+        AssignmentStatusLog.objects.create(
+            assignment=assignment,
+            changed_by=request.user,
+            reason=reason,
+        )
+        messages.success(request, "Assignment unlocked and returned to draft.")
+        return redirect("scheduling:block-timetable", block_id=assignment.block_id)
