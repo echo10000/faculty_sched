@@ -14,6 +14,7 @@
 <body>
   <h1>Scheduling dashboard{% if active_term %}: {{ active_term }}{% endif %}</h1>
   <nav><a href="{% url 'scheduling:conflict-dashboard' %}">Conflict dashboard</a></nav>
+  {% if export_department and active_term %}<p><a href="{% url 'scheduling:faculty-load-xlsx' export_department.id %}?term={{ active_term.id }}">Export Excel load report</a></p>{% endif %}
   <form method="get">
     <label for="status">Workflow status:</label>
     <select id="status" name="status">

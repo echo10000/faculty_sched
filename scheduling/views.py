@@ -4,6 +4,7 @@ from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.http import Http404
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -21,6 +22,7 @@ from academics.models import CurriculumSubject, Subject
 from faculty.models import Faculty
 
 from .autoscheduler import generate_schedule_suggestions
+from .exports import export_block_timetable_pdf, export_faculty_load_report_xlsx
 from .models import Assignment, AssignmentStatusLog, Block, Room, Term, TimeSlot
 from .services import validate_assignment
 
@@ -109,6 +111,14 @@ class BlockTimetableView(LoginRequiredMixin, TimetableContextMixin, DetailView):
         return self.add_grid_context(context, assignments)
 
 
+class BlockTimetablePdfExportView(LoginRequiredMixin, TemplateView):
+    def get(self, request, block_id, *args, **kwargs):
+        block = get_scoped_block(request.user, Term.objects.get(pk=get_object_or_404(Block, pk=block_id).term_id), block_id)
+        response = HttpResponse(export_block_timetable_pdf(block), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{block}-timetable.pdf"'
+        return response
+
+
 class FacultyTimetableView(LoginRequiredMixin, TimetableContextMixin, DetailView):
     model = Faculty
     template_name = "scheduling/faculty_timetable.html"
@@ -184,7 +194,23 @@ class ConflictDashboardView(LoginRequiredMixin, TemplateView):
                 if summary["status"] != "on_target":
                     load_warnings.append(summary)
         context["load_warnings"] = load_warnings
+        context["export_department"] = self.request.user.admin_profile.department
         return context
+
+
+class FacultyLoadReportExcelExportView(LoginRequiredMixin, TemplateView):
+    def get(self, request, department_id, *args, **kwargs):
+        term = get_object_or_404(Term, pk=request.GET.get("term"))
+        department = get_object_or_404(Department, pk=department_id)
+        allowed_departments = department_scoped_queryset(request.user, Department.objects.all(), "pk")
+        if not allowed_departments.filter(pk=department.pk).exists():
+            raise PermissionDenied("You cannot export another department's load report.")
+        response = HttpResponse(
+            export_faculty_load_report_xlsx(department, term),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{department.code}-{term}-faculty-load.xlsx"'
+        return response
 
 
 class AutoScheduleSuggestionView(LoginRequiredMixin, TemplateView):
