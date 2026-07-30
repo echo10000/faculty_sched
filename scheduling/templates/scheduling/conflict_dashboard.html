@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Scheduling dashboard</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; color: #1f2937; }
+    section { margin: 2rem 0; } li { margin: .65rem 0; } .warning { color: #9a3412; }
+  </style>
+</head>
+<body>
+  <h1>Scheduling dashboard{% if active_term %}: {{ active_term }}{% endif %}</h1>
+  <nav><a href="{% url 'scheduling:conflict-dashboard' %}">Conflict dashboard</a></nav>
+
+  <section>
+    <h2>Capacity Conflicts</h2>
+    <ul>
+      {% for assignment in capacity_conflicts %}
+        <li class="warning"><a href="{% url 'scheduling:block-timetable' assignment.block.id %}">{{ assignment.block }}</a>: {{ assignment.subject.code }} is in {{ assignment.room.name }} (capacity {{ assignment.room.capacity }}) for {{ assignment.block_enrolled_count }} enrolled students.</li>
+      {% empty %}<li>No capacity conflicts.</li>{% endfor %}
+    </ul>
+  </section>
+
+  <section>
+    <h2>Load Status Warnings</h2>
+    <ul>
+      {% for warning in load_warnings %}
+        <li class="warning"><a href="{% url 'scheduling:faculty-timetable' warning.faculty.id %}">{{ warning.faculty }}</a>: {{ warning.status }} ({{ warning.assigned_units }} assigned / {{ warning.required_load }} required).</li>
+      {% empty %}<li>All faculty are on target.</li>{% endfor %}
+    </ul>
+  </section>
+</body>
+</html>

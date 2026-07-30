@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; color: #1f2937; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border: 1px solid #d1d5db; padding: .7rem; vertical-align: top; }
+    th { background: #f3f4f6; } .time { font-weight: 600; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <h1>{{ title }}</h1>
+  <table>
+    <thead><tr><th>Time</th>{% for day in days %}<th>{{ day }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in grid_rows %}
+        <tr><td class="time">{{ row.label }}</td>{% for cell in row.cells %}<td>{% if cell.assignment %}{{ cell.assignment.subject.code }}<br>{{ cell.assignment.room.name }}{% endif %}</td>{% endfor %}</tr>
+      {% empty %}<tr><td colspan="7">No assignments have been scheduled.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

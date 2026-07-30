@@ -17,10 +17,21 @@ class Curriculum(models.Model):
 
 
 class Subject(models.Model):
+    class RequiredRoomType(models.TextChoices):
+        LECTURE = "lecture", "Lecture"
+        LABORATORY = "laboratory", "Laboratory"
+        SPECIALIZED = "specialized", "Specialized"
+
     code = models.CharField(max_length=15, unique=True)
     title = models.CharField(max_length=255)
     units = models.DecimalField(max_digits=3, decimal_places=1)
     is_general_education = models.BooleanField(default=False)
+    required_room_type = models.CharField(
+        max_length=12,
+        choices=RequiredRoomType.choices,
+        null=True,
+        blank=True,
+    )
     owning_department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL, related_name="owned_subjects")
 
     class Meta:
