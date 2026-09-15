@@ -16,9 +16,10 @@ class Command(BaseCommand):
             "Authorized Staff": {"core.view_dashboard"},
             "System Admin": READ_PERMISSIONS | {"core.view_systemsetting", "audit.view_auditlog"},
         }.items():
-            group, created = Group.objects.get_or_create(name=name)
-            if created:
-                for name in permissions:
-                    app, codename = name.split(".")
-                    group.permissions.add(Permission.objects.get(content_type__app_label=app, codename=codename))
+            group, _ = Group.objects.get_or_create(name=name)
+            for permission_name in permissions:
+                app, codename = permission_name.split(".")
+                group.permissions.add(
+                    Permission.objects.get(content_type__app_label=app, codename=codename)
+                )
         self.stdout.write(self.style.SUCCESS("Initial role bundles ready; existing custom grants preserved."))

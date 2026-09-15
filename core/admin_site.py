@@ -13,7 +13,9 @@ class FoundationAdminSite(AdminSite):
         allowed = {"auth.user", "auth.group", "accounts.adminprofile", "core.college", "core.department",
                    "core.systemsetting", "academics.academicyear", "academics.academicterm", "academics.semester", "audit.auditlog",
                    "faculty.employmentcategory", "faculty.academicrank", "resources.roomtype", "resources.building",
-                   "workloads.workloadpolicy", "workloads.facultytermcapacity"}
+                   "workloads.workloadpolicy", "workloads.facultytermcapacity",
+                   "timetabling.assignmentmeetingrequirement", "timetabling.schedulingconfiguration",
+                   "timetabling.schedulegenerationrun"}
         models = [model_or_iterable] if hasattr(model_or_iterable, "_meta") else model_or_iterable
         for model in models:
             if model._meta.label_lower in allowed:

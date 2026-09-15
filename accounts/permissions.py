@@ -28,6 +28,17 @@ TIMETABLE_PERMISSIONS = {
     if action != "delete" or model in ("scheduleentry", "roomunavailability")
 } | {"timetabling.validate_schedule"}
 
+TIMETABLE_PERMISSIONS |= {
+    "timetabling.generate_schedule",
+    "timetabling.view_assignmentmeetingrequirement",
+    "timetabling.add_assignmentmeetingrequirement",
+    "timetabling.change_assignmentmeetingrequirement",
+    "timetabling.view_schedulingconfiguration",
+    "timetabling.add_schedulingconfiguration",
+    "timetabling.change_schedulingconfiguration",
+    "timetabling.view_schedulegenerationrun",
+}
+
 
 def profile_for(user):
     if not user.is_authenticated or not user.is_active:

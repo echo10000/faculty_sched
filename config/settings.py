@@ -75,3 +75,15 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 INSTITUTION_NAME = env("INSTITUTION_NAME", default="Negros Oriental State University - Bais Campus")
+SCHEDULER_PREPROCESSING_TIME_LIMIT_SECONDS = env(
+    "SCHEDULER_PREPROCESSING_TIME_LIMIT_SECONDS", default=10, cast=int
+)
+SCHEDULER_MAX_CANDIDATES = env("SCHEDULER_MAX_CANDIDATES", default=100000, cast=int)
+SCHEDULER_MAX_SLOT_LITERALS = env("SCHEDULER_MAX_SLOT_LITERALS", default=2000000, cast=int)
+for name in (
+    "SCHEDULER_PREPROCESSING_TIME_LIMIT_SECONDS",
+    "SCHEDULER_MAX_CANDIDATES",
+    "SCHEDULER_MAX_SLOT_LITERALS",
+):
+    if globals()[name] <= 0:
+        raise ImproperlyConfigured(f"{name} must be a positive integer.")
