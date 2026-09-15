@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">YOUR WORKSPACE</p><h1>Overview</h1><p class="text-secondary">Your academic foundation, in one place.</p></div><span class="scope-badge">{{ access_scope }}</span></div>
+<div class="row g-4 mb-4">
+  {% if teaching_term %}<div class="col-md-4"><a class="metric-card" href="{% url 'workloads:monitor' %}?academic_term={{ teaching_term.pk }}"><span>Teaching assignments · {{ teaching_term.code }}</span><strong>{{ teaching_assignment_count }}</strong><small>Monitor workload for {{ teaching_term }}</small></a></div>{% endif %}
+  {% for metric in resource_metrics %}<div class="col-md-4"><a class="metric-card" href="{% url metric.route %}"><span>{{ metric.label }} in your scope</span><strong>{{ metric.count }}</strong><small>{{ metric.active }} active · View {{ metric.label|lower }} <span aria-hidden="true">→</span></small></a></div>{% endfor %}
+  {% if college_count != None %}<div class="col-md-4"><a class="metric-card" href="{% url 'college-list' %}"><span>Colleges in your scope</span><strong>{{ college_count }}</strong><small>View colleges <span aria-hidden="true">→</span></small></a></div>{% endif %}
+  {% if department_count != None %}<div class="col-md-4"><a class="metric-card" href="{% url 'department-list' %}"><span>Departments in your scope</span><strong>{{ department_count }}</strong><small>View departments <span aria-hidden="true">→</span></small></a></div>{% endif %}
+  {% if term_count != None %}<div class="col-md-4"><a class="metric-card" href="{% url 'academic-calendar' %}"><span>Active academic terms</span><strong>{{ term_count }}</strong><small>View calendar <span aria-hidden="true">→</span></small></a></div>{% endif %}
+</div>
+<div class="row g-4"><div class="col-xl-8"><section class="surface h-100"><h2 class="h5">Academic calendar</h2><p class="text-secondary">Active periods for the institution.</p>
+{% if perms.academics.view_academicterm %}{% for term in terms %}<div class="term-row"><div><strong>{{ term.academic_year }} · {{ term.semester }}</strong><small>{{ term.start_date|date:'M j, Y' }} — {{ term.end_date|date:'M j, Y' }}</small></div><span class="badge text-bg-success">Active</span></div>{% empty %}<div class="empty-state">No active terms yet.<small>A system administrator can configure the academic calendar.</small></div>{% endfor %}{% else %}<div class="empty-state">Calendar access has not been granted.<small>Contact your system administrator if you need access.</small></div>{% endif %}
+</section></div><div class="col-xl-4"><section class="surface access-panel h-100"><p class="eyebrow">ACCOUNT ACCESS</p><h2 class="h5">{{ role_label }}</h2><p>Your workspace is limited to <strong>{{ access_scope }}</strong>.</p><hr><p class="small text-secondary">Available pages reflect your assigned permissions. Contact your system administrator to request a change.</p>{% if can_administer %}<a class="btn btn-outline-primary w-100" href="{% url 'admin:index' %}">Manage foundation data</a>{% endif %}</section></div></div>
+{% endblock %}

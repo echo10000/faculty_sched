@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test import RequestFactory
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -81,6 +81,7 @@ class FacultyLoadServiceTests(TestCase):
         self.assertEqual(len(queries), 1)
 
 
+@override_settings(ROOT_URLCONF="config.legacy_test_urls")
 class FacultyDashboardTests(TestCase):
     def setUp(self):
         college = College.objects.create(name="College", code="COL")

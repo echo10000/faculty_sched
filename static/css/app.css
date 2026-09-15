@@ -1,0 +1,445 @@
+:root {
+  --ink:#182e40;
+  --muted:#677886;
+  --navy:#142f43;
+  --teal:#14746c;
+  --canvas:#f4f7f9;
+  --line:#e0e7ec;
+  --bs-primary:#14746c;
+  --bs-primary-rgb:20,116,108;
+}
+body {
+  font-family:Segoe UI,system-ui,sans-serif;
+  color:var(--ink);
+  background:var(--canvas);
+}
+a {
+  color:var(--teal);
+}
+.btn-primary {
+  --bs-btn-bg:#14746c;
+  --bs-btn-border-color:#14746c;
+  --bs-btn-hover-bg:#0d5a54;
+  --bs-btn-hover-border-color:#0d5a54;
+}
+.btn-outline-primary {
+  --bs-btn-color:#14746c;
+  --bs-btn-border-color:#14746c;
+  --bs-btn-hover-bg:#14746c;
+  --bs-btn-hover-border-color:#14746c;
+}
+h1 {
+  font-weight:650;
+  letter-spacing:-.035em;
+  font-size:2.15rem;
+}
+h2 {
+  font-weight:650;
+}
+.app-layout {
+  min-height:100vh;
+  display:flex;
+}
+.sidebar {
+  --bs-offcanvas-width:260px;
+  background:var(--navy)!important;
+  color:#fff;
+  width:260px;
+  flex-shrink:0;
+}
+.sidebar .offcanvas-body {
+  padding:32px 22px;
+  min-height:100vh;
+}
+.brand {
+  display:flex;
+  gap:12px;
+  align-items:center;
+  color:white;
+  text-decoration:none;
+  font-weight:650;
+  font-size:1.25rem;
+}
+.brand:hover {
+  color:white;
+}
+.brand small {
+  display:block;
+  font-size:.68rem;
+  font-weight:400;
+  color:#bfd0dd;
+  margin-top:4px;
+}
+.brand-mark {
+  display:grid;
+  place-items:center;
+  width:40px;
+  height:40px;
+  background:#276052;
+  border:1px solid #518678;
+  border-radius:10px;
+  font-size:.9rem;
+  letter-spacing:.02em;
+}
+.nav-caption {
+  font-size:.65rem;
+  letter-spacing:.17em;
+  color:#9cb4c6;
+  margin:48px 12px 14px;
+}
+.sidebar .nav-link {
+  padding:12px 15px;
+  color:#c8d6df;
+  font-size:.9rem;
+  border-radius:7px;
+}
+.sidebar .nav-link:hover,.sidebar .nav-link.active {
+  background:#24475d;
+  color:white;
+}
+.sidebar .nav-link.active {
+  box-shadow:inset 3px 0 #71c7aa;
+}
+.sidebar-footer {
+  border-top:1px solid #375266;
+  padding-top:22px;
+  font-size:.84rem;
+}
+.sidebar-footer small {
+  display:block;
+  color:#adc2d1;
+  font-size:.7rem;
+  margin:7px 0 0 15px;
+}
+.scope-dot {
+  display:inline-block;
+  width:6px;
+  height:6px;
+  background:#84d9b9;
+  border-radius:50%;
+  margin-right:6px;
+}
+.main-column {
+  flex:1;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+}
+.topbar {
+  min-height:88px;
+  display:flex;
+  align-items:center;
+  gap:22px;
+  padding:18px 40px;
+  background:white;
+  border-bottom:1px solid var(--line);
+}
+.institution-name {
+  margin-right:auto;
+  max-width:440px;
+  font-size:.85rem;
+  font-weight:550;
+  color:#536977;
+}
+.account-summary {
+  text-align:right;
+  font-size:.8rem;
+}
+.account-summary small {
+  display:block;
+  color:var(--muted);
+  font-size:.7rem;
+  margin-top:3px;
+}
+.content {
+  padding:42px;
+  max-width:1500px;
+  width:100%;
+  margin:0 auto;
+  flex:1;
+}
+.eyebrow {
+  font-size:.66rem;
+  letter-spacing:.17em;
+  font-weight:700;
+  color:var(--teal);
+  margin-bottom:12px;
+}
+.page-heading {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+  margin-bottom:26px;
+}
+.scope-badge {
+  border:1px solid #cfe0dd;
+  background:#ecf5f2;
+  color:#1e675d;
+  border-radius:30px;
+  padding:7px 14px;
+  font-size:.78rem;
+  white-space:nowrap;
+}
+.metric-card {
+  display:block;
+  text-decoration:none;
+  color:var(--ink);
+  background:white;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:24px 26px;
+}
+.metric-card>span {
+  font-size:.8rem;
+  color:var(--muted);
+}
+.metric-card>strong {
+  display:block;
+  font-size:2.8rem;
+  font-weight:600;
+  line-height:1.5;
+  letter-spacing:-.04em;
+}
+.metric-card small {
+  display:block;
+  color:var(--teal);
+  font-size:.75rem;
+  border-top:1px solid #edf1f4;
+  padding-top:15px;
+}
+.metric-card small span {
+  float:right;
+}
+.metric-card:hover {
+  border-color:#9ebbb4;
+}
+.surface {
+  background:white;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:28px;
+}
+.surface>.text-secondary {
+  font-size:.85rem;
+}
+.term-row {
+  padding:20px 0;
+  border-top:1px solid var(--line);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+.term-row strong {
+  font-size:.88rem;
+}
+.term-row small {
+  display:block;
+  color:var(--muted);
+  font-size:.78rem;
+  margin-top:7px;
+}
+.badge {
+  font-weight:500;
+  padding:.45em .7em;
+}
+.text-bg-success {
+  background:#e5f2ec!important;
+  color:#246a4b!important;
+}
+.empty-state {
+  padding:36px 20px;
+  text-align:center;
+  background:#f8fafb;
+  border:1px dashed #d9e2e8;
+  border-radius:8px;
+  color:#536977;
+}
+.empty-state small {
+  display:block;
+  margin-top:8px;
+  font-size:.78rem;
+}
+.access-panel {
+  background:#fbfcfc;
+}
+.access-panel p {
+  font-size:.86rem;
+  line-height:1.65;
+}
+.page-footer {
+  display:flex;
+  justify-content:space-between;
+  font-size:.7rem;
+  color:#7b8b97;
+  padding:20px 42px;
+}
+.table {
+  font-size:.87rem;
+}
+.table th {
+  font-size:.7rem;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:#718391;
+  padding:15px 10px;
+  background:#f8fafb;
+}
+.table td {
+  padding:17px 10px;
+  border-color:#edf1f3;
+}
+.login-layout {
+  min-height:100vh;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+}
+.login-intro {
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  padding:60px;
+  background:var(--navy);
+  color:white;
+  min-height:100vh;
+}
+.login-intro h1 {
+  font-size:3.15rem;
+  line-height:1.17;
+  margin:20px 0 28px;
+}
+.login-intro .eyebrow {
+  color:#8ed0b8;
+}
+.login-intro .lead {
+  color:#c5d7e2;
+  font-size:1rem;
+  max-width:340px;
+  line-height:1.7;
+}
+.login-intro>small {
+  color:#a9bfcd;
+  font-size:.75rem;
+}
+.login-panel {
+  display:grid;
+  place-items:center;
+  padding:40px;
+  background:white;
+}
+.login-card {
+  width:100%;
+  max-width:400px;
+}
+.login-card h2 {
+  font-size:1.8rem;
+  letter-spacing:-.03em;
+}
+.form-label {
+  font-size:.85rem;
+  font-weight:600;
+}
+.form-control:focus {
+  border-color:#14746c;
+  box-shadow:0 0 0 .2rem #14746c25;
+}
+.login-help {
+  font-size:.78rem;
+  color:var(--muted);
+  text-align:center;
+  line-height:1.7;
+  margin-top:28px;
+}
+.skip-link {
+  position:absolute;
+  z-index:2000;
+  background:white;
+  padding:12px;
+}
+a:focus-visible,button:focus-visible {
+  outline:3px solid #b77920;
+  outline-offset:3px;
+}
+@media(min-width:992px) {
+  .sidebar {
+    position:sticky;
+    top:0;
+    height:100vh;
+  }
+  .sidebar .offcanvas-body {
+    height:100vh;
+  }
+}
+@media(max-width:991px) {
+  .topbar {
+    padding:16px 22px;
+    gap:12px;
+  }
+  .content {
+    padding:28px 22px;
+  }
+  .sidebar .offcanvas-body {
+    min-height:0;
+    flex:1;
+  }
+  .institution-name {
+    font-size:.72rem;
+  }
+  .account-summary {
+    display:none;
+  }
+  .page-footer {
+    padding:20px 22px;
+  }
+  .login-intro {
+    padding:40px;
+  }
+  .login-intro h1 {
+    font-size:2.3rem;
+  }
+}
+@media(max-width:650px) {
+  .login-layout {
+    grid-template-columns:1fr;
+  }
+  .login-intro {
+    min-height:auto;
+    padding:26px;
+  }
+  .login-intro>div:nth-child(2),.login-intro>small {
+    display:none;
+  }
+  .login-panel {
+    padding:42px 24px;
+  }
+  .page-heading {
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  h1 {
+    font-size:1.85rem;
+  }
+  .page-footer span {
+    display:none;
+  }
+  .surface {
+    padding:20px;
+  }
+  .term-row {
+    align-items:flex-start;
+  }
+  .topbar .institution-name {
+    max-width:180px;
+  }
+}
+/* Keep the whole wrapped table-link box clickable on narrow screens. */
+.table td a {
+  display: inline-block;
+}
+
+/* Weekly meetings stay chronological and readable at narrow widths. */
+.week-grid { display:grid; grid-template-columns:repeat(7,minmax(155px,1fr)); gap:12px; overflow-x:auto; padding-bottom:12px; }
+.week-day { background:#fff; border:1px solid var(--border,#dfe5e9); border-radius:12px; padding:14px; min-width:0; }
+.meeting-card { border-left:3px solid #16766d; background:#edf6f5; padding:10px; margin-top:12px; border-radius:4px; overflow-wrap:anywhere; }
+@media(max-width:767px) { .week-grid { grid-template-columns:1fr; overflow:visible; } }

@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block title %}{{ object.code }}{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">ORGANIZATION RECORD</p><h1>{{ object.name }}</h1></div><span class="scope-badge">{{ access_scope }}</span></div>
+<section class="surface"><dl class="row mb-0"><dt class="col-sm-3">Code</dt><dd class="col-sm-9">{{ object.code }}</dd>{% if object.college %}<dt class="col-sm-3">College</dt><dd class="col-sm-9">{{ object.college.name }}</dd>{% endif %}<dt class="col-sm-3">Status</dt><dd class="col-sm-9">{{ object.is_active|yesno:'Active,Inactive' }}</dd></dl></section>
+{% endblock %}

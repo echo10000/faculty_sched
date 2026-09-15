@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Sign in{% endblock %}
+{% block layout %}
+<main id="main-content" class="login-layout">
+  <section class="login-intro"><div class="brand"><span class="brand-mark">CL</span>CampusLoad</div><div><p class="eyebrow">ACADEMIC ADMINISTRATION</p><h1>A clear view of<br>your academic workspace.</h1><p class="lead">{{ institution_name }}</p></div><small>Faculty Workload & Academic Scheduling</small></section>
+  <section class="login-panel"><div class="login-card"><p class="eyebrow text-secondary">WELCOME BACK</p><h2>Sign in to your workspace</h2><p class="text-secondary mb-4">Use your university administrator account.</p>
+  {% if form.errors %}<div class="alert alert-danger" role="alert">Unable to sign in. Check your credentials or contact your system administrator.</div>{% endif %}
+  <form method="post" action="{% url 'accounts:login' %}">{% csrf_token %}
+    <div class="mb-3"><label class="form-label" for="id_username">Username</label>{{ form.username }}</div>
+    <div class="mb-4"><label class="form-label" for="id_password">Password</label>{{ form.password }}</div>
+    <input type="hidden" name="next" value="{{ next }}"><button type="submit" class="btn btn-primary btn-lg w-100">Sign in</button>
+  </form><p class="login-help">Account access is managed by your system administrator.</p></div></section>
+</main>
+{% endblock %}

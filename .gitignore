@@ -3,3 +3,7 @@ __pycache__/
 *.py[cod]
 .venv/
 db.sqlite3
+venv/
+.local/
+staticfiles/
+.coverage

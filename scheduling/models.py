@@ -7,21 +7,55 @@ from faculty.models import Faculty
 
 from academics.models import Curriculum
 from core.models import Department
+from core.base import TrackedModel
+from django.db.models.functions import Lower
 
 
-class Room(models.Model):
+class Room(TrackedModel):
     class RoomType(models.TextChoices):
         LECTURE = "lecture", "Lecture"
         LABORATORY = "laboratory", "Laboratory"
         SPECIALIZED = "specialized", "Specialized"
 
     name = models.CharField(max_length=100, unique=True)
-    room_type = models.CharField(max_length=12, choices=RoomType.choices)
+    code = models.CharField(max_length=100, blank=True, default="")
+    category = models.ForeignKey("resources.RoomType", null=True, blank=True, on_delete=models.PROTECT)
+    building = models.ForeignKey("resources.Building", null=True, blank=True, on_delete=models.PROTECT)
+    owner_college = models.ForeignKey("core.College", null=True, blank=True, on_delete=models.PROTECT, related_name="owned_rooms")
+    owner_department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.PROTECT, related_name="owned_rooms")
+    is_active = models.BooleanField(default=True)
+    # Legacy type is mirrored from the authoritative category for old readers.
+    room_type = models.CharField(max_length=40, blank=True, default="")
     capacity = models.PositiveIntegerField()
     restricted_to_department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL, related_name="restricted_rooms")
 
     class Meta:
         ordering = ["name"]
+        permissions = [("activate_room", "Can activate or deactivate rooms")]
+        constraints = [
+            models.UniqueConstraint(Lower("code"), condition=~models.Q(code=""), name="room_code_case_unique"),
+            models.CheckConstraint(condition=models.Q(owner_college__isnull=True) | models.Q(owner_department__isnull=True), name="room_single_owner_scope"),
+            models.CheckConstraint(condition=models.Q(capacity__gte=0), name="room_capacity_nonnegative"),
+        ]
+
+    @property
+    def college(self):
+        return self.owner_department.college if self.owner_department_id else self.owner_college
+
+    def clean(self):
+        super().clean()
+        self.code = self.code.strip().upper()
+        if self.category_id:
+            self.room_type = self.category.code
+        if self.is_active:
+            if self.owner_department_id and (not self.owner_department.is_active or not self.owner_department.college.is_active):
+                raise ValidationError({"owner_department": "Choose an active department and college."})
+            if self.owner_college_id and not self.owner_college.is_active:
+                raise ValidationError({"owner_college": "Choose an active college."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name

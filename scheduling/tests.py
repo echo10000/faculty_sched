@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.db import IntegrityError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from unittest.mock import patch
 
 from academics.models import Curriculum, Student, Subject
@@ -16,6 +16,7 @@ from scheduling.models import Assignment, Block, Room, Term, TimeSlot
 from scheduling.autoscheduler import generate_schedule_suggestions, prepare_scheduling_inputs
 
 
+@override_settings(ROOT_URLCONF="config.legacy_test_urls")
 class AssignmentValidationTests(TestCase):
     def setUp(self):
         college = College.objects.create(name="College of Computing", code="CC")
@@ -119,7 +120,7 @@ class AssignmentValidationTests(TestCase):
         user = User.objects.create_user(username="dept-admin", password="password")
         AdminProfile.objects.create(
             user=user,
-            role=AdminProfile.Role.DEPARTMENT_ADMIN,
+            role=AdminProfile.Role.STAFF,
             department=self.department,
         )
         self.client.force_login(user)
@@ -133,7 +134,7 @@ class AssignmentValidationTests(TestCase):
         user = User.objects.create_user(username="pending-admin", password="password")
         AdminProfile.objects.create(
             user=user,
-            role=AdminProfile.Role.DEPARTMENT_ADMIN,
+            role=AdminProfile.Role.STAFF,
             department=self.department,
         )
         self.client.force_login(user)
@@ -147,13 +148,14 @@ class AssignmentValidationTests(TestCase):
         AdminProfile.objects.create(
             user=user,
             role=role,
+            college=self.department.college if role == AdminProfile.Role.DEAN else None,
             department=None if role in (AdminProfile.Role.DEAN, AdminProfile.Role.SUPER_ADMIN) else self.department,
         )
         return user
 
     def test_draft_assignments_submit_for_approval(self):
         assignment = self.make_assignment()
-        user = self.make_admin_user("department-admin", AdminProfile.Role.DEPARTMENT_ADMIN)
+        user = self.make_admin_user("department-admin", AdminProfile.Role.STAFF)
         self.client.force_login(user)
         response = self.client.post("/scheduling/assignments/submit/", {
             "term_id": self.term.id,
@@ -180,7 +182,7 @@ class AssignmentValidationTests(TestCase):
     def test_non_dean_cannot_approve_assignments(self):
         assignment = self.make_assignment()
         Assignment.objects.filter(pk=assignment.pk).update(status=Assignment.Status.PENDING_APPROVAL)
-        user = self.make_admin_user("not-dean", AdminProfile.Role.DEPARTMENT_ADMIN)
+        user = self.make_admin_user("not-dean", AdminProfile.Role.STAFF)
         self.client.force_login(user)
         response = self.client.post("/scheduling/assignments/approve/", {
             "term_id": self.term.id,
@@ -197,7 +199,7 @@ class AssignmentValidationTests(TestCase):
             status=Assignment.Status.APPROVED,
             approved_by=dean,
         )
-        user = self.make_admin_user("not-unlock-dean", AdminProfile.Role.DEPARTMENT_ADMIN)
+        user = self.make_admin_user("not-unlock-dean", AdminProfile.Role.STAFF)
         self.client.force_login(user)
         response = self.client.post(
             f"/scheduling/assignments/{assignment.id}/unlock/",
@@ -230,6 +232,7 @@ class AssignmentValidationTests(TestCase):
         self.assertEqual(log.reason, "Correct the assigned room.")
 
 
+@override_settings(ROOT_URLCONF="config.legacy_test_urls")
 class SchedulingInputPreparationTests(TestCase):
     def setUp(self):
         call_command("seed_demo_data")
@@ -295,7 +298,7 @@ class SchedulingInputPreparationTests(TestCase):
         user = User.objects.create_user(username="scheduler", password="password")
         AdminProfile.objects.create(
             user=user,
-            role=AdminProfile.Role.DEPARTMENT_ADMIN,
+            role=AdminProfile.Role.STAFF,
             department=block.curriculum.program.department,
         )
         self.client.force_login(user)

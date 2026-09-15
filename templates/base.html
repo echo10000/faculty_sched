@@ -1,0 +1,42 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CampusLoad{% endblock %} · Faculty Workload & Academic Scheduling</title>
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=4">
+</head>
+<body>
+<a class="visually-hidden-focusable skip-link" href="#main-content">Skip to content</a>
+{% block layout %}
+<div class="app-layout">
+  <aside class="offcanvas-lg offcanvas-start sidebar" tabindex="-1" id="sidebar" aria-labelledby="sidebar-title">
+    <div class="offcanvas-header"><h2 class="h5" id="sidebar-title">CampusLoad</h2><button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close navigation"></button></div>
+    <div class="offcanvas-body d-flex flex-column">
+      <a class="brand" href="{% url 'home' %}"><span class="brand-mark" aria-hidden="true">CL</span><span>CampusLoad<small>Academic administration</small></span></a>
+      <p class="nav-caption">WORKSPACE</p>
+      <nav aria-label="Main navigation" class="nav flex-column gap-1">
+      {% for link in navigation_links %}<a class="nav-link {% if link.active %}active{% endif %}" {% if link.active %}aria-current="page"{% endif %} href="{% url link.route %}">{{ link.label }}</a>{% endfor %}
+      {% if can_administer %}<a class="nav-link" href="{% url 'admin:index' %}">System administration <span aria-hidden="true">↗</span></a>{% endif %}
+      </nav>
+      <div class="sidebar-footer mt-auto"><span class="scope-dot" aria-hidden="true"></span> {{ access_scope }}<small>Authorized workspace</small></div>
+    </div>
+  </aside>
+  <div class="main-column">
+    <header class="topbar">
+      <button class="btn btn-outline-secondary d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar" aria-label="Open navigation">☰</button>
+      <div class="institution-name">{{ institution_name }}</div>
+      <div class="account-summary"><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{{ role_label }}</small></div>
+      <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" type="submit">Sign out</button></form>
+    </header>
+    <main id="main-content" class="content" tabindex="-1">
+      {% if messages %}{% for message in messages %}<div class="alert alert-info" role="status">{{ message }}</div>{% endfor %}{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="page-footer">CampusLoad <span>Faculty Workload & Academic Scheduling</span></footer>
+  </div>
+</div>
+{% endblock %}
+<script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+</body></html>

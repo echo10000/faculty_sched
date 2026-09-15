@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block title %}Academic calendar{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">ACADEMIC FOUNDATION</p><h1>Academic calendar</h1><p class="text-secondary">Institution-wide academic years and configured terms.</p></div></div>
+<section class="surface"><div class="table-responsive"><table class="table align-middle"><caption class="visually-hidden">Configured academic terms</caption><thead><tr><th scope="col">Academic year</th><th scope="col">Term</th><th scope="col">Start</th><th scope="col">End</th><th scope="col">Status</th></tr></thead><tbody>{% for term in object_list %}<tr><td>{{ term.academic_year }}</td><td>{{ term.semester }} <small class="text-secondary">{{ term.code }}</small></td><td>{{ term.start_date|date:'M j, Y' }}</td><td>{{ term.end_date|date:'M j, Y' }}</td><td>{{ term.is_active|yesno:'Active,Inactive' }}</td></tr>{% empty %}<tr><td colspan="5" class="py-5 text-center text-secondary">No academic terms configured.</td></tr>{% endfor %}</tbody></table></div>{% include 'includes/pagination.html' %}</section>
+{% endblock %}

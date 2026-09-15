@@ -319,7 +319,7 @@ class CommitAutoScheduleSuggestionsView(LoginRequiredMixin, TemplateView):
                     room=room,
                     term=term,
                     time_slot=time_slot,
-                    units_credited=subject.units,
+                    units_credited=subject.units.normalize(),
                     created_by=request.user,
                 )
                 created_count += 1
@@ -341,7 +341,7 @@ class SubmitForApprovalView(LoginRequiredMixin, TemplateView):
     def post(self, request, *args, **kwargs):
         require_workflow_role(
             request.user,
-            AdminProfile.Role.DEPARTMENT_ADMIN,
+            AdminProfile.Role.STAFF,
             AdminProfile.Role.DEPT_CHAIR,
         )
         term = get_object_or_404(Term, pk=request.POST.get("term_id"))
