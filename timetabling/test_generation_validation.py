@@ -2,7 +2,7 @@ from datetime import date, time
 
 from academics.models import AcademicTerm
 from scheduling.models import Room
-from workloads.models import FacultySubjectAssignment
+from workloads.models import FacultySubjectAssignment, SubjectOffering
 
 from .conflicts import validate_candidate_schedule
 from .locking import scheduling_lock
@@ -100,6 +100,31 @@ class GenerationValidationTests(TimetableFixture):
             room_fit_weight=1,
         )
 
+    def assignment_with_hours(self, *, code, lecture_hours, laboratory_hours):
+        offering = SubjectOffering.objects.create(
+            subject=self.offering.subject,
+            academic_term=self.term,
+            department=self.department,
+            code=code,
+            lecture_units=lecture_hours,
+            laboratory_units=laboratory_hours,
+            lecture_hours=lecture_hours,
+            laboratory_hours=laboratory_hours,
+        )
+        section = ClassSection.objects.create(
+            academic_term=self.term,
+            department=self.department,
+            code=code,
+        )
+        OfferingRequirement.objects.create(
+            subject_offering=offering,
+            section=section,
+        )
+        return FacultySubjectAssignment.objects.create(
+            faculty=self.faculty,
+            subject_offering=offering,
+        )
+
     def test_candidate_schedule_detects_conflicts_between_unsaved_meetings(self):
         first = self.candidate(start_time=time(9), end_time=time(10))
         second = self.candidate(
@@ -153,6 +178,25 @@ class GenerationValidationTests(TimetableFixture):
             {str(item.other_entry_id) for item in protected},
         )
 
+    def test_candidate_schedule_without_user_redacts_foreign_peer_identity(self):
+        foreign_entry = self.foreign_peer()
+
+        conflicts = validate_candidate_schedule(
+            self.schedule,
+            retained_entries=[],
+            proposed_entries=[self.candidate()],
+        )
+
+        protected = [item for item in conflicts if item.code == "ROOM_OVERLAP"]
+        self.assertTrue(protected)
+        self.assertNotIn(self.foreign_schedule.name, str(protected))
+        self.assertNotIn(self.offerings[self.external.pk].subject.code, str(protected))
+        self.assertTrue(all(item.other_entry_id is None for item in protected))
+        self.assertNotIn(
+            str(foreign_entry.pk),
+            {str(item.other_entry_id) for item in protected},
+        )
+
     def test_exact_requirement_replaces_aggregate_hours_warning(self):
         conflicts = validate_candidate_schedule(
             self.schedule,
@@ -183,6 +227,69 @@ class GenerationValidationTests(TimetableFixture):
         codes = {item.code for item in conflicts}
         self.assertIn("MEETING_REQUIREMENT_DURATION", codes)
         self.assertNotIn("MEETING_REQUIREMENT_COUNT", codes)
+
+    def test_exact_requirement_rejects_extra_unconfigured_zero_hour_component(self):
+        assignment = self.assignment_with_hours(
+            code="ZERO-LAB",
+            lecture_hours=2,
+            laboratory_hours=0,
+        )
+        AssignmentMeetingRequirement.objects.create(
+            assignment=assignment,
+            meeting_type="lecture",
+            meetings_per_week=2,
+            duration_minutes=60,
+        )
+
+        conflicts = validate_candidate_schedule(
+            self.schedule,
+            retained_entries=[],
+            proposed_entries=[
+                self.candidate(assignment=assignment, day_of_week=1),
+                self.candidate(assignment=assignment, day_of_week=2),
+                self.candidate(
+                    assignment=assignment,
+                    day_of_week=3,
+                    meeting_type="laboratory",
+                ),
+            ],
+        )
+
+        count_conflicts = [
+            item for item in conflicts if item.code == "MEETING_REQUIREMENT_COUNT"
+        ]
+        self.assertTrue(count_conflicts)
+        self.assertIn(
+            "1 of 0 required weekly laboratory meetings recorded",
+            str(count_conflicts),
+        )
+
+    def test_exact_requirement_reports_missing_positive_hour_component(self):
+        AssignmentMeetingRequirement.objects.create(
+            assignment=self.assignment,
+            meeting_type="lecture",
+            meetings_per_week=2,
+            duration_minutes=60,
+        )
+
+        conflicts = validate_candidate_schedule(
+            self.schedule,
+            retained_entries=[],
+            proposed_entries=[
+                self.candidate(day_of_week=1),
+                self.candidate(day_of_week=2),
+            ],
+        )
+
+        missing = [
+            item for item in conflicts if item.code == "MEETING_REQUIREMENT_MISSING"
+        ]
+        self.assertTrue(missing)
+        self.assertTrue(all(item.severity == "ERROR" for item in missing))
+        self.assertIn(
+            "laboratory has 3 required weekly hours but no exact meeting requirement is configured",
+            str(missing),
+        )
 
     def test_replaced_selected_entry_is_not_loaded_as_peer_occupancy(self):
         replaced = self.candidate()

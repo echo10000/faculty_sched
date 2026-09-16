@@ -38,7 +38,7 @@ class _RuleConflict:
 
 def _visible_entry_ids(user):
     if user is None:
-        return None
+        return set()
     if not user.has_perm("timetabling.view_scheduleentry"):
         return set()
     return set(
@@ -366,13 +366,46 @@ def _meeting_requirement_conflicts(schedule, entries):
     for assignment in assignments:
         requirements = requirements_by_assignment.get(assignment.pk, ())
         if requirements:
-            for requirement in requirements:
+            requirements_by_type = {
+                requirement.meeting_type: requirement
+                for requirement in requirements
+            }
+            for kind in ("lecture", "laboratory"):
                 matching = [
                     entry
                     for entry in entries
                     if entry.assignment_id == assignment.pk
-                    and entry.meeting_type == requirement.meeting_type
+                    and entry.meeting_type == kind
                 ]
+                requirement = requirements_by_type.get(kind)
+                if requirement is None:
+                    required_hours = (
+                        getattr(assignment.subject_offering, f"{kind}_hours")
+                        * assignment.share
+                    )
+                    if required_hours > 0:
+                        conflicts.append(
+                            Conflict(
+                                "MEETING_REQUIREMENT_MISSING",
+                                "ERROR",
+                                f"{assignment.subject_offering.subject.code}: "
+                                f"{kind} has {required_hours.normalize()} required "
+                                "weekly hours but no exact meeting requirement is configured.",
+                                "Configure meeting count and duration for this component.",
+                            )
+                        )
+                    elif matching:
+                        conflicts.append(
+                            Conflict(
+                                "MEETING_REQUIREMENT_COUNT",
+                                "ERROR",
+                                f"{assignment.subject_offering.subject.code}: "
+                                f"{len(matching)} of 0 required weekly {kind} "
+                                "meetings recorded.",
+                                "Remove meetings for the unconfigured zero-hour component.",
+                            )
+                        )
+                    continue
                 if len(matching) != requirement.meetings_per_week:
                     conflicts.append(
                         Conflict(
