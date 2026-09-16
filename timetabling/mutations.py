@@ -1,28 +1,18 @@
-import hashlib
-import json
-
 from django.core.exceptions import ValidationError
-from django.db import connection, transaction
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 
 from audit.services import record_event
-from academics.models import AcademicTerm, AcademicYear, Semester, Subject
-from core.models import Department, College
-from faculty.models import Faculty
-from resources.models import RoomType, Building
-from scheduling.models import Room
-from workloads.models import FacultyAvailability, SubjectOffering, FacultySubjectAssignment
 from workloads.models import validate_active_term
-from .models import Schedule, ScheduleEntry, ClassSection, OfferingRequirement, RoomUnavailability
+from .models import Schedule, ScheduleEntry, RoomUnavailability
 from .forms import EntryForm
 from .queries import authorized, scoped, get_schedule
 from .conflicts import detect_entry_conflicts, get_schedule_conflicts, summarize
+from .locking import scheduling_lock
+from .signatures import dependency_signature
 
 
-def mutation_lock():
-    # Shared across terms: overlapping calendars can compete for physical resources.
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_advisory_xact_lock(%s)", [74190304])
+mutation_lock = scheduling_lock
 
 
 def snapshot(obj):
@@ -41,33 +31,6 @@ def mark_draft(schedule, user):
         schedule.status, schedule.validated_signature = Schedule.Status.DRAFT, ""
         schedule.save()
         event("schedule.status_changed", user, schedule, before)
-
-
-def dependency_signature(schedule):
-    """Conservative invalidation: shared resource edits invalidate prior checks.
-
-    Only a digest is stored. No credentials, contacts or notes enter this payload.
-    Narrowing dependencies is an optimization for a later version.
-    """
-    specs = [
-        (Schedule, ["id", "name", "department_id", "academic_term_id"]),
-        (ScheduleEntry, ["id", "schedule_id", "assignment_id", "room_id", "day_of_week", "start_time", "end_time", "meeting_type"]),
-        (ClassSection, ["id", "department_id", "academic_term_id", "code", "is_active", "expected_size"]),
-        (OfferingRequirement, ["id", "subject_offering_id", "section_id", "room_type_id", "room_type_mandatory", "capacity_is_hard"]),
-        (RoomUnavailability, ["id", "room_id", "academic_term_id", "day_of_week", "start_time", "end_time"]),
-        (FacultyAvailability, ["id", "faculty_id", "academic_term_id", "day_of_week", "start_time", "end_time", "availability_type"]),
-        (FacultySubjectAssignment, ["id", "faculty_id", "subject_offering_id", "share"]),
-        (SubjectOffering, ["id", "subject_id", "department_id", "academic_term_id", "is_active", "lecture_hours", "laboratory_hours"]),
-        (Subject, ["id", "is_active", "required_room_type", "owning_department_id"]),
-        (Faculty, ["id", "is_active", "home_department_id"]),
-        (Room, ["id", "is_active", "capacity", "category_id", "building_id", "owner_department_id", "owner_college_id"]),
-        (RoomType, ["id", "code", "is_active"]), (Building, ["id", "is_active"]),
-        (AcademicTerm, ["id", "start_date", "end_date", "is_active", "academic_year_id", "semester_id"]),
-        (AcademicYear, ["id", "is_active", "start_date", "end_date"]), (Semester, ["id", "is_active"]),
-        (Department, ["id", "is_active", "college_id"]), (College, ["id", "is_active"]),
-    ]
-    payload = {model._meta.label: list(model.objects.order_by("pk").values_list(*fields)) for model, fields in specs}
-    return hashlib.sha256(json.dumps(payload, default=str, sort_keys=True).encode()).hexdigest()
 
 
 def effective_status(schedule):

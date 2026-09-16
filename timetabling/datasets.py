@@ -5,7 +5,9 @@ from scheduling.models import Room
 from workloads.calculation import calculate_workload
 from workloads.models import FacultyAvailability, FacultySubjectAssignment
 from workloads.selectors import scoped_records
+from .intervals import terms_share_weekday
 from .models import ScheduleEntry, OfferingRequirement, RoomUnavailability
+from .occupancy import authoritative_occupancy
 from .queries import get_schedule, authorized, scoped
 
 
@@ -33,8 +35,36 @@ def scheduling_input(user, schedule_id):
             "is_active": assignment.faculty.is_active and offering.is_active and offering.subject.is_active,
             "availability": list(FacultyAvailability.objects.filter(faculty=assignment.faculty, academic_term=schedule.academic_term).values("day_of_week", "start_time", "end_time", "availability_type"))})
     rooms = list(scope_resources(user, Room.objects.all()).values("id", "code", "category_id", "capacity", "is_active"))
+    visible_entry_ids = set(
+        scoped(user, ScheduleEntry.objects.all()).values_list("pk", flat=True)
+    )
+    occupancy = [
+        entry
+        for entry in authoritative_occupancy(schedule)
+        if entry.pk in visible_entry_ids
+        and terms_share_weekday(
+            schedule.academic_term,
+            entry.schedule.academic_term,
+            entry.day_of_week,
+        )
+    ]
+    existing_entries = [
+        {
+            field: getattr(entry, field)
+            for field in (
+                "id",
+                "assignment_id",
+                "room_id",
+                "day_of_week",
+                "start_time",
+                "end_time",
+                "meeting_type",
+            )
+        }
+        for entry in occupancy
+    ]
     return {"schedule": {"id": schedule.pk, "term_id": schedule.academic_term_id, "department_id": schedule.department_id},
         "term_dates": [schedule.academic_term.start_date, schedule.academic_term.end_date], "assignments": assignments, "rooms": rooms,
         "room_unavailability": list(scoped(user, RoomUnavailability.objects.filter(academic_term__start_date__lte=schedule.academic_term.end_date, academic_term__end_date__gte=schedule.academic_term.start_date)).values("room_id", "academic_term_id", "day_of_week", "start_time", "end_time")),
-        "existing_entries": list(scoped(user, ScheduleEntry.objects.filter(schedule=schedule)).values("id", "assignment_id", "room_id", "day_of_week", "start_time", "end_time", "meeting_type")),
+        "existing_entries": existing_entries,
         "time_domain": {"weekdays": list(range(1, 8)), "institutional_hours": None, "fixed_time_grid": None}}
