@@ -8,8 +8,10 @@ from operator import attrgetter
 
 from .contracts import (
     CandidateBuildResult,
+    CandidateCounts,
     CandidateLimits,
     CandidatePlacement,
+    DemandKey,
     FixedMeeting,
     MeetingDemand,
     ReadinessIssue,
@@ -197,6 +199,12 @@ def _candidate_for(
     )
 
 
+def _freeze_candidate_counts(
+    counts_by_key: dict[DemandKey, int],
+) -> CandidateCounts:
+    return tuple(sorted(counts_by_key.items()))
+
+
 def build_candidates(
     *,
     policy: SchedulingPolicy,
@@ -209,14 +217,18 @@ def build_candidates(
     limits: CandidateLimits,
     clock: Callable[[], float] = time.monotonic,
 ) -> CandidateBuildResult:
-    """Return hard-valid candidates, or one deployment-cap issue and no candidates."""
+    """Return hard-valid candidates, or one deployment-cap issue and no candidates.
+
+    ``demands`` and ``rooms`` must contain only active, in-scope records whose
+    identifiers were validated by the scoped ORM adapter.
+    """
 
     started = clock()
     ordered_demands = sorted(demands, key=_demand_order)
     ordered_rooms = sorted(rooms, key=attrgetter("room_id"))
     ordered_days = sorted(policy.allowed_weekdays)
     candidates: list[CandidatePlacement] = []
-    counts = {demand.key: 0 for demand in ordered_demands}
+    counts_by_key = {demand.key: 0 for demand in ordered_demands}
     slot_literals = 0
 
     for demand in ordered_demands:
@@ -244,14 +256,26 @@ def build_candidates(
                             preferred,
                         )
                     )
-                    counts[demand.key] += 1
+                    counts_by_key[demand.key] += 1
                     slot_literals += demand.duration_slots
                     if (
                         len(candidates) > limits.max_candidates
                         or slot_literals > limits.max_slot_literals
                     ):
-                        return CandidateBuildResult((), counts, (MODEL_SIZE_ISSUE,))
+                        return CandidateBuildResult(
+                            (),
+                            _freeze_candidate_counts(counts_by_key),
+                            (MODEL_SIZE_ISSUE,),
+                        )
                 if clock() - started > limits.max_seconds:
-                    return CandidateBuildResult((), counts, (TIMEOUT_ISSUE,))
+                    return CandidateBuildResult(
+                        (),
+                        _freeze_candidate_counts(counts_by_key),
+                        (TIMEOUT_ISSUE,),
+                    )
 
-    return CandidateBuildResult(tuple(candidates), counts, ())
+    return CandidateBuildResult(
+        tuple(candidates),
+        _freeze_candidate_counts(counts_by_key),
+        (),
+    )

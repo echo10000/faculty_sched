@@ -1,12 +1,28 @@
-"""Immutable primitive contracts shared by timetable preprocessing and solving."""
+"""Immutable primitive contracts shared by timetable preprocessing and solving.
+
+Only the scoped ORM adapter may construct these DTOs in production. It must
+resolve identifiers and validate active state, scope, and forged IDs first;
+these pure contracts intentionally assume that validation has already
+succeeded and carry no ORM eligibility state.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping
 
 
 DemandKey = tuple[int, int]
+CandidateCounts = tuple[tuple[DemandKey, int], ...]
+
+
+def _candidate_count_for(
+    candidate_counts: CandidateCounts,
+    key: DemandKey,
+) -> int:
+    for demand_key, count in candidate_counts:
+        if demand_key == key:
+            return count
+    raise KeyError(key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,8 +122,13 @@ class CandidateLimits:
 @dataclass(frozen=True, slots=True)
 class CandidateBuildResult:
     candidates: tuple[CandidatePlacement, ...]
-    candidate_counts: Mapping[DemandKey, int]
+    candidate_counts: CandidateCounts
     issues: tuple[ReadinessIssue, ...]
+
+    def candidate_count_for(self, key: DemandKey) -> int:
+        """Return the candidate count for ``key``, raising ``KeyError`` if absent."""
+
+        return _candidate_count_for(self.candidate_counts, key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +137,12 @@ class SolverInput:
     demands: tuple[MeetingDemand, ...]
     candidates: tuple[CandidatePlacement, ...]
     fixed_meetings: tuple[FixedMeeting, ...]
-    candidate_counts: Mapping[DemandKey, int]
+    candidate_counts: CandidateCounts
+
+    def candidate_count_for(self, key: DemandKey) -> int:
+        """Return the candidate count for ``key``, raising ``KeyError`` if absent."""
+
+        return _candidate_count_for(self.candidate_counts, key)
 
 
 @dataclass(frozen=True, slots=True)

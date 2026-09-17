@@ -107,7 +107,7 @@ class CandidateBuilderTests(SimpleTestCase):
                 (2, 4, 2),
             ],
         )
-        self.assertEqual(result.candidate_counts, {self.demand_key: 6})
+        self.assertEqual(result.candidate_counts, ((self.demand_key, 6),))
         self.assertEqual(result.issues, ())
 
     def test_demand_and_weekday_input_order_does_not_change_candidate_order(self):
@@ -133,6 +133,26 @@ class CandidateBuilderTests(SimpleTestCase):
             [((29, 0), 1), ((29, 0), 2), ((31, 1), 1), ((31, 1), 2)],
         )
 
+    def test_candidate_counts_are_sorted_by_demand_key(self):
+        later = self.demand(
+            assignment_id=21,
+            meeting_requirement_id=31,
+            occurrence_index=1,
+            duration_slots=4,
+        )
+        earlier = self.demand(
+            assignment_id=19,
+            meeting_requirement_id=29,
+            duration_slots=4,
+        )
+
+        result = self.build(demands=(later, earlier))
+
+        self.assertEqual(
+            result.candidate_counts,
+            (((29, 0), 1), ((31, 1), 1)),
+        )
+
     def test_unavailable_intervals_are_half_open_and_adjacency_is_legal(self):
         result = self.build(unavailable=(WeeklyBlock(10, 1, 0, 2),))
 
@@ -140,7 +160,7 @@ class CandidateBuilderTests(SimpleTestCase):
             [(item.start_slot, item.end_slot) for item in result.candidates],
             [(2, 4)],
         )
-        self.assertEqual(result.candidate_counts[self.demand_key], 1)
+        self.assertEqual(result.candidate_count_for(self.demand_key), 1)
 
     def test_room_closures_remove_only_matching_room_day_overlaps(self):
         result = self.build(
@@ -243,7 +263,7 @@ class CandidateBuilderTests(SimpleTestCase):
         result = self.build(demands=(self.demand(duration_slots=5),))
 
         self.assertEqual(result.candidates, ())
-        self.assertEqual(result.candidate_counts, {self.demand_key: 0})
+        self.assertEqual(result.candidate_counts, ((self.demand_key, 0),))
         self.assertEqual(result.issues, ())
 
     def test_candidate_count_cap_discards_partial_expansion(self):
@@ -260,6 +280,25 @@ class CandidateBuilderTests(SimpleTestCase):
                 ),
             ),
         )
+
+    def test_candidate_counts_are_immutable_at_both_contract_boundaries(self):
+        result = self.build()
+        solver_input = SolverInput(
+            policy=self.policy(),
+            demands=(self.demand(),),
+            candidates=result.candidates,
+            fixed_meetings=(),
+            candidate_counts=result.candidate_counts,
+        )
+
+        for boundary in (result, solver_input):
+            with self.subTest(boundary=type(boundary).__name__):
+                with self.assertRaises(TypeError):
+                    boundary.candidate_counts[0] = (self.demand_key, 999)
+                self.assertEqual(
+                    boundary.candidate_count_for(self.demand_key),
+                    3,
+                )
 
     def test_slot_literal_cap_discards_partial_expansion(self):
         result = self.build(limits=CandidateLimits(10, 100, 1))
