@@ -496,6 +496,7 @@ class GenerationRunDetail(LoginRequiredMixin, View):
             "bound_available": run.best_bound is not None,
             "runtime_available": run.runtime_seconds is not None,
             "can_finalize": run.status == "PROPOSAL_READY" and _can_generate(request.user, run.strategy),
+            "can_view_generation_runs": _can_view_runs(request.user),
         })
 
 

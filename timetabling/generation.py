@@ -7,6 +7,7 @@ from dataclasses import asdict
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.http import Http404
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from audit.services import record_event
@@ -20,7 +21,7 @@ from .generation_validation import _resolve_generation_contract, serialize_propo
 from .locking import scheduling_lock
 from .models import ScheduleEntry, ScheduleGenerationRun
 from .mutations import mark_draft
-from .queries import get_schedule
+from .queries import get_schedule, scoped
 
 
 class InvalidRunTransition(Exception):
@@ -72,6 +73,23 @@ def _lock_internal_run(run_id, expected):
     return run
 
 
+def _action_run(user, run_id, *, lock=False):
+    """Resolve a run for generation actions without granting history access.
+
+    A user with the run-view permission may act on any scoped run. A user with
+    only the complete generation bundle may act on their own scoped run.
+    """
+    require_generation_access(user, ScheduleGenerationRun.Strategy.FILL_GAPS)
+    if user.has_perm("timetabling.view_schedulegenerationrun"):
+        return get_generation_run(user, run_id, lock=lock)
+    queryset = scoped(user, ScheduleGenerationRun.objects.all()).filter(
+        requested_by=user,
+    )
+    if lock:
+        queryset = queryset.select_for_update(of=("self",))
+    return get_object_or_404(queryset, pk=run_id)
+
+
 def persist_snapshots_if_expected(run_id, expected_status, prepared):
     """Requires an active transaction with the scheduling advisory lock held."""
     run = _lock_internal_run(run_id, expected_status)
@@ -105,7 +123,7 @@ def finish_if_expected(run_id, expected_status, target_status, *, diagnostics):
 
 def finish_failure_if_expected(*, user, run_id, expected_status, target_status, diagnostics):
     with transaction.atomic():
-        run = get_generation_run(user, run_id, lock=True)
+        run = _action_run(user, run_id, lock=True)
         _require_status(run, expected_status)
         run.status = target_status
         if expected_status in ("PENDING", "RUNNING"):
@@ -241,7 +259,7 @@ def _captured_overrides(snapshot):
 def discard_generation(*, user, run_id):
     require_generation_access(user, ScheduleGenerationRun.Strategy.FILL_GAPS)
     with transaction.atomic():
-        run = get_generation_run(user, run_id, lock=True)
+        run = _action_run(user, run_id, lock=True)
         require_generation_access(user, run.strategy)
         _require_status(run, "PROPOSAL_READY")
         run.status = ScheduleGenerationRun.Status.DISCARDED
@@ -259,7 +277,7 @@ def _before_accept_mutation(run, prepared):
 def _accept_locked(*, user, run_id):
     with transaction.atomic():
         scheduling_lock()
-        run = get_generation_run(user, run_id, lock=True)
+        run = _action_run(user, run_id, lock=True)
         require_generation_access(user, run.strategy)
         _require_status(run, "PROPOSAL_READY")
         overrides = _captured_overrides(run.configuration_snapshot)
@@ -323,7 +341,7 @@ def _accept_locked(*, user, run_id):
 def accept_generation(*, user, run_id):
     require_generation_access(user, ScheduleGenerationRun.Strategy.FILL_GAPS)
     # Scope is checked before taking the advisory lock; the locked lookup checks again.
-    scoped_run = get_generation_run(user, run_id)
+    scoped_run = _action_run(user, run_id)
     require_generation_access(user, scoped_run.strategy)
     try:
         return _accept_locked(user=user, run_id=run_id)

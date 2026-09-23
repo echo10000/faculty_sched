@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import time
 from unittest.mock import patch
 
+from django.contrib.auth.models import Permission
 from django.core.exceptions import PermissionDenied
 from django.http import Http404
 from django.test import TestCase
@@ -15,7 +16,7 @@ from .generation import (
     InvalidRunTransition, accept_generation, discard_generation,
     finish_generation_if_expected, request_generation,
 )
-from .generation_inputs import GenerationOverrides
+from .generation_inputs import GENERATION_PERMISSIONS, GenerationOverrides
 from .generation_validation import validate_generation_contract
 from .models import (
     AssignmentMeetingRequirement, ScheduleEntry, ScheduleGenerationRun,
@@ -57,6 +58,48 @@ class GenerationServiceTests(TimetableFixture):
         run = self.generate(strategy=strategy)
         self.assertEqual(run.status, "PROPOSAL_READY", run.diagnostics)
         return run
+
+    def exact_bundle_staff(self):
+        permissions = [Permission.objects.get(
+            content_type__app_label=code.split(".")[0],
+            codename=code.split(".")[1],
+        ) for code in GENERATION_PERMISSIONS]
+        self.staff.user_permissions.add(*permissions)
+        return type(self.staff).objects.get(pk=self.staff.pk)
+
+    def test_exact_bundle_staff_can_accept_own_proposal_without_history_grant(self):
+        staff = self.exact_bundle_staff()
+        self.assertFalse(staff.has_perm("timetabling.view_schedulegenerationrun"))
+        run = request_generation(
+            user=staff, schedule_id=self.schedule.pk,
+            strategy="FILL_GAPS", overrides=GenerationOverrides(),
+        )
+        self.assertEqual(run.status, "PROPOSAL_READY", run.diagnostics)
+        accepted = accept_generation(user=staff, run_id=run.pk)
+        self.assertEqual(accepted.status, "ACCEPTED")
+        self.assertEqual(ScheduleEntry.objects.filter(generation_run=run).count(),
+                         run.proposed_meeting_count)
+
+    def test_exact_bundle_staff_can_discard_only_own_proposal(self):
+        staff = self.exact_bundle_staff()
+        own = request_generation(
+            user=staff, schedule_id=self.schedule.pk,
+            strategy="FILL_GAPS", overrides=GenerationOverrides(),
+        )
+        self.assertEqual(own.status, "PROPOSAL_READY", own.diagnostics)
+        other = ScheduleGenerationRun.objects.create(
+            schedule=self.schedule, academic_term=self.term,
+            department=self.department, requested_by=self.chair,
+            strategy="FILL_GAPS", status="PROPOSAL_READY",
+        )
+        with self.assertRaises(Http404):
+            accept_generation(user=staff, run_id=other.pk)
+        with self.assertRaises(Http404):
+            discard_generation(user=staff, run_id=other.pk)
+        self.assertEqual(discard_generation(user=staff, run_id=own.pk).status,
+                         "DISCARDED")
+        other.refresh_from_db()
+        self.assertEqual(other.status, "PROPOSAL_READY")
 
     def test_readiness_failure_keeps_solver_unimported(self):
         self.configuration.delete()
@@ -229,7 +272,7 @@ class GenerationServiceTests(TimetableFixture):
     def test_locked_authorization_and_scope_failures_leave_ready_run_unchanged(self):
         run = self.ready()
         with patch("timetabling.generation.require_generation_access",
-                   side_effect=[None, None, PermissionDenied("revoked")]):
+                   side_effect=[None, None, None, None, PermissionDenied("revoked")]):
             with self.assertRaises(PermissionDenied):
                 accept_generation(user=self.chair, run_id=run.pk)
         run.refresh_from_db()

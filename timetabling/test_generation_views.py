@@ -114,6 +114,11 @@ class GenerationPageTests(TimetableFixture):
         self.assertEqual(self.client.get(self.url("generation-runs")).status_code, 403)
         self.assertEqual(self.client.get(self.url("generation-run-detail", self.run.pk)).status_code, 404)
         self.assertNotContains(self.client.get(self.url("generator")), "Generation history")
+        self.assertNotContains(self.client.get(self.url("generation-run-detail", own_run.pk)),
+                               "Generation history")
+        self.assertEqual(self.client.post(self.url("generation-run-discard", own_run.pk)).status_code, 302)
+        own_run.refresh_from_db()
+        self.assertEqual(own_run.status, "DISCARDED")
 
     def test_history_only_staff_sees_no_terminal_controls(self):
         self.staff.user_permissions.add(*Permission.objects.filter(
