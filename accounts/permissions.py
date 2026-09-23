@@ -21,6 +21,11 @@ TEACHING_PERMISSIONS = {
     if model != "subjectoffering" or action != "delete"
 } | {"workloads.view_workload"}
 
+BALANCING_PERMISSIONS = {
+    "workloads.generate_workloadrecommendation",
+    "workloads.view_workloadrecommendationrun",
+}
+
 TIMETABLE_PERMISSIONS = {
     f"timetabling.{action}_{model}"
     for model in ("schedule", "scheduleentry", "classsection", "offeringrequirement", "roomunavailability")
@@ -68,7 +73,7 @@ def role_permissions(profile):
         from django.contrib.auth.models import Permission
         return {f"{app}.{code}" for app, code in Permission.objects.values_list("content_type__app_label", "codename")}
     if profile.role in (AdminProfile.Role.DEAN, AdminProfile.Role.DEPT_CHAIR):
-        return READ_PERMISSIONS | RESOURCE_PERMISSIONS | TEACHING_PERMISSIONS | TIMETABLE_PERMISSIONS
+        return READ_PERMISSIONS | RESOURCE_PERMISSIONS | TEACHING_PERMISSIONS | TIMETABLE_PERMISSIONS | BALANCING_PERMISSIONS
     return {"core.view_dashboard"}
 
 

@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.conf import settings
 
 from core.base import TrackedModel
 from django.contrib.postgres.constraints import ExclusionConstraint
@@ -225,3 +226,70 @@ class FacultySubjectAssignment(TermRecord):
 
     def __str__(self):
         return f"{self.faculty} → {self.subject_offering}"
+
+
+class WorkloadRecommendationRun(models.Model):
+    """A proposal-only balancing run; acceptance is handled by the service layer."""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        PROPOSAL_READY = "PROPOSAL_READY", "Proposal ready"
+        ACCEPTED = "ACCEPTED", "Accepted"
+        DISCARDED = "DISCARDED", "Discarded"
+        INPUT_INVALID = "INPUT_INVALID", "Input invalid"
+        INFEASIBLE = "INFEASIBLE", "Infeasible"
+        STALE = "STALE", "Stale"
+        VALIDATION_FAILED = "VALIDATION_FAILED", "Validation failed"
+        FAILED = "FAILED", "Failed"
+
+    class SolverStatus(models.TextChoices):
+        OPTIMAL = "OPTIMAL", "Optimal"
+        FEASIBLE = "FEASIBLE", "Feasible"
+        INFEASIBLE = "INFEASIBLE", "Infeasible"
+        MODEL_INVALID = "MODEL_INVALID", "Model invalid"
+        UNKNOWN = "UNKNOWN", "Unknown"
+
+    academic_term = models.ForeignKey("academics.AcademicTerm", on_delete=models.PROTECT)
+    department = models.ForeignKey("core.Department", on_delete=models.PROTECT)
+    initiated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="initiated_workload_recommendation_runs",
+    )
+    accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="accepted_workload_recommendation_runs",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    raw_solver_status = models.CharField(max_length=20, choices=SolverStatus.choices, blank=True, default="")
+    source_signature = models.CharField(max_length=64, blank=True, default="")
+    proposed_assignments = models.JSONField(default=list)
+    input_summary = models.JSONField(default=dict)
+    comparison = models.JSONField(default=dict)
+    diagnostics = models.JSONField(default=list)
+    solver_stats = models.JSONField(default=dict)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    discarded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        permissions = [("generate_workloadrecommendation", "Can generate faculty workload recommendations")]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=[
+                    "PENDING", "PROPOSAL_READY", "ACCEPTED", "DISCARDED",
+                    "INPUT_INVALID", "INFEASIBLE", "STALE", "VALIDATION_FAILED", "FAILED",
+                ]),
+                name="workload_recommendation_known_status",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(raw_solver_status__in=[
+                    "", "OPTIMAL", "FEASIBLE", "INFEASIBLE", "MODEL_INVALID", "UNKNOWN",
+                ]),
+                name="workload_recommendation_known_solver_status",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.department} · {self.academic_term.code} · {self.status}"
