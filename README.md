@@ -2,9 +2,9 @@
 
 Faculty Workload and Academic Scheduling System for Negros Oriental State University - Bais Campus (NORSU-BSC).
 
-**Phases 1–4 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
+**Phases 1–5 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
 
-See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#14-phase-4-implementation-record) for the completed phases, architecture, migration decisions and later roadmap.
+See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#15-phase-5-implementation-record) for the completed phases, architecture, migration decisions and later roadmap.
 
 ## Implemented foundation
 
@@ -15,11 +15,11 @@ See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#14-phase-4-implementation-record) 
 - Permission-protected dashboard, scoped read-only college/department pages, academic calendar and locally bundled Bootstrap 5.3.8.
 - System-admin-only Django admin, including user/group/profile management.
 - Append-only audit records for authentication, admin mutations and development seeding; database protection against audit editing/deletion.
-- Additive migrations, idempotent development seeds and 165 automated tests including all 134 Phase 1–3 tests.
+- Additive migrations, idempotent development seeds and automated PostgreSQL tests, including the original 165 Phase 1–4 tests.
 - Faculty, subject and room list/detail/create/edit/status pages, scoped search/filters/pagination and dashboard counts.
 - Configurable employment categories, academic ranks, buildings, room types and academic-term teaching-capacity policies/overrides.
 
-Term-specific teaching assignments and manual timetable creation/conflict checks are available. No automated timetable generation or AI feature is exposed. No paid AI API is needed.
+Term-specific teaching assignments, manual timetable creation/conflict checks, and automated timetable proposals are available. No paid AI API is needed.
 
 ## Run this prepared workspace
 
@@ -55,7 +55,7 @@ The Windows helper uses PostgreSQL 17.6 packaged by [Zonky](https://github.com/z
 
 ## Fresh installation
 
-Python 3.14.6 / Django 5.2.16 were used for this implementation. Requirements include Django, psycopg2-binary, python-decouple and retained legacy dependencies. PostgreSQL is required; SQLite does not support the current migrations/exclusions.
+Python 3.14.6 / Django 5.2.16 were used for this implementation. Requirements include Django, psycopg2-binary, python-decouple, `ortools==9.15.6755` and retained legacy dependencies. PostgreSQL is required; SQLite does not support the current migrations/exclusions.
 
 ### 1. Install Python dependencies
 
@@ -110,6 +110,9 @@ Paste the generated secret into `.env` and set the DB credentials. Supported con
 | `TIME_ZONE` | Valid IANA zone; defaults Asia/Manila |
 | `INSTITUTION_NAME` | Fallback display name; editable registered SystemSetting takes precedence |
 | `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SECURE_HSTS_INCLUDE_SUBDOMAINS` | Deployment HTTPS policy |
+| `SCHEDULER_PREPROCESSING_TIME_LIMIT_SECONDS` | Positive preprocessing time cap; default 10 seconds |
+| `SCHEDULER_MAX_CANDIDATES` | Positive candidate-count cap; default 100,000 |
+| `SCHEDULER_MAX_SLOT_LITERALS` | Positive slot-literal cap; default 2,000,000 |
 
 Secure session/CSRF cookies default on outside DEBUG. There is no SQLite switch or DATABASE_URL parser. Secrets live in environment variables or Git-ignored `.env`, not SystemSetting. Production proxy/TLS configuration remains release work.
 
@@ -122,7 +125,7 @@ Secure session/CSRF cookies default on outside DEBUG. There is no SQLite switch 
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
 ```
 
-`seed_foundation` requires DEBUG=True. Without an optional data flag, its Phase 1 behavior is unchanged: fictional organizations/calendar and optional accounts only. `--with-resources` also calls `seed_resources`, adding two faculty members, two subjects, two rooms, configurable reference data, and example department policies/faculty term overrides. `manage.py seed_resources` also works independently and ensures foundation data exists. `--with-teaching` also calls `seed_teaching`, which includes resource seeding and adds two offerings, two teaching assignments and six availability records. `manage.py seed_teaching` works independently. Only this new option creates teaching assignments; `--with-timetables` additionally creates the manual draft examples described below. None creates enrollment data. Repeated runs preserve edited records, account scopes and passwords. Omit `--create-users` for data only. Example load values are explicitly fictional and must be replaced with approved policy before institutional use.
+`seed_foundation` requires DEBUG=True. Without an optional data flag, its Phase 1 behavior is unchanged: fictional organizations/calendar and optional accounts only. `--with-resources` also calls `seed_resources`, adding two faculty members, two subjects, two rooms, configurable reference data, and example department policies/faculty term overrides. `manage.py seed_resources` also works independently and ensures foundation data exists. `--with-teaching` also calls `seed_teaching`, which includes resource seeding and adds two offerings, two teaching assignments and six availability records. `manage.py seed_teaching` works independently. `--with-timetables` additionally creates the manual draft examples and the Phase 5 generation examples described below. None creates enrollment data. Repeated runs preserve edited records, account scopes and passwords. Omit `--create-users` for data only. Example load values are fictional and must be replaced with approved policy before institutional use.
 
 For a manually managed administrator, use `manage.py createsuperuser` instead. Django superusers can sign in and administer the institution without an AdminProfile. For non-superusers, create a User and valid AdminProfile via [Django admin](http://127.0.0.1:8000/admin/). System Admin profiles additionally need `is_staff=True` for admin-site access.
 
@@ -199,6 +202,8 @@ Existing legacy faculty load targets are preserved; new capacity limits default 
 .\venv\Scripts\python.exe manage.py test --settings=config.test_settings
 .\venv\Scripts\python.exe manage.py makemigrations --check --dry-run
 .\venv\Scripts\python.exe manage.py check
+.\venv\Scripts\python.exe -m pip check
+git diff --check
 ```
 
 The test module disables HTTPS redirects and uses fast hashing only for test speed. **Never serve the application with `config.test_settings`.** Normal settings use Django's secure password hashing; real browser sign-in was verified with those settings.
@@ -372,7 +377,50 @@ Meetings recur every matching weekday within the term; holidays, exceptional dat
 
 The advisory lock favors correctness over throughput; dependency hashing conservatively includes shared scheduling data across the institution, so unrelated edits may require revalidation. Both hashing and conflict queries should be profiled and narrowed before large deployment. Resource edits outside Phase 4 do not take its lock and may invalidate meetings later; reports must consume `effective_status` and recalculate, not trust the raw status column. Direct shell/ORM writes bypass application conflict/audit services and are not a supported scheduling interface.
 
-**Stop point: Phase 4 complete.** Phase 5 is OR-Tools automated generation; Phase 6 is optimization-based workload balancing/recommendations; Phase 7 is review, approval and schedule versioning. **Phase 5 has not started; no OR-Tools or automated timetable generation was implemented.**
-#   f a c u l t y _ s c h e d  
- #   f a c u l t y _ s c h e d  
- 
+**Historical Phase 4 stop point:** At that time, Phase 5 generation had not started. The Phase 5 implementation is documented below; Phase 6 balancing/recommendations and Phase 7 approval/versioning remain deferred.
+
+## Phase 5 automated timetable generation
+
+### Authority, dependency and bounds
+
+The `timetabling` models, scoped input builder, conflict engine and mutation services are the source of truth. `scheduling/autoscheduler.py` still targets legacy `scheduling.Term`, `Block`, `TimeSlot` and `Assignment`. It is unmounted, unchanged and never imported by Phase 5; it is neither a fallback nor a second scheduler.
+
+Generation uses `ortools==9.15.6755` locally and does not call a paid AI API. `SchedulingConfiguration` belongs to one department and academic term. It stores allowed weekdays (1–7), earliest/latest whole-minute times, a slot increment, a solver time limit (1–300 seconds), a random seed, worker count (1–64), and nonnegative integer weights for faculty preference, faculty gaps, section gaps, same-day meeting distribution and room fit. Missing configuration is a readiness error. Environment caps on preprocessing time, candidates and slot literals stop oversized requests as `INPUT_INVALID` before CP-SAT.
+
+Each `AssignmentMeetingRequirement` divides an assigned offering's lecture or laboratory component into a positive meeting count and duration. Its total minutes must equal the component's weekly hours multiplied by the teaching share. Readiness also checks scope, active term/resources, section and room eligibility, grid alignment, existing occupancy and whether each demand has at least one candidate. A valid configuration does not guarantee a feasible complete timetable.
+
+### Strategies and constraints
+
+`FILL_GAPS` retains all existing meetings in the selected schedule. `REPLACE_UNLOCKED` retains locked meetings and proposes replacements for unlocked ones; those rows are removed only during an accepted proposal, and the user needs `delete_scheduleentry` permission. Solving and previewing leave all entries untouched.
+
+The hard model places each required occurrence exactly once at its specified duration. It prevents faculty, room and class-section overlaps with selected retained rows, eligible protected-peer occupancy, unavailability and room closures. It enforces scoped active resources, matching term and department, mandatory room type, hard capacity where configured, allowed weekdays and the configured operating window/grid. Intervals are half-open, and a meeting ending exactly at the latest configured time is valid. Faculty AVAILABLE intervals are informational and PREFERRED intervals affect only the soft score. Zero weight disables a soft component; the result still reports every component separately. A high score is a ranking within the configured model, not institutional approval.
+
+### Proposal lifecycle and security
+
+A request creates a `PENDING` run, captures source data under an advisory lock, moves to `RUNNING`, then solves outside the transaction. Only raw `OPTIMAL` or `FEASIBLE` results can become `PROPOSAL_READY`; raw `INFEASIBLE`, `MODEL_INVALID` and `UNKNOWN` cannot. Lifecycle states also include `ACCEPTED`, `DISCARDED`, `INPUT_INVALID`, `INFEASIBLE`, `STALE`, `VALIDATION_FAILED` and `FAILED`. A blank raw status means the solver did not start.
+
+The generator presents readiness, aggregate input counts, effective configuration, explicit strategy and optional bounded overrides. Run history and detail show status text, runtime, score/penalties, a weekly proposal and conservative diagnostics. “Potential blocking conditions detected” is a diagnostic category, not an exact unsatisfiable core. Protected peer schedule, faculty, subject, section and entry identities never reach the HTML; only approved aggregate counts may appear.
+
+Acceptance and discard are POST-only and CSRF-protected. Acceptance re-resolves all proposal IDs within organizational scope, checks the captured source signature and exact proposal contract, repeats generation and Phase 4 validation under the scheduling lock, and atomically writes unlocked entries with generation provenance and audit. The schedule remains DRAFT. A stale, invalid or audit-failed proposal writes no entries. A terminal run cannot be accepted twice. System administrators have institution-wide scope, deans college scope, chairs department scope, and staff require the complete explicit permission bundle. Foreign direct IDs return 404 after permission checking.
+
+### Routes and development examples
+
+| Route | Purpose |
+| --- | --- |
+| `/timetables/generator/` | Scoped readiness and synchronous generation request |
+| `/timetables/generation-runs/` | Scoped, paginated run history |
+| `/timetables/generation-runs/<id>/` | Proposal, score, status and diagnostics |
+| Run detail + `accept/` or `discard/` | POST-only terminal action |
+| `/timetables/configurations/` and `/timetables/meeting-requirements/` | Scoped configuration and requirement management |
+
+With `DEBUG=True`, run `seed_foundation --create-users --with-timetables` for the two manual schedules plus two fictional configurations, four meeting requirements and one empty `Example generator workspace` in `DEMO-D1`. The separate `seed_timetables --with-infeasible-generator-example` option adds a non-overlapping term and an empty `Example infeasible generator workspace` whose two-hour meeting cannot fit a one-hour daily window; readiness reports `ZERO_CANDIDATES`. These seeds are idempotent and preserve passwords, roles/scopes and edited rows. They never request, accept, discard or delete a generation run.
+
+```powershell
+.\venv\Scripts\python.exe scripts\dev_database.py start
+.\venv\Scripts\python.exe manage.py migrate
+.\venv\Scripts\python.exe manage.py seed_foundation --create-users --with-timetables
+.\venv\Scripts\python.exe manage.py runserver
+.\venv\Scripts\python.exe manage.py test --settings=config.test_settings --noinput
+```
+
+Run the full test suite sequentially because Django uses a shared temporary PostgreSQL test database. Phase 5 does not choose faculty, balance workloads, recommend assignments, model holidays/date exceptions or travel, support simultaneous team teaching, approve/publish versions, run a background queue, or prove exact infeasibility. Phase 6 and Phase 7 remain deferred; development stops before Phase 6.

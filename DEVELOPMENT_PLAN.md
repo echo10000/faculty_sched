@@ -666,3 +666,37 @@ No exceptional-date/holiday/travel-buffer or institutional time-domain rules; no
 - **Phase 7 — not started:** review/approval/schedule versioning.
 
 **Phase 5 has not started; no OR-Tools or automated timetable generation was implemented.**
+
+## 15. Phase 5 implementation record
+
+Phase 5 adds bounded, synchronous timetable generation for an existing departmental schedule. The `timetabling` models, input builder, conflict validator and mutation services remain authoritative. The old `scheduling/autoscheduler.py` depends on legacy scheduling models and is not part of the generation path.
+
+### Schema, permissions and migrations
+
+The additive `timetabling/0002_phase5_generation` migration introduces per-assignment meeting requirements, per-term/department scheduling configuration, generation run history, and lock/provenance fields on schedule entries. Existing entries remain locked by default. The `timetabling/0003_scheduling_dependency_lock_triggers` migration protects dependency writes with the scheduling advisory lock. Role bundles grant generation capabilities to system administrators, college deans and department chairs within their existing organizational scope; authorized staff need explicit permissions. Django admin access to these records follows the same scope and audit rules.
+
+### Input, candidates and solver
+
+`timetabling/locking.py`, `signatures.py`, `occupancy.py`, and `generation_inputs.py` prepare a coherent, scoped source snapshot. The pure `timetabling/solver` contracts and candidate builder convert eligible assignments, rooms, availability and occupied intervals into bounded meeting placements. The CP-SAT engine selects exactly one placement per required occurrence while enforcing faculty, room and class-section non-overlap, unavailable periods, room closures, room suitability, capacity rules, active resources, configured weekdays/window/grid and retained or protected-peer meetings. Intervals are half-open; a meeting may end at the configured latest time.
+
+The objective reports separate faculty-preference, faculty-gap, section-gap, meeting-distribution and room-fit components. Configured zero weight disables a component. Faculty AVAILABLE periods provide information; PREFERRED periods affect ranking but never block a placement. Preprocessing time, candidate-count and slot-literal deployment caps reject oversized input before CP-SAT. The per-run solver bound is at most 300 seconds with at most 64 workers.
+
+### Lifecycle, validation and concurrency
+
+Generation records a run before capture, prepares source data under a short advisory-lock transaction, and solves outside that transaction. Only feasible or optimal solver results can become a proposal. Preview and solving do not change schedule entries. An explicit acceptance rechecks authorization and organization scope, source signatures, exact proposal shape and eligibility, and both the generation contract and Phase 4 conflict validator under the same lock. Acceptance writes unlocked entries with run provenance, keeps the schedule in DRAFT, and records its audit atomically. `FILL_GAPS` preserves all current entries; `REPLACE_UNLOCKED` may replace only unlocked entries when accepted and requires the additional delete permission. Stale, invalid or failed runs write no proposal entries. Discard is an explicit terminal action. Diagnostics describe possible blockers conservatively and do not claim an exact unsatisfiable core.
+
+### Interface, security and disclosure
+
+The generator has scoped schedule and term choices, readiness and configuration detail, explicit strategy selection, bounded overrides and a replacement warning. Run history and detail show lifecycle and solver status, aggregate scores, a weekly proposal, diagnostics and terminal controls as applicable. Configuration and meeting-requirement records have scoped management pages. Every direct identifier is checked after the capability gate against the requester's organizational scope; foreign records yield 404. Protected peer names and IDs are never sent to proposal pages. Acceptance and discard require POST and CSRF protection. The Bootstrap layout supports desktop and narrow screens with text status labels and keyboard-visible controls.
+
+### Development seed
+
+The DEBUG-only timetable seed adds example configurations and exact lecture/laboratory meeting requirements for both fictional departments. It creates one empty, feasible generator workspace in `DEMO-D1` while preserving the two manual timetable examples. An optional separate term and workspace demonstrate a valid zero-candidate case. Repeat seeding uses stable natural identifiers and never resets accounts, passwords, scopes, edited configurations, accepted proposals or schedule entries. Seeding itself never invokes or accepts the solver.
+
+### Verification evidence
+
+Final migration, full-suite, seed, solver-smoke and browser results are recorded after the complete implementation and sequential verification run.
+
+### Limits and stop point
+
+Phase 5 does not select faculty, balance workload, offer AI recommendations, model holidays or date exceptions, enforce travel buffers, handle simultaneous team teaching, approve/publish versions, run a background queue or prove exact infeasibility. Phase 6 workload balancing/recommendations and Phase 7 approval/versioning remain deferred. Development stops before Phase 6.
