@@ -28,13 +28,27 @@ def resolve_policy(faculty, term):
     return {**values, "sources": sources, "enforce_maximum": configured[0], "enforcement_source": configured[1]}
 
 
-def calculate_workload(faculty, term, *, proposed=None, exclude_pk=None):
+def weighted_load_for(offering, share, policy):
+    """Return the policy-weighted load of an offering share without rounding it."""
+    load = Decimal("0")
+    for units, weight in (
+        (offering.lecture_units, policy["lecture_weight"]),
+        (offering.laboratory_units, policy["laboratory_weight"]),
+    ):
+        if units and weight is None:
+            return None
+        load += units * share * (weight if weight is not None else Decimal("0"))
+    return load
+
+
+def calculate_workload(faculty, term, *, proposed=None, exclude_pk=None, assignments_override=None):
     """Current-policy teaching load, never schedule hours or legacy assignments.
 
     Offering hours are weekly contact hours. Preserve Decimal arithmetic without
     per-assignment rounding; UI formatting does not affect hard-limit checks.
     """
-    assignments = list(FacultySubjectAssignment.objects.filter(faculty=faculty, subject_offering__academic_term=term).exclude(pk=exclude_pk).select_related("subject_offering__subject", "subject_offering__academic_term"))
+    assignments = (list(assignments_override) if assignments_override is not None else
+                   list(FacultySubjectAssignment.objects.filter(faculty=faculty, subject_offering__academic_term=term).exclude(pk=exclude_pk).select_related("subject_offering__subject", "subject_offering__academic_term")))
     if proposed is not None:
         assignments.append(proposed)
     warnings = []
@@ -45,12 +59,13 @@ def calculate_workload(faculty, term, *, proposed=None, exclude_pk=None):
         warnings.extend(error.messages)
     totals = {field: sum((getattr(a.subject_offering, field) * a.share for a in assignments), Decimal("0")) for field in ("lecture_units", "laboratory_units", "lecture_hours", "laboratory_hours")}
     load = Decimal("0")
-    for units, weight in [(totals["lecture_units"], policy["lecture_weight"]), (totals["laboratory_units"], policy["laboratory_weight"])]:
-        if units and weight is None:
+    for assignment in assignments:
+        contribution = weighted_load_for(assignment.subject_offering, assignment.share, policy)
+        if contribution is None:
             load = None
             warnings.append("Workload unit weights are not configured for all assigned teaching components.")
             break
-        load += units * (weight if weight is not None else Decimal("0"))
+        load += contribution
     recommended, maximum = policy["recommended_load"], policy["maximum_load"]
     status = "UNCONFIGURED"
     if recommended is None and maximum is None:

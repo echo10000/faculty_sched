@@ -17,6 +17,7 @@ class Command(BaseCommand):
     help = "Seed fictional Phase 1 development records only; no faculty or timetable data."
 
     def add_arguments(self, parser):
+        parser.add_argument("--with-balancing", action="store_true", help="Also seed a separate fictional Phase 6 workload balancing example (includes timetables).")
         parser.add_argument("--with-timetables", action="store_true", help="Also seed fictional manual Phase 4 timetables (includes teaching/resources).")
         parser.add_argument("--with-teaching", action="store_true", help="Also seed fictional Phase 3 availability, offerings and teaching assignments (includes resources).")
         parser.add_argument("--with-resources", action="store_true", help="Also seed fictional Phase 2 master data and example workload policies.")
@@ -63,7 +64,9 @@ class Command(BaseCommand):
             transaction.on_commit(save_credentials)
             self.stdout.write("New account passwords will be written to .local/development-credentials.txt (Git-ignored).")
         self.stdout.write(self.style.SUCCESS("Foundation seed complete. Example dates/organizations are not institutional policy. Existing records and passwords were preserved."))
-        if options.get("with_timetables"):
+        if options.get("with_balancing"):
+            call_command("seed_balancing", stdout=self.stdout)
+        elif options.get("with_timetables"):
             call_command("seed_timetables", stdout=self.stdout)
         elif options.get("with_teaching"):
             call_command("seed_teaching", stdout=self.stdout)

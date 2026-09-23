@@ -2,9 +2,9 @@
 
 Faculty Workload and Academic Scheduling System for Negros Oriental State University - Bais Campus (NORSU-BSC).
 
-**Phases 1–5 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
+**Phases 1–6 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
 
-See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#15-phase-5-implementation-record) for the completed phases, architecture, migration decisions and later roadmap.
+See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#16-phase-6-implementation-record) for the completed phases, architecture, migration decisions and later roadmap.
 
 ## Implemented foundation
 
@@ -15,7 +15,7 @@ See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#15-phase-5-implementation-record) 
 - Permission-protected dashboard, scoped read-only college/department pages, academic calendar and locally bundled Bootstrap 5.3.8.
 - System-admin-only Django admin, including user/group/profile management.
 - Append-only audit records for authentication, admin mutations and development seeding; database protection against audit editing/deletion.
-- Additive migrations, idempotent development seeds and 332 passing PostgreSQL tests, including all 165 Phase 1–4 tests.
+- Additive migrations, idempotent development seeds and 376 passing PostgreSQL tests, including all 332 Phase 1–5 tests.
 - Faculty, subject and room list/detail/create/edit/status pages, scoped search/filters/pagination and dashboard counts.
 - Configurable employment categories, academic ranks, buildings, room types and academic-term teaching-capacity policies/overrides.
 
@@ -30,7 +30,7 @@ From the repository root in PowerShell:
 ```powershell
 .\venv\Scripts\python.exe scripts/dev_database.py start
 .\venv\Scripts\python.exe manage.py migrate
-.\venv\Scripts\python.exe manage.py seed_foundation --create-users --with-timetables
+.\venv\Scripts\python.exe manage.py seed_foundation --create-users --with-balancing
 .\venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
 ```
 
@@ -425,4 +425,29 @@ With `DEBUG=True`, run `seed_foundation --create-users --with-timetables` for th
 
 Final Phase 5 verification on 2026-09-23: **332 tests passed in 419.237 seconds** (165 prior tests and 167 Phase 5 additions); `manage.py check`, `makemigrations --check --dry-run`, `python -m pip check`, and `git diff --check` passed. Both Phase 5 migrations are applied to the prepared PostgreSQL database. The default seed ran twice, the optional zero-candidate seed ran twice, and a real request returned `PROPOSAL_READY`/`OPTIMAL` with two proposed meetings and zero persisted schedule entries. Browser review at 1440px and 390px covered readiness, proposal/detail, the weekly layout and mobile navigation without page overflow. Run the full test suite sequentially because Django uses a shared temporary PostgreSQL test database.
 
-Phase 5 does not choose faculty, balance workloads, recommend assignments, model holidays/date exceptions or travel, support simultaneous team teaching, approve/publish versions, run a background queue, or prove exact infeasibility. Phase 6 and Phase 7 remain deferred; development stops before Phase 6.
+At the Phase 5 stop point, generation did not choose faculty, balance workloads or recommend assignments. Those capabilities are now provided separately by Phase 6 below. Phase 5 still does not model holidays/date exceptions or travel, support simultaneous team teaching, approve/publish versions, run a background queue, or prove exact infeasibility.
+
+## Phase 6 faculty workload balancing
+
+Open **Workloads → Workload Balancing** (`/workloads/balancing/`), choose an active term and an accessible department, then generate a recommendation. The run checks source readiness and records a proposal without modifying teaching assignments. Its detail page compares each faculty member's current and recommended weighted load, configured target/maximum, utilization and status, along with offering-level KEEP/REASSIGN/NEW explanations. A reviewer may accept or discard a ready proposal. Acceptance is a separate POST action; it applies all changed assignment shares atomically after repeating scope, freshness, eligibility and workload validation. A stale or invalid proposal changes no assignments and must be regenerated. Run history remains scoped to the viewer's organizational unit.
+
+The scoped adapter reads active departmental faculty and subject offerings for one term, current `FacultySubjectAssignment` shares, effective `WorkloadPolicy` and `FacultyTermCapacity`, and the authoritative `workloads.calculation` service. It rejects inactive/inconsistent records, missing positive load targets, missing required component weights and partially assigned offerings. Unassigned offerings may receive a NEW full-share assignment. Existing assignments linked to timetable meetings or meeting requirements are fixed and cannot be reassigned by this feature. Recorded `FacultyQualification` links provide positive preference evidence; absent links are treated as unknown because the Phase 3 assignment workflow does not require qualification records. Academic rank, employment category and names never imply expertise. Availability is not used to decide faculty suitability because actual meeting times are chosen by Phase 5.
+
+The pure OR-Tools CP-SAT service chooses exactly one complete, valid share pattern per offering. It enforces active/same-department eligibility through the adapter, complete 100% teaching coverage and effective hard maxima when enforcement is configured. It minimizes target-normalized workload deviation across faculty and penalizes unnecessary changes to good existing assignments. Recorded qualification matches break otherwise equal scores. The solver is bounded to 10 seconds and one worker with a fixed seed. Its deterministic explanations report the outcome of those rules; no LLM chooses or explains assignments. Warning-only maxima remain warnings, and no unconfigured limit is invented. The comparison's imbalance number is the range in displayed faculty utilization percentages (maximum load as denominator, or recommended target if no maximum); the optimizer itself uses target-normalized deviation.
+
+`WorkloadRecommendationRun` stores the scoped source signature, solver outcome, proposal, comparisons and lifecycle. The source signature covers term, department, faculty, offerings, assignments, applicable policies, capacity overrides, qualification evidence and protected timetable dependencies. Phase 6 shares the Phase 5 PostgreSQL advisory lock for writes to those dependencies. Acceptance rechecks the signature and exact proposal shape under that lock, then audits each changed assignment and the accepted run in the same transaction. Existing schedules are never silently changed or regenerated; after acceptance, the authorized user may explicitly run the Phase 5 generator again. A changed assignment invalidates Phase 5's generation source signature.
+
+System admins may use any department; deans are college-scoped; chairs are department-scoped. Staff need explicit recommendation permission grants and remain organizationally scoped. No new editable Django admin path bypasses the review workflow. Phase 6 does not include predictive analytics, automated approval/publication, room/time placement, a full qualification management subsystem or Phase 7 versioning.
+
+On the prepared local PostgreSQL development database, run:
+
+```powershell
+.\venv\Scripts\python.exe scripts\dev_database.py start
+.\venv\Scripts\python.exe manage.py migrate
+.\venv\Scripts\python.exe manage.py seed_foundation --create-users --with-balancing
+.\venv\Scripts\python.exe manage.py runserver
+```
+
+For verification, run `manage.py test --settings=config.test_settings --noinput`, then `manage.py check`, `manage.py makemigrations --check --dry-run`, `python -m pip check`, and `git diff --check`. Run PostgreSQL test commands sequentially because they share a test database. `--with-balancing` includes the Phase 5 examples and adds a separate `DEMO-BALANCING` term with two active same-department faculty, two unscheduled offerings, complete current shares, and effective targets/weights. It is DEBUG-only and idempotent; it never generates a recommendation or resets accepted assignments. `manage.py seed_balancing` also runs independently.
+
+Final Phase 6 verification on 2026-09-23: **376 PostgreSQL tests passed in 289.295 seconds** (332 existing and 44 Phase 6 tests). Both additive migrations applied to the prepared development database. Django system and migration-drift checks passed; `pip check` found no broken requirements. A signed-in dean generated and accepted a real `OPTIMAL` recommendation: one of two offerings moved to the second faculty member, the displayed utilization spread improved from 100 to 0 percentage points, and no timetable was generated. The repeat seed preserved the two accepted teaching assignments. Desktop at 1440px and mobile at 390px showed no horizontal page overflow; the mobile sidebar exposed balancing/history, and the temporary viewport override was reset.
