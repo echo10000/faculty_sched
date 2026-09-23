@@ -84,6 +84,7 @@ class GenerationPageTests(TimetableFixture):
         self.staff.user_permissions.add(*permissions[:-1])
         self.client.force_login(type(self.staff).objects.get(pk=self.staff.pk))
         self.assertEqual(self.client.get(self.url("generator")).status_code, 403)
+        self.assertEqual(self.client.post(self.url("generation-run-accept", self.run.pk)).status_code, 403)
         self.staff.user_permissions.add(permissions[-1])
         self.client.force_login(type(self.staff).objects.get(pk=self.staff.pk))
         self.assertEqual(self.client.get(self.url("generator")).status_code, 200)
@@ -92,6 +93,27 @@ class GenerationPageTests(TimetableFixture):
         })
         self.assertEqual(response.status_code, 200)
         self.assertIn("strategy", response.context["form"].errors)
+
+    def test_exact_generation_bundle_can_review_own_proposal_without_history_permission(self):
+        self.staff.user_permissions.add(*(Permission.objects.get(
+            content_type__app_label=code.split(".")[0], codename=code.split(".")[1],
+        ) for code in GENERATION_PERMISSIONS))
+        staff = type(self.staff).objects.get(pk=self.staff.pk)
+        own_run = ScheduleGenerationRun.objects.create(
+            schedule=self.schedule, academic_term=self.term,
+            department=self.department, requested_by=staff,
+            strategy="FILL_GAPS", status="PROPOSAL_READY",
+        )
+        self.client.force_login(staff)
+        with patch("timetabling.views.request_generation", return_value=own_run):
+            response = self.client.post(self.url("generator"), {
+                "schedule": self.schedule.pk, "strategy": "FILL_GAPS",
+            }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Accept proposal")
+        self.assertEqual(self.client.get(self.url("generation-runs")).status_code, 403)
+        self.assertEqual(self.client.get(self.url("generation-run-detail", self.run.pk)).status_code, 404)
+        self.assertNotContains(self.client.get(self.url("generator")), "Generation history")
 
     def test_history_only_staff_sees_no_terminal_controls(self):
         self.staff.user_permissions.add(*Permission.objects.filter(
@@ -134,6 +156,28 @@ class GenerationPageTests(TimetableFixture):
         self.assertContains(page, "optimality was not proven")
         self.assertNotContains(page, "<script>")
         self.assertContains(page, "&lt;script&gt;", html=False)
+
+    def test_corrupt_historical_diagnostics_degrade_safely(self):
+        self.run.diagnostics = None
+        self.run.proposed_meetings = None
+        with patch("timetabling.views._visible_run", return_value=self.run):
+            page = self.client.get(self.url("generation-run-detail", self.run.pk))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Proposal ready")
+        self.run.diagnostics = {"severity": "ERROR", "message": "Bad JSON shape"}
+        with patch("timetabling.views._visible_run", return_value=self.run):
+            self.assertEqual(self.client.get(self.url("generation-run-detail", self.run.pk)).status_code, 200)
+
+    def test_preview_and_history_include_complete_whitelisted_context(self):
+        preview = self.client.get(self.url("generator"), {"schedule": self.schedule.pk})
+        self.assertContains(preview, "Allowed weekdays")
+        self.assertContains(preview, "Faculty preference weight")
+        self.assertContains(preview, "Eligible rooms")
+        self.assertContains(preview, "Protected peer occupancy")
+        history = self.client.get(self.url("generation-runs"))
+        self.assertContains(history, "Requested by")
+        self.assertContains(history, self.department.code)
+        self.assertContains(history, self.chair.username)
 
     def test_form_scope_and_configuration_weekday_round_trip(self):
         response = self.client.get(self.url("generator"), {"academic_term": self.term.pk})

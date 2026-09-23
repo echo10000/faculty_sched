@@ -1,4 +1,5 @@
 from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
@@ -277,6 +278,8 @@ class GeneratorView(ProtectedViewMixin, View):
         configuration = None
         counts = None
         readiness_issues = None
+        configuration_rows = []
+        input_rows = []
         raw_schedule = (request.POST if request.method == "POST" else request.GET).get("schedule")
         if raw_schedule:
             try:
@@ -303,10 +306,25 @@ class GeneratorView(ProtectedViewMixin, View):
                             strategy=strategy, overrides=GenerationOverrides(),
                         )
                     readiness_issues = prepared.issues
-                    counts["remaining_demands"] = len(prepared.input_summary.get("remaining_demands", []))
-                    counts["candidate_positions"] = prepared.input_summary.get("candidate_count", 0)
+                    summary = prepared.input_summary
+                    snapshot = prepared.configuration_snapshot
+                    input_rows = [(label, len(summary.get(key, []))) for key, label in (
+                        ("offering_ids", "Offerings"), ("assignment_ids", "Assignments"),
+                        ("meeting_requirement_ids", "Meeting requirements"),
+                        ("section_ids", "Sections"), ("eligible_room_ids", "Eligible rooms"),
+                        ("remaining_demands", "Remaining demands"))]
+                    input_rows += [(label, summary.get(key, 0)) for key, label in (
+                        ("retained_entry_count", "Retained meetings"),
+                        ("replace_entry_count", "Replaceable meetings"),
+                        ("availability_count", "Availability records"),
+                        ("closure_count", "Room closures"),
+                        ("peer_occupancy_count", "Protected peer occupancy"),
+                        ("candidate_count", "Candidate positions"))]
+                    configuration_rows = _configuration_rows(snapshot)
         return {"form": form, "selected_schedule": selected,
                 "configuration": configuration, "counts": counts, "readiness_issues": readiness_issues,
+                "configuration_rows": configuration_rows, "input_rows": input_rows,
+                "can_view_generation_runs": _can_view_runs(request.user),
                 "can_replace": _can_generate(request.user, ScheduleGenerationRun.Strategy.REPLACE_UNLOCKED)}
 
     def get(self, request):
@@ -406,14 +424,50 @@ def _proposal_week(user, run):
     return [{"number": number, "day": label, "meetings": days[number]} for number, label in DAYS], warnings
 
 
-class GenerationRunDetail(ProtectedViewMixin, View):
-    permission = "timetabling.view_schedulegenerationrun"
+def _configuration_rows(snapshot):
+    if type(snapshot) is not dict:
+        return []
+    rows = [(label, snapshot.get(key, "Unavailable")) for key, label in (
+        ("allowed_weekdays", "Allowed weekdays"),
+        ("earliest_start", "Earliest start"), ("latest_end", "Latest end"),
+        ("slot_increment_minutes", "Slot minutes"),
+        ("solver_time_limit_seconds", "Time limit (seconds)"),
+        ("random_seed", "Random seed"), ("worker_count", "Workers"),
+        ("faculty_preference_weight", "Faculty preference weight"),
+        ("faculty_gap_weight", "Faculty gap weight"),
+        ("section_gap_weight", "Section gap weight"),
+        ("meeting_distribution_weight", "Meeting distribution weight"),
+        ("room_fit_weight", "Room fit weight"),
+    )]
+    return [(label, ", ".join(str(item) for item in value) if type(value) is list
+             else value) for label, value in rows]
+
+
+def _visible_run(user, pk):
+    if _can_view_runs(user):
+        return get_generation_run(user, pk)
+    require_generation_access(user, ScheduleGenerationRun.Strategy.FILL_GAPS)
+    queryset = scoped(user, ScheduleGenerationRun.objects.select_related(
+        "schedule", "academic_term", "department", "requested_by",
+    )).filter(requested_by=user)
+    return get_object_or_404(queryset, pk=pk)
+
+
+class GenerationRunDetail(LoginRequiredMixin, View):
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return self.handle_no_permission()
+        if not _can_view_runs(request.user) and not _can_generate(request.user):
+            raise PermissionDenied("Generation run access is required.")
+        return super().dispatch(request, *args, **kwargs)
 
     def get(self, request, pk):
-        run = get_generation_run(request.user, pk)
+        run = _visible_run(request.user, pk)
         week, display_warnings = _proposal_week(request.user, run)
-        diagnostics = [d for d in run.diagnostics if type(d) is dict and
-                       type(d.get("message")) is str and d.get("severity") in ("ERROR", "WARNING")]
+        raw_diagnostics = run.diagnostics if type(run.diagnostics) is list else []
+        diagnostics = [d for d in raw_diagnostics if type(d) is dict and
+                       type(d.get("code")) is str and type(d.get("message")) is str
+                       and type(d.get("severity")) is str and d["severity"] in ("ERROR", "WARNING")]
         penalties = run.penalty_breakdown if type(run.penalty_breakdown) is dict else {}
         statistics = run.solver_statistics if type(run.solver_statistics) is dict else {}
         summary = run.input_summary if type(run.input_summary) is dict else {}
@@ -426,10 +480,7 @@ class GenerationRunDetail(ProtectedViewMixin, View):
             ("current_entry_count", "Current meetings"), ("retained_entry_count", "Retained meetings"),
             ("replace_entry_count", "Replaceable meetings"), ("peer_occupancy_count", "Protected peer occupancy"),
             ("candidate_count", "Candidate positions"))]
-        config_rows = [(label, snapshot.get(key, "Unavailable")) for key, label in (
-            ("earliest_start", "Earliest start"), ("latest_end", "Latest end"),
-            ("slot_increment_minutes", "Slot minutes"), ("solver_time_limit_seconds", "Time limit (seconds)"),
-            ("random_seed", "Random seed"), ("worker_count", "Workers"))]
+        config_rows = _configuration_rows(snapshot)
         stat_rows = [(label, statistics.get(key, "Unavailable")) for key, label in (
             ("wall_time_seconds", "Solver wall time (seconds)"), ("branches", "Branches"),
             ("conflicts", "Conflicts"), ("candidate_count", "Candidates"), ("variable_count", "Variables"))]
@@ -452,10 +503,17 @@ class GenerationTerminalView(ProtectedViewMixin, View):
     permission = "timetabling.generate_schedule"
     http_method_names = ["post"]
 
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            require_generation_access(request.user, ScheduleGenerationRun.Strategy.FILL_GAPS)
+        return super().dispatch(request, *args, **kwargs)
+
     def operation(self, *, user, run_id):
         raise NotImplementedError
 
     def post(self, request, pk):
+        if not _can_view_runs(request.user):
+            _visible_run(request.user, pk)
         try:
             run = self.operation(user=request.user, run_id=pk)
         except InvalidRunTransition:
