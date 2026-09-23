@@ -695,7 +695,14 @@ The DEBUG-only timetable seed adds example configurations and exact lecture/labo
 
 ### Verification evidence
 
-Final migration, full-suite, seed, solver-smoke and browser results are recorded after the complete implementation and sequential verification run.
+Verified on 2026-09-23 with the prepared PostgreSQL development database. The local helper started successfully, and `timetabling.0002_phase5_generation` plus `timetabling.0003_scheduling_dependency_lock_triggers` applied without resetting data or changing older migrations.
+
+- The final sequential PostgreSQL suite passed **332 tests in 419.237 seconds**, exit 0: all 165 Phase 1–4 tests and 167 Phase 5 additions.
+- `manage.py check` reported no issues; `makemigrations --check --dry-run` reported no changes; `python -m pip check` reported no broken requirements; `git diff --check` passed.
+- The default development seed ran twice without adding duplicate configurations, meeting requirements or workspaces. The separate optional infeasible seed also ran twice. The development database has three example configurations and five meeting requirements across the two distinct terms; neither seed generated or accepted a run. Automated seed tests verified password, scope, edit and entry preservation.
+- A real bounded request for `Example generator workspace` returned `PROPOSAL_READY` with raw `OPTIMAL`, two proposal rows and zero persisted entries. The separate infeasible workspace returned `ZERO_CANDIDATES` and no solver input.
+- Browser review of the signed-in generator showed scoped choices and readiness. The run detail showed a two-meeting weekly proposal, status, score components, runtime and controls. At 1440px the week rendered as desktop columns; at 390px the mobile navigation opened and the page had no horizontal overflow. The viewport override was reset.
+- Independent reviews of the solver objectives, seed, lifecycle and UI found and resolved the late-authorization, candidate-membership, scoped terminal-action and presentation gaps. PostgreSQL tests cover advisory-lock writer races and terminal-action races.
 
 ### Limits and stop point
 

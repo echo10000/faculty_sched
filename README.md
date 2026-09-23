@@ -15,7 +15,7 @@ See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#15-phase-5-implementation-record) 
 - Permission-protected dashboard, scoped read-only college/department pages, academic calendar and locally bundled Bootstrap 5.3.8.
 - System-admin-only Django admin, including user/group/profile management.
 - Append-only audit records for authentication, admin mutations and development seeding; database protection against audit editing/deletion.
-- Additive migrations, idempotent development seeds and automated PostgreSQL tests, including the original 165 Phase 1–4 tests.
+- Additive migrations, idempotent development seeds and 332 passing PostgreSQL tests, including all 165 Phase 1–4 tests.
 - Faculty, subject and room list/detail/create/edit/status pages, scoped search/filters/pagination and dashboard counts.
 - Configurable employment categories, academic ranks, buildings, room types and academic-term teaching-capacity policies/overrides.
 
@@ -423,4 +423,6 @@ With `DEBUG=True`, run `seed_foundation --create-users --with-timetables` for th
 .\venv\Scripts\python.exe manage.py test --settings=config.test_settings --noinput
 ```
 
-Run the full test suite sequentially because Django uses a shared temporary PostgreSQL test database. Phase 5 does not choose faculty, balance workloads, recommend assignments, model holidays/date exceptions or travel, support simultaneous team teaching, approve/publish versions, run a background queue, or prove exact infeasibility. Phase 6 and Phase 7 remain deferred; development stops before Phase 6.
+Final Phase 5 verification on 2026-09-23: **332 tests passed in 419.237 seconds** (165 prior tests and 167 Phase 5 additions); `manage.py check`, `makemigrations --check --dry-run`, `python -m pip check`, and `git diff --check` passed. Both Phase 5 migrations are applied to the prepared PostgreSQL database. The default seed ran twice, the optional zero-candidate seed ran twice, and a real request returned `PROPOSAL_READY`/`OPTIMAL` with two proposed meetings and zero persisted schedule entries. Browser review at 1440px and 390px covered readiness, proposal/detail, the weekly layout and mobile navigation without page overflow. Run the full test suite sequentially because Django uses a shared temporary PostgreSQL test database.
+
+Phase 5 does not choose faculty, balance workloads, recommend assignments, model holidays/date exceptions or travel, support simultaneous team teaching, approve/publish versions, run a background queue, or prove exact infeasibility. Phase 6 and Phase 7 remain deferred; development stops before Phase 6.
