@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.http import Http404
 from django.utils import timezone
 
 from audit.services import record_event
@@ -207,6 +209,8 @@ def request_generation(*, user, schedule_id, strategy, overrides):
         return finish_generation_if_expected(run.pk, result, prepared, user)
     except InvalidRunTransition:
         raise
+    except (PermissionDenied, Http404):
+        raise
     except Exception:
         current = ScheduleGenerationRun.objects.only("status").get(pk=run.pk)
         if current.status in ("PENDING", "RUNNING"):
@@ -324,6 +328,8 @@ def accept_generation(*, user, run_id):
     try:
         return _accept_locked(user=user, run_id=run_id)
     except InvalidRunTransition:
+        raise
+    except (PermissionDenied, Http404):
         raise
     except StaleProposal:
         return finish_failure_if_expected(

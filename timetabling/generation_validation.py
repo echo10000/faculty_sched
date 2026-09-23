@@ -187,6 +187,14 @@ def _resolve_generation_contract(*, run, prepared, proposal_rows, user) -> _Reso
     end = _strict_time(fresh.get("latest_end")) if type(fresh) is dict else None
     increment = fresh.get("slot_increment_minutes") if type(fresh) is dict else None
     days = fresh.get("allowed_weekdays") if type(fresh) is dict else None
+    candidates = frozenset(
+        (
+            candidate.demand_key, candidate.assignment_id, candidate.room_id,
+            candidate.day_of_week, candidate.start_slot, candidate.end_slot,
+            candidate.meeting_type,
+        )
+        for candidate in prepared.solver_input.candidates
+    ) if prepared.solver_input is not None else frozenset()
     for row in valid_rows:
         assignment = assignments.get(row["assignment_id"])
         requirement = requirements.get(row["meeting_requirement_id"])
@@ -208,6 +216,16 @@ def _resolve_generation_contract(*, run, prepared, proposal_rows, user) -> _Reso
             conflicts.append(_conflict("PROPOSAL_GRID"))
             continue
         if _minute(row_end) - _minute(row_start) != requirement.duration_minutes:
+            conflicts.append(_conflict("PROPOSAL_DEMAND"))
+            continue
+        candidate_key = (
+            (requirement.pk, row["occurrence_index"]), assignment.pk, room.pk,
+            row["day_of_week"],
+            (_minute(row_start) - _minute(start)) // increment,
+            (_minute(row_end) - _minute(start)) // increment,
+            row["meeting_type"],
+        )
+        if candidate_key not in candidates:
             conflicts.append(_conflict("PROPOSAL_DEMAND"))
             continue
         entries.append(ScheduleEntry(

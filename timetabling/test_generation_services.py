@@ -1,5 +1,6 @@
 """Transactional generation lifecycle and stored-proposal regression tests."""
 
+from dataclasses import replace
 from datetime import time
 from unittest.mock import patch
 
@@ -11,7 +12,8 @@ from audit.models import AuditLog
 from workloads.models import FacultyAvailability
 
 from .generation import (
-    InvalidRunTransition, accept_generation, discard_generation, request_generation,
+    InvalidRunTransition, accept_generation, discard_generation,
+    finish_generation_if_expected, request_generation,
 )
 from .generation_inputs import GenerationOverrides
 from .generation_validation import validate_generation_contract
@@ -19,7 +21,7 @@ from .models import (
     AssignmentMeetingRequirement, ScheduleEntry, ScheduleGenerationRun,
     SchedulingConfiguration,
 )
-from .solver.contracts import ReadinessIssue, SolverResult, SolverStatistics
+from .solver.contracts import ProposedMeeting, SolverResult, SolverStatistics
 from .tests import TimetableFixture
 
 
@@ -163,6 +165,86 @@ class GenerationServiceTests(TimetableFixture):
             user=self.chair,
         )}
         self.assertIn("PROPOSAL_DEMAND", codes)
+
+    def test_candidate_membership_checked_at_both_boundaries(self):
+        from .generation_inputs import prepare_generation_input
+        run = self.ready()
+        prepared = prepare_generation_input(
+            user=self.chair, schedule_id=self.schedule.pk,
+            strategy="FILL_GAPS", overrides=GenerationOverrides(),
+        )
+        row = run.proposed_meetings[0]
+        policy = prepared.solver_input.policy
+        start_slot = (int(row["start_time"][:2]) * 60 + int(row["start_time"][3:])
+                      - policy.earliest_minute) // policy.slot_increment_minutes
+        end_slot = (int(row["end_time"][:2]) * 60 + int(row["end_time"][3:])
+                    - policy.earliest_minute) // policy.slot_increment_minutes
+        removed = (
+            (row["meeting_requirement_id"], row["occurrence_index"]),
+            row["assignment_id"], row["room_id"], row["day_of_week"],
+            start_slot, end_slot, row["meeting_type"],
+        )
+        limited_input = replace(
+            prepared.solver_input,
+            candidates=tuple(candidate for candidate in prepared.solver_input.candidates
+                if (candidate.demand_key, candidate.assignment_id, candidate.room_id,
+                    candidate.day_of_week, candidate.start_slot, candidate.end_slot,
+                    candidate.meeting_type) != removed),
+        )
+        limited = replace(prepared, solver_input=limited_input)
+        self.assertIn("PROPOSAL_DEMAND", {item.code for item in validate_generation_contract(
+            run=run, prepared=limited, proposal_rows=run.proposed_meetings,
+            user=self.chair,
+        )})
+
+        proposed = tuple(ProposedMeeting(
+            assignment_id=item["assignment_id"],
+            meeting_requirement_id=item["meeting_requirement_id"],
+            occurrence_index=item["occurrence_index"], room_id=item["room_id"],
+            day_of_week=item["day_of_week"],
+            start_slot=(int(item["start_time"][:2]) * 60 + int(item["start_time"][3:])
+                        - policy.earliest_minute) // policy.slot_increment_minutes,
+            end_slot=(int(item["end_time"][:2]) * 60 + int(item["end_time"][3:])
+                      - policy.earliest_minute) // policy.slot_increment_minutes,
+            meeting_type=item["meeting_type"],
+        ) for item in run.proposed_meetings)
+        pending = ScheduleGenerationRun.objects.create(
+            schedule=self.schedule, academic_term=self.term,
+            department=self.department, requested_by=self.chair,
+            strategy="FILL_GAPS", status="RUNNING",
+            configuration_snapshot=run.configuration_snapshot,
+            input_summary=run.input_summary,
+            source_signature=run.source_signature,
+        )
+        result = SolverResult(raw_status="FEASIBLE", proposals=proposed)
+        finalized = finish_generation_if_expected(pending.pk, result, limited, self.chair)
+        self.assertEqual(finalized.status, "VALIDATION_FAILED")
+        self.assertEqual(finalized.proposed_meetings, [])
+
+        with patch("timetabling.generation.prepare_generation_input", return_value=limited):
+            rejected = accept_generation(user=self.chair, run_id=run.pk)
+        self.assertEqual(rejected.status, "VALIDATION_FAILED")
+        self.assertFalse(ScheduleEntry.objects.filter(generation_run=run).exists())
+
+    def test_locked_authorization_and_scope_failures_leave_ready_run_unchanged(self):
+        run = self.ready()
+        with patch("timetabling.generation.require_generation_access",
+                   side_effect=[None, None, PermissionDenied("revoked")]):
+            with self.assertRaises(PermissionDenied):
+                accept_generation(user=self.chair, run_id=run.pk)
+        run.refresh_from_db()
+        self.assertEqual(run.status, "PROPOSAL_READY")
+        self.assertFalse(AuditLog.objects.filter(action="generation.failed").exists())
+        from .generation_inputs import get_generation_run as real_get
+        def late_missing(user, run_id, *, lock=False):
+            if lock:
+                raise Http404()
+            return real_get(user, run_id, lock=lock)
+        with patch("timetabling.generation.get_generation_run", side_effect=late_missing):
+            with self.assertRaises(Http404):
+                accept_generation(user=self.chair, run_id=run.pk)
+        run.refresh_from_db()
+        self.assertEqual(run.status, "PROPOSAL_READY")
 
     def test_captured_override_round_trip(self):
         run = self.generate(overrides=GenerationOverrides(solver_time_limit_seconds=3))

@@ -3,10 +3,12 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, time
 from decimal import Decimal
-from threading import Barrier
+from threading import Barrier, Event
+import time as pytime
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.db import close_old_connections
+from django.db import close_old_connections, connection
 from django.test import TransactionTestCase
 
 from academics.models import AcademicTerm, AcademicYear, Semester, Subject
@@ -150,3 +152,130 @@ class GenerationConcurrencyTests(TransactionTestCase):
                              run.proposed_meeting_count)
         else:
             self.assertFalse(ScheduleEntry.objects.filter(generation_run=run).exists())
+
+    def _writer_waits_during_acceptance(self, kind):
+        existing = None
+        if kind in ("update", "delete"):
+            existing = FacultyAvailability.objects.create(
+                faculty=self.faculty, academic_term=self.term, day_of_week=1,
+                start_time=time(7), end_time=time(8),
+                availability_type="preferred",
+            )
+        run = self.ready()
+        inside = Event()
+        release = Event()
+        attempted = Event()
+        writer_pid = []
+
+        def pause_acceptance(locked_run, prepared):
+            inside.set()
+            if not release.wait(timeout=15):
+                raise TimeoutError("acceptance test barrier timed out")
+
+        def accept_worker():
+            close_old_connections()
+            try:
+                user = get_user_model().objects.get(pk=self.user.pk)
+                return accept_generation(user=user, run_id=run.pk)
+            finally:
+                close_old_connections()
+
+        def writer_worker():
+            close_old_connections()
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_backend_pid()")
+                    writer_pid.append(cursor.fetchone()[0])
+                attempted.set()
+                if kind == "insert":
+                    FacultyAvailability.objects.create(
+                        faculty_id=self.faculty.pk, academic_term_id=self.term.pk,
+                        day_of_week=2, start_time=time(7), end_time=time(8),
+                        availability_type="preferred",
+                    )
+                elif kind == "update":
+                    FacultyAvailability.objects.filter(pk=existing.pk).update(
+                        start_time=time(7, 30),
+                    )
+                else:
+                    FacultyAvailability.objects.filter(pk=existing.pk).delete()
+            finally:
+                close_old_connections()
+
+        with patch("timetabling.generation._before_accept_mutation", side_effect=pause_acceptance):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                accepted = pool.submit(accept_worker)
+                try:
+                    self.assertTrue(inside.wait(timeout=15))
+                    writer = pool.submit(writer_worker)
+                    self.assertTrue(attempted.wait(timeout=10))
+                    deadline = pytime.monotonic() + 8
+                    waiting = False
+                    while pytime.monotonic() < deadline and not waiting:
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                "SELECT EXISTS (SELECT 1 FROM pg_locks "
+                                "WHERE pid = %s AND locktype = 'advisory' AND NOT granted)",
+                                [writer_pid[0]],
+                            )
+                            waiting = cursor.fetchone()[0]
+                        if not waiting:
+                            pytime.sleep(0.05)
+                    self.assertTrue(waiting, "writer never visibly waited for advisory lock")
+                    self.assertFalse(writer.done())
+                finally:
+                    release.set()
+                result = accepted.result(timeout=20)
+                writer.result(timeout=20)
+        self.assertEqual(result.status, "ACCEPTED")
+        self.assertEqual(ScheduleEntry.objects.filter(generation_run=run).count(),
+                         run.proposed_meeting_count)
+
+    def test_insert_writer_waits_during_acceptance(self):
+        self._writer_waits_during_acceptance("insert")
+
+    def test_update_writer_waits_during_acceptance(self):
+        self._writer_waits_during_acceptance("update")
+
+    def test_delete_writer_waits_during_acceptance(self):
+        self._writer_waits_during_acceptance("delete")
+
+    def test_failure_updater_cannot_overwrite_competing_discard(self):
+        run = self.ready()
+        FacultyAvailability.objects.create(
+            faculty=self.faculty, academic_term=self.term, day_of_week=1,
+            start_time=time(7), end_time=time(8), availability_type="preferred",
+        )
+        from .generation import finish_failure_if_expected as real_finish
+        before_failure = Event()
+        release_failure = Event()
+
+        def pause_failure(**kwargs):
+            before_failure.set()
+            if not release_failure.wait(timeout=10):
+                raise TimeoutError("failure updater test barrier timed out")
+            return real_finish(**kwargs)
+
+        def stale_worker():
+            close_old_connections()
+            try:
+                user = get_user_model().objects.get(pk=self.user.pk)
+                try:
+                    accept_generation(user=user, run_id=run.pk)
+                except InvalidRunTransition:
+                    return "LOST"
+                return "WON"
+            finally:
+                close_old_connections()
+
+        with patch("timetabling.generation.finish_failure_if_expected", side_effect=pause_failure):
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(stale_worker)
+                self.assertTrue(before_failure.wait(timeout=15))
+                discarded = discard_generation(user=self.user, run_id=run.pk)
+                release_failure.set()
+                outcome = future.result(timeout=15)
+        self.assertEqual(outcome, "LOST")
+        self.assertEqual(discarded.status, "DISCARDED")
+        run.refresh_from_db()
+        self.assertEqual(run.status, "DISCARDED")
