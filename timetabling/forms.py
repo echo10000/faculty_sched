@@ -1,4 +1,7 @@
+from copy import copy
+
 from django import forms
+from django.core.exceptions import PermissionDenied, ValidationError
 
 from accounts.permissions import department_scoped_queryset
 from core.models import Department, Program
@@ -9,8 +12,11 @@ from resources.selectors import available_resources, scope_resources
 from scheduling.models import Room
 from workloads.models import SubjectOffering, FacultySubjectAssignment
 from workloads.selectors import accessible_terms, scoped_records, scoped_faculty
-from .models import ClassSection, OfferingRequirement, RoomUnavailability, Schedule, ScheduleEntry
-from .queries import scoped
+from .models import (AssignmentMeetingRequirement, ClassSection, OfferingRequirement,
+                     RoomUnavailability, Schedule, ScheduleEntry, ScheduleGenerationRun,
+                     SchedulingConfiguration)
+from .queries import get_schedule, scoped
+from .generation_inputs import GenerationOverrides, require_generation_access
 from .intervals import DAYS
 
 
@@ -83,6 +89,118 @@ class EntryForm(StyledFormMixin, forms.ModelForm):
             faculty__is_active=True, faculty__home_department__is_active=True, faculty__home_department__college__is_active=True)).select_related("faculty", "subject_offering__subject", "subject_offering__academic_term")
         self.fields["room"].queryset = available_resources(user, Room)
         self.style_fields()
+
+
+class MeetingRequirementForm(ScopedForm):
+    class Meta:
+        model = AssignmentMeetingRequirement
+        fields = ["assignment", "meeting_type", "meetings_per_week", "duration_minutes"]
+
+    def __init__(self, *args, user, term=None, **kwargs):
+        super().__init__(*args, user=user, term=term, **kwargs)
+        choices = scoped_records(user, FacultySubjectAssignment.objects.filter(
+            subject_offering__is_active=True, subject_offering__subject__is_active=True,
+            subject_offering__department__is_active=True,
+            subject_offering__academic_term__is_active=True,
+            faculty__is_active=True, faculty__home_department__is_active=True,
+        )).select_related("faculty", "subject_offering__subject", "subject_offering__academic_term")
+        if term:
+            choices = choices.filter(subject_offering__academic_term=term)
+        if self.instance.pk:
+            choices = scoped_records(user, FacultySubjectAssignment.objects.filter(pk=self.instance.assignment_id))
+            self.fields["assignment"].disabled = True
+            self.fields["meeting_type"].disabled = True
+        self.fields["assignment"].queryset = choices
+
+
+class SchedulingConfigurationForm(ScopedForm):
+    allowed_weekdays = forms.TypedMultipleChoiceField(
+        choices=DAYS, coerce=int, widget=forms.CheckboxSelectMultiple,
+        label="Allowed weekdays", help_text="Choose the days on which meetings may be placed.",
+    )
+
+    class Meta:
+        model = SchedulingConfiguration
+        fields = ["academic_term", "department", "allowed_weekdays", "earliest_start",
+                  "latest_end", "slot_increment_minutes", "solver_time_limit_seconds",
+                  "random_seed", "worker_count", *SchedulingConfiguration.WEIGHT_FIELDS]
+        widgets = {name: forms.TimeInput(format="%H:%M", attrs={"type": "time"})
+                   for name in ("earliest_start", "latest_end")}
+
+    def __init__(self, *args, user, term=None, **kwargs):
+        super().__init__(*args, user=user, term=term, **kwargs)
+        if self.instance.pk:
+            self.fields["academic_term"].disabled = True
+            self.fields["department"].disabled = True
+        self.fields["allowed_weekdays"].widget.attrs.pop("class", None)
+
+
+class GenerationRequestForm(StyledFormMixin, forms.Form):
+    academic_term = forms.ModelChoiceField(queryset=None, required=False, label="Academic term")
+    schedule = forms.ModelChoiceField(queryset=None)
+    strategy = forms.ChoiceField(choices=ScheduleGenerationRun.Strategy.choices)
+    solver_time_limit_seconds = forms.IntegerField(required=False, min_value=1, max_value=300)
+    faculty_preference_weight = forms.IntegerField(required=False, min_value=0)
+    faculty_gap_weight = forms.IntegerField(required=False, min_value=0)
+    section_gap_weight = forms.IntegerField(required=False, min_value=0)
+    meeting_distribution_weight = forms.IntegerField(required=False, min_value=0)
+    room_fit_weight = forms.IntegerField(required=False, min_value=0)
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        terms = accessible_terms(user, active=True)
+        self.fields["academic_term"].queryset = terms
+        schedules = scoped(user, Schedule.objects.filter(
+            academic_term__is_active=True, department__is_active=True,
+        )).select_related("academic_term", "department")
+        raw = (self.data if self.is_bound else self.initial).get("academic_term")
+        if raw:
+            try:
+                term = terms.get(pk=int(raw))
+            except (TypeError, ValueError, terms.model.DoesNotExist):
+                schedules = schedules.none()
+            else:
+                schedules = schedules.filter(academic_term=term)
+        self.fields["schedule"].queryset = schedules
+        self.style_fields()
+
+    def clean(self):
+        data = super().clean()
+        schedule = data.get("schedule")
+        if schedule is None:
+            return data
+        schedule = get_schedule(self.user, schedule.pk, action="change")
+        term = data.get("academic_term")
+        if term and term.pk != schedule.academic_term_id:
+            self.add_error("schedule", "Schedule does not belong to the selected academic term.")
+        strategy = data.get("strategy")
+        if strategy == ScheduleGenerationRun.Strategy.REPLACE_UNLOCKED:
+            try:
+                require_generation_access(self.user, strategy)
+            except PermissionDenied:
+                self.add_error("strategy", "Replacing unlocked meetings requires delete meeting permission.")
+        configuration = scoped(self.user, SchedulingConfiguration.objects.filter(
+            academic_term_id=schedule.academic_term_id,
+            department_id=schedule.department_id,
+        )).first()
+        if configuration is None:
+            self.add_error("schedule", "This schedule needs a scheduling configuration.")
+        overrides = GenerationOverrides(**{
+            name: data.get(name) for name in GenerationOverrides.__dataclass_fields__
+        })
+        if configuration:
+            effective = copy(configuration)
+            for name in GenerationOverrides.__dataclass_fields__:
+                value = getattr(overrides, name)
+                if value is not None:
+                    setattr(effective, name, value)
+            try:
+                effective.full_clean(validate_unique=False, validate_constraints=False)
+            except ValidationError:
+                self.add_error(None, "The effective scheduling configuration is invalid.")
+        data["overrides"] = overrides
+        return data
 
 
 class TimetableFilter(StyledFormMixin, forms.Form):

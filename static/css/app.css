@@ -357,7 +357,7 @@ h2 {
   background:white;
   padding:12px;
 }
-a:focus-visible,button:focus-visible {
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.form-select:focus-visible {
   outline:3px solid #b77920;
   outline-offset:3px;
 }
@@ -443,3 +443,12 @@ a:focus-visible,button:focus-visible {
 .week-day { background:#fff; border:1px solid var(--border,#dfe5e9); border-radius:12px; padding:14px; min-width:0; }
 .meeting-card { border-left:3px solid #16766d; background:#edf6f5; padding:10px; margin-top:12px; border-radius:4px; overflow-wrap:anywhere; }
 @media(max-width:767px) { .week-grid { grid-template-columns:1fr; overflow:visible; } }
+
+/* Keep semantic table headers while making long record rows readable on phones. */
+@media(max-width:767px) {
+  .responsive-record-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+  .responsive-record-table tbody,.responsive-record-table tr,.responsive-record-table td { display:block; width:100%; }
+  .responsive-record-table tr { border:1px solid #dfe5e9; border-radius:12px; padding:8px 12px; margin-bottom:12px; }
+  .responsive-record-table td { border:0; padding:7px 2px; overflow-wrap:anywhere; }
+  .responsive-record-table td[data-label]::before { content:attr(data-label); display:block; font-size:.72rem; font-weight:700; color:var(--muted); }
+}

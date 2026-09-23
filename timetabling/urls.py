@@ -12,6 +12,11 @@ urlpatterns = [
     path("schedules/<int:schedule_id>/entries/<int:pk>/edit/", views.EntryEditor.as_view(), name="entries-edit"),
     path("schedules/<int:schedule_id>/entries/<int:pk>/delete/", views.EntryDelete.as_view(), name="entries-delete"),
     path("closures/<int:pk>/delete/", views.ClosureDelete.as_view(), name="closures-delete"),
+    path("generator/", views.GeneratorView.as_view(), name="generator"),
+    path("generation-runs/", views.GenerationRunList.as_view(), name="generation-runs"),
+    path("generation-runs/<int:pk>/", views.GenerationRunDetail.as_view(), name="generation-run-detail"),
+    path("generation-runs/<int:pk>/accept/", views.GenerationAcceptView.as_view(), name="generation-run-accept"),
+    path("generation-runs/<int:pk>/discard/", views.GenerationDiscardView.as_view(), name="generation-run-discard"),
 ]
 for section in views.SPECS:
     if section != "schedules":

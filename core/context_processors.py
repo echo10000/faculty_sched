@@ -1,6 +1,7 @@
 from django.conf import settings
 
 from accounts.permissions import is_system_admin, profile_for
+from timetabling.generation_inputs import GENERATION_PERMISSIONS
 from .models import SystemSetting
 
 
@@ -21,6 +22,8 @@ def navigation(request):
         ("timetabling.view_schedule", "Manual schedules", "timetabling:schedules"),
         ("timetabling.view_classsection", "Class sections", "timetabling:sections"),
         ("timetabling.view_offeringrequirement", "Offering requirements", "timetabling:requirements"),
+        ("timetabling.view_assignmentmeetingrequirement", "Meeting requirements", "timetabling:meeting-requirements"),
+        ("timetabling.view_schedulingconfiguration", "Scheduling configurations", "timetabling:configurations"),
         ("timetabling.view_roomunavailability", "Room unavailability", "timetabling:closures"),
         ("core.view_college", "Colleges", "college-list"),
         ("core.view_department", "Departments", "department-list"),
@@ -38,6 +41,17 @@ def navigation(request):
                 section = route.split(":")[1]
                 active = match.url_name.startswith(section) or (section == "schedules" and match.url_name in ("timetable", "conflicts", "entries-add", "entries-edit", "entries-delete", "validate"))
             links.append({"label": label, "route": route, "active": active})
+    if authorized:
+        match = request.resolver_match
+        special = []
+        if all(user.has_perm(permission) for permission in GENERATION_PERMISSIONS):
+            special.append(("Automated generator", "timetabling:generator", {"generator"}))
+        if user.has_perm("timetabling.view_schedulegenerationrun") and user.has_perm("academics.view_academicterm"):
+            special.append(("Generation history", "timetabling:generation-runs", {
+                "generation-runs", "generation-run-detail", "generation-run-accept", "generation-run-discard"}))
+        for label, route, names in special:
+            links.append({"label": label, "route": route,
+                          "active": bool(match and match.namespace == "timetabling" and match.url_name in names)})
     name = SystemSetting.objects.filter(key="institution_name").values_list("value", flat=True).first() or settings.INSTITUTION_NAME
     scope = "Institution-wide" if user.is_authenticated and is_system_admin(user) else str(profile.department or profile.college) if profile else "No assigned scope"
     return {
