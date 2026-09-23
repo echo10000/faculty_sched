@@ -1,9 +1,18 @@
 from django.urls import path
 from .views import FacultyWorkloadView, TeachingDeleteView, TeachingDetailView, TeachingFormView, TeachingListView
+from .balancing_views import (
+    BalancingAcceptView, BalancingDiscardView, BalancingRequestView,
+    BalancingRunDetailView, BalancingRunListView,
+)
 
 app_name = "workloads"
 urlpatterns = [
     path("", TeachingListView.as_view(), name="monitor"),
+    path("balancing/", BalancingRequestView.as_view(), name="balancing"),
+    path("balancing/runs/", BalancingRunListView.as_view(), name="balancing-runs"),
+    path("balancing/runs/<int:pk>/", BalancingRunDetailView.as_view(), name="balancing-run-detail"),
+    path("balancing/runs/<int:pk>/accept/", BalancingAcceptView.as_view(), name="balancing-run-accept"),
+    path("balancing/runs/<int:pk>/discard/", BalancingDiscardView.as_view(), name="balancing-run-discard"),
     path("faculty/<int:pk>/", FacultyWorkloadView.as_view(), name="faculty"),
     path("faculty/<int:faculty_pk>/availability/", TeachingListView.as_view(section="availability"), name="faculty-availability"),
 ]

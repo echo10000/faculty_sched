@@ -44,6 +44,11 @@ def navigation(request):
     if authorized:
         match = request.resolver_match
         special = []
+        if user.has_perm("workloads.generate_workloadrecommendation") and user.has_perm("academics.view_academicterm"):
+            special.append(("Workload balancing", "workloads:balancing", {"balancing"}))
+        if user.has_perm("workloads.view_workloadrecommendationrun") and user.has_perm("academics.view_academicterm"):
+            special.append(("Recommendation history", "workloads:balancing-runs", {
+                "balancing-runs", "balancing-run-detail", "balancing-run-accept", "balancing-run-discard"}))
         if all(user.has_perm(permission) for permission in GENERATION_PERMISSIONS):
             special.append(("Automated generator", "timetabling:generator", {"generator"}))
         if user.has_perm("timetabling.view_schedulegenerationrun") and user.has_perm("academics.view_academicterm"):
@@ -51,7 +56,7 @@ def navigation(request):
                 "generation-runs", "generation-run-detail", "generation-run-accept", "generation-run-discard"}))
         for label, route, names in special:
             links.append({"label": label, "route": route,
-                          "active": bool(match and match.namespace == "timetabling" and match.url_name in names)})
+                          "active": bool(match and match.namespace == route.split(":")[0] and match.url_name in names)})
     name = SystemSetting.objects.filter(key="institution_name").values_list("value", flat=True).first() or settings.INSTITUTION_NAME
     scope = "Institution-wide" if user.is_authenticated and is_system_admin(user) else str(profile.department or profile.college) if profile else "No assigned scope"
     return {
