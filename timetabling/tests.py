@@ -250,7 +250,8 @@ class IntegrationTests(TimetableFixture):
             counts = Schedule.objects.count(), ScheduleEntry.objects.count()
             call_command("seed_timetables", stdout=StringIO())
             self.assertEqual(counts, (Schedule.objects.count(), ScheduleEntry.objects.count()))
-            self.assertEqual(counts, (3, 4))
+            self.assertEqual(counts, (4, 4))
+            self.assertFalse(Schedule.objects.get(name="Example generator workspace").entries.exists())
             for entry in ScheduleEntry.objects.all():
                 self.assertFalse([c for c in detect_entry_conflicts(entry) if c.severity == "ERROR"])
 
