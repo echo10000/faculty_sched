@@ -26,6 +26,7 @@ class FakeSolver:
         self.wall_time = 1.25
         self.num_branches = 7
         self.num_conflicts = 3
+        self.best_objective_bound = 0.0
         self.value_reads = 0
 
     def solve(self, model):
@@ -291,17 +292,17 @@ class HardConstraintSolverTests(SimpleTestCase):
         self.assertEqual(result.proposals, ())
         self.assertEqual(result.statistics.generated_meeting_count, 0)
 
-    def test_fixed_meetings_do_not_add_variables_or_constraints(self):
+    def test_fixed_meetings_are_scored_after_candidate_prefiltering(self):
         demand = self.demand()
-        candidate = self.candidate(demand)
+        candidate = self.candidate(demand, start_slot=2, end_slot=4)
         fixed = FixedMeeting(
             assignment_id=999,
             faculty_id=candidate.faculty_id,
             section_id=candidate.section_id,
             room_id=candidate.room_id,
             day_of_week=candidate.day_of_week,
-            start_slot=candidate.start_slot,
-            end_slot=candidate.end_slot,
+            start_slot=0,
+            end_slot=2,
             meeting_type="lecture",
             counts_for_distribution=False,
         )
@@ -315,7 +316,9 @@ class HardConstraintSolverTests(SimpleTestCase):
         )
 
         self.assertIn(result.raw_status, {"OPTIMAL", "FEASIBLE"})
-        self.assertEqual(result.statistics.variable_count, 1)
+        self.assertEqual(result.statistics.variable_count, 13)
+        self.assertEqual(result.penalties.faculty_gap, 0)
+        self.assertEqual(result.penalties.section_gap, 0)
 
     def test_maps_each_cp_sat_status_without_collapsing_it(self):
         demand = self.demand()
@@ -358,6 +361,18 @@ class HardConstraintSolverTests(SimpleTestCase):
                 )
 
                 self.assertEqual(result.proposals, ())
+                self.assertIsNone(result.objective_value)
+                self.assertIsNone(result.best_bound)
+                self.assertEqual(
+                    asdict(result.penalties),
+                    {
+                        "faculty_preference": 0,
+                        "faculty_gap": 0,
+                        "section_gap": 0,
+                        "meeting_distribution": 0,
+                        "room_fit": 0,
+                    },
+                )
                 self.assertEqual(fake.value_reads, 0)
 
     def test_success_reconstructs_every_proposed_meeting_in_candidate_order(self):
@@ -443,15 +458,15 @@ class HardConstraintSolverTests(SimpleTestCase):
                 "branches": 7,
                 "conflicts": 3,
                 "candidate_count": 1,
-                "variable_count": 1,
+                "variable_count": 13,
                 "generated_meeting_count": 1,
                 "random_seed": 29,
                 "worker_count": 4,
                 "time_limit_seconds": 13,
             },
         )
-        self.assertIsNone(result.objective_value)
-        self.assertIsNone(result.best_bound)
+        self.assertEqual(result.objective_value, 0)
+        self.assertEqual(result.best_bound, 0.0)
         self.assertEqual(
             asdict(result.penalties),
             {
