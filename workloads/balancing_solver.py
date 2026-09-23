@@ -273,10 +273,33 @@ def solve_balancing(data: BalancingInput) -> BalancingResult:
     selected = tuple(
         candidate for candidate, variable in choices if solver.boolean_value(variable)
     )
+    # CP-SAT's exposed objective is a float. Recompute the integer score from
+    # the selected options so a large but valid int64 objective stays exact.
+    final_loads = {
+        member.faculty_id: member.baseline_load_scaled for member in data.faculty
+    }
+    for candidate in selected:
+        for share in candidate.shares:
+            final_loads[share.faculty_id] += share.contribution_scaled
+    normalized_deviation = sum(
+        abs(final_loads[faculty_id] - member.target_load_scaled)
+        * _UTILIZATION_SCALE
+        // member.target_load_scaled
+        for faculty_id, member in faculty_by_id.items()
+    )
+    primary_score = (
+        _BALANCE_WEIGHT * normalized_deviation
+        + _CHANGE_PENALTY * sum(candidate.changed for candidate in selected)
+    )
+    objective_value = (
+        primary_score * (qualification_span + 1)
+        + qualification_span
+        - sum(candidate.qualification_match_count for candidate in selected)
+    )
     return BalancingResult(
         raw_status=raw_status,
         chosen_options=selected,
-        objective_value=round(solver.objective_value),
+        objective_value=objective_value,
         best_bound=float(solver.best_objective_bound),
         statistics=statistics,
     )
