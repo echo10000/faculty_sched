@@ -1,8 +1,12 @@
 from decimal import Decimal
+import uuid
 
 from django.conf import settings
+from django.contrib.postgres.constraints import ExclusionConstraint
+from django.contrib.postgres.fields import DateTimeRangeField
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
+from django.db.models import Func
 from django.db.models.functions import Lower
 from django.utils import timezone
 
@@ -76,27 +80,84 @@ class OfferingRequirement(CheckedRecord):
         return f"{self.subject_offering} · {self.section.code}"
 
 
+def new_revision_token():
+    return uuid.uuid4().hex
+
+
+class ScheduleFamily(CheckedRecord):
+    academic_term = models.ForeignKey("academics.AcademicTerm", on_delete=models.PROTECT)
+    department = models.ForeignKey("core.Department", on_delete=models.PROTECT)
+    name = models.CharField(max_length=150)
+
+    class Meta:
+        ordering = ["-academic_term__start_date", "name", "pk"]
+
+    def clean(self):
+        fixed_identity(self, ("academic_term_id", "department_id"))
+
+    def __str__(self):
+        return f"{self.name} · {self.academic_term.code}"
+
+
 class Schedule(CheckedRecord):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
         VALIDATED = "validated", "Validated"
+        UNDER_REVIEW = "under_review", "Under review"
+        NEEDS_REVISION = "needs_revision", "Needs revision"
+        APPROVED = "approved", "Approved"
 
     academic_term = models.ForeignKey("academics.AcademicTerm", on_delete=models.PROTECT)
     department = models.ForeignKey("core.Department", on_delete=models.PROTECT)
+    family = models.ForeignKey(ScheduleFamily, on_delete=models.PROTECT, related_name="versions")
+    version_number = models.PositiveIntegerField(default=1)
+    parent_version = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="revisions")
+    revision_token = models.CharField(max_length=32, default=new_revision_token, editable=False)
     name = models.CharField(max_length=150)
-    status = models.CharField(max_length=12, choices=Status.choices, default=Status.DRAFT, editable=False)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT, editable=False)
     validated_signature = models.CharField(max_length=64, blank=True, editable=False)
+    submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="submitted_schedules")
+    submitted_at = models.DateTimeField(null=True, blank=True, editable=False)
+    submitted_revision_token = models.CharField(max_length=32, blank=True, editable=False)
+    submitted_signature = models.CharField(max_length=64, blank=True, editable=False)
+    submitted_warning_codes = models.JSONField(default=list, editable=False)
+    submitted_active_schedule = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="+", editable=False)
 
     class Meta:
         ordering = ["-academic_term__start_date", "name", "pk"]
         permissions = [
             ("validate_schedule", "Can validate a manual schedule"),
             ("generate_schedule", "Can generate a schedule"),
+            ("submit_schedule", "Can submit a schedule for review"),
+            ("review_schedule", "Can review a submitted schedule"),
+            ("approve_schedule", "Can approve a submitted schedule"),
+            ("revise_schedule", "Can revise an approved schedule"),
         ]
-        constraints = [models.CheckConstraint(condition=models.Q(status__in=["draft", "validated"]), name="manual_schedule_known_status")]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(status__in=["draft", "validated", "under_review", "needs_revision", "approved"]), name="manual_schedule_known_status"),
+            models.CheckConstraint(condition=models.Q(version_number__gt=0), name="schedule_version_positive"),
+            models.UniqueConstraint(fields=["family", "version_number"], name="schedule_family_version_unique"),
+        ]
 
     def clean(self):
         fixed_identity(self, ("academic_term_id", "department_id"))
+        if self.family_id and (self.family.academic_term_id != self.academic_term_id or self.family.department_id != self.department_id):
+            raise ValidationError({"family": "Schedule family must match the term and department."})
+        if self.parent_version_id and self.parent_version.family_id != self.family_id:
+            raise ValidationError({"parent_version": "Parent version must belong to the same family."})
+
+    def save(self, *args, **kwargs):
+        if not self.family_id:
+            from django.db import transaction
+            with transaction.atomic():
+                self.family = ScheduleFamily.objects.create(
+                    academic_term_id=self.academic_term_id,
+                    department_id=self.department_id,
+                    name=self.name,
+                    created_by=self.created_by,
+                )
+                return super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.name} · {self.academic_term.code}"
@@ -505,3 +566,74 @@ class ScheduleGenerationRun(TrackedModel):
 
     def __str__(self):
         return f"{self.schedule} · {self.get_strategy_display()} · {self.status}"
+
+
+class ScheduleWorkflowEvent(models.Model):
+    class Action(models.TextChoices):
+        SUBMITTED = "submitted", "Submitted"
+        RESUBMITTED = "resubmitted", "Resubmitted"
+        RETURNED = "returned", "Returned for revision"
+        APPROVED = "approved", "Approved"
+        REPLACED = "replaced", "Official schedule replaced"
+        REVISED = "revised", "Revision created"
+
+    schedule = models.ForeignKey(Schedule, on_delete=models.PROTECT, related_name="workflow_events")
+    action = models.CharField(max_length=16, choices=Action.choices)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="schedule_workflow_events")
+    revision_token = models.CharField(max_length=32)
+    remarks = models.TextField(blank=True)
+    warning_codes = models.JSONField(default=list)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        constraints = [models.CheckConstraint(condition=models.Q(action__in=["submitted", "resubmitted", "returned", "approved", "replaced", "revised"]), name="schedule_workflow_known_action")]
+
+
+class ScheduleApprovalSnapshot(models.Model):
+    schedule = models.OneToOneField(Schedule, on_delete=models.PROTECT, related_name="approval_snapshot")
+    revision_token = models.CharField(max_length=32)
+    dependency_signature = models.CharField(max_length=64)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="schedule_approval_snapshots")
+    approved_at = models.DateTimeField(default=timezone.now, editable=False)
+    payload = models.JSONField()
+
+
+class ActiveSchedule(models.Model):
+    academic_term = models.ForeignKey("academics.AcademicTerm", on_delete=models.PROTECT)
+    department = models.ForeignKey("core.Department", on_delete=models.PROTECT)
+    schedule = models.ForeignKey(Schedule, on_delete=models.PROTECT, related_name="active_selections")
+    selected_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="selected_official_schedules")
+    selected_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["academic_term", "department"], name="active_schedule_term_department_unique")]
+
+
+class BookingTimeRange(Func):
+    output_field = DateTimeRangeField()
+
+    def as_sql(self, compiler, connection, **extra_context):
+        start, start_params = compiler.compile(self.source_expressions[0])
+        end, end_params = compiler.compile(self.source_expressions[1])
+        return f"tsrange(DATE '2000-01-01' + {start}, DATE '2000-01-01' + {end}, '[)')", [*start_params, *end_params]
+
+
+class OfficialResourceBooking(models.Model):
+    schedule_entry = models.ForeignKey(ScheduleEntry, on_delete=models.PROTECT, related_name="official_bookings")
+    booking_date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    faculty = models.ForeignKey("faculty.Faculty", on_delete=models.PROTECT)
+    room = models.ForeignKey("scheduling.Room", on_delete=models.PROTECT)
+    section = models.ForeignKey(ClassSection, on_delete=models.PROTECT)
+
+    class Meta:
+        ordering = ["booking_date", "start_time", "pk"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(start_time__lt=models.F("end_time")), name="official_booking_ordered_times"),
+            models.UniqueConstraint(fields=["schedule_entry", "booking_date"], name="official_booking_entry_date_unique"),
+            ExclusionConstraint(name="official_faculty_booking_no_overlap", expressions=[("faculty", "="), ("booking_date", "="), (BookingTimeRange("start_time", "end_time"), "&&")]),
+            ExclusionConstraint(name="official_room_booking_no_overlap", expressions=[("room", "="), ("booking_date", "="), (BookingTimeRange("start_time", "end_time"), "&&")]),
+            ExclusionConstraint(name="official_section_booking_no_overlap", expressions=[("section", "="), ("booking_date", "="), (BookingTimeRange("start_time", "end_time"), "&&")]),
+        ]

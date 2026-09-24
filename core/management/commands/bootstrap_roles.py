@@ -2,7 +2,11 @@ from django.contrib.auth.models import Group, Permission
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from accounts.permissions import READ_PERMISSIONS, RESOURCE_PERMISSIONS, TEACHING_PERMISSIONS, TIMETABLE_PERMISSIONS
+from accounts.permissions import (
+    READ_PERMISSIONS, RESOURCE_PERMISSIONS, TEACHING_PERMISSIONS,
+    TIMETABLE_PERMISSIONS, SCHEDULE_EDITOR_PERMISSIONS,
+    SCHEDULE_REVIEWER_PERMISSIONS, SCHEDULE_APPROVER_PERMISSIONS,
+)
 
 
 class Command(BaseCommand):
@@ -11,8 +15,12 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         for name, permissions in {
-            "College Dean": READ_PERMISSIONS | RESOURCE_PERMISSIONS | TEACHING_PERMISSIONS | TIMETABLE_PERMISSIONS,
-            "Department Chair": READ_PERMISSIONS | RESOURCE_PERMISSIONS | TEACHING_PERMISSIONS | TIMETABLE_PERMISSIONS,
+            "College Dean": (READ_PERMISSIONS | RESOURCE_PERMISSIONS | TEACHING_PERMISSIONS
+                             | TIMETABLE_PERMISSIONS | SCHEDULE_EDITOR_PERMISSIONS
+                             | SCHEDULE_REVIEWER_PERMISSIONS | SCHEDULE_APPROVER_PERMISSIONS),
+            "Department Chair": (READ_PERMISSIONS | RESOURCE_PERMISSIONS | TEACHING_PERMISSIONS
+                                  | TIMETABLE_PERMISSIONS | SCHEDULE_EDITOR_PERMISSIONS
+                                  | SCHEDULE_REVIEWER_PERMISSIONS),
             "Authorized Staff": {"core.view_dashboard"},
             "System Admin": READ_PERMISSIONS | {"core.view_systemsetting", "audit.view_auditlog"},
         }.items():

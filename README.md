@@ -2,7 +2,7 @@
 
 Faculty Workload and Academic Scheduling System for Negros Oriental State University - Bais Campus (NORSU-BSC).
 
-**Phases 1–6 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
+**Phases 1–7 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations, human schedule approval, active official selection, dated resource bookings and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
 
 See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#16-phase-6-implementation-record) for the completed phases, architecture, migration decisions and later roadmap.
 
@@ -451,3 +451,37 @@ On the prepared local PostgreSQL development database, run:
 For verification, run `manage.py test --settings=config.test_settings --noinput`, then `manage.py check`, `manage.py makemigrations --check --dry-run`, `python -m pip check`, and `git diff --check`. Run PostgreSQL test commands sequentially because they share a test database. `--with-balancing` includes the Phase 5 examples and adds a separate `DEMO-BALANCING` term with two active same-department faculty, two unscheduled offerings, complete current shares, and effective targets/weights. It is DEBUG-only and idempotent; it never generates a recommendation or resets accepted assignments. `manage.py seed_balancing` also runs independently.
 
 Final Phase 6 verification on 2026-09-23: **376 PostgreSQL tests passed in 289.295 seconds** (332 existing and 44 Phase 6 tests). Both additive migrations applied to the prepared development database. Django system and migration-drift checks passed; `pip check` found no broken requirements. A signed-in dean generated and accepted a real `OPTIMAL` recommendation: one of two offerings moved to the second faculty member, the displayed utilization spread improved from 100 to 0 percentage points, and no timetable was generated. The repeat seed preserved the two accepted teaching assignments. Desktop at 1440px and mobile at 390px showed no horizontal page overflow; the mobile sidebar exposed balancing/history, and the temporary viewport override was reset.
+
+## Phase 7 human review and official schedules
+
+Each existing `timetabling.Schedule` is now a numbered version in a `ScheduleFamily`. A version retains its own timetable entries, validation status and revision token. Migration preserves every existing schedule and entry ID and each draft/validated status; it assigns each existing schedule a family and version 1 without inventing submissions, approvals, snapshots, active selections or bookings. A new schedule starts as an editable draft. The states are draft, validated, under review, needs revision and approved. A generated proposal remains a proposal until explicitly accepted into an editable version; generation never submits or approves it.
+
+An editor submits an eligible version through **Review and actions** on its schedule page. The form includes the current revision token and requires explicit acknowledgment of any nonblocking Phase 4 warning codes. Submission repeats the authoritative conflict validation. A scoped reviewer sees the version in **Pending review**, may return it with remarks, or may approve if granted approval permission and different from the submitter. Approval again checks the current token, input signature, Phase 4 findings, warning acknowledgments and active official occupancy in one transaction. Stale or conflicting submissions remain unapproved.
+
+Approval stores an append-only decision history and a frozen JSON snapshot containing approved timetable entries and their faculty, subject, section and room labels. The snapshot supports historical display after source labels change. An explicit `ActiveSchedule` selects the current official version for each academic term and department. Only this selection has dated `OfficialResourceBooking` rows for faculty, rooms and sections. PostgreSQL exclusion constraints reject overlapping bookings on the same date using half-open times, including across departments and overlapping terms. Booking error messages do not expose another department's private schedule details.
+
+An approved version is read-only. **Revise schedule** clones its meetings into a new editable version in the same family; the old approved version remains current official while the revision is prepared. Approval of the replacement atomically writes the new snapshot, history, audit and bookings, changes the active selection and releases the old active booking rows. A failure rolls the whole replacement back, retaining the old official version and reservations. Earlier snapshots and workflow history remain available through **Version history**.
+
+| Route | Purpose |
+| --- | --- |
+| `/timetables/my-schedules/` | Scoped schedules created or submitted by the current user |
+| `/timetables/review/` | Scoped pending review queue for reviewers |
+| `/timetables/official/` | Current official schedules in the user's scope |
+| `/timetables/schedules/<id>/review/` | Version, findings, snapshot and available actions |
+| `/timetables/schedules/<id>/history/` | Family versions and immutable workflow events |
+
+Submit, return, approve and revise URLs accept CSRF-protected POST only. Deans have college scope and approval permission; chairs have department scope and may submit/review but cannot approve by default. System administrators have institution-wide capabilities. Authorized Staff require explicit grants, which never widen their assigned organization scope. The server enforces permissions and lifecycle even for direct URL requests. Schedule changes and workflow decisions are recorded by the transactional audit service.
+
+The optional development seed `seed_foundation --create-users --with-review` includes the timetable examples and submits the fictional manual schedule as `dev.chair`. It is DEBUG-only and idempotent, and it creates no approval, snapshot, official selection or booking. Run `seed_review` independently after `seed_foundation --create-users --with-timetables` if desired. Edited example data that cannot pass current validation causes a seed error rather than a fabricated decision.
+
+```powershell
+.\venv\Scripts\python.exe scripts\dev_database.py start
+.\venv\Scripts\python.exe manage.py migrate
+.\venv\Scripts\python.exe manage.py seed_foundation --create-users --with-review
+.\venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+.\venv\Scripts\python.exe manage.py test --settings=config.test_settings --noinput
+```
+
+Phase 7 verification on 2026-09-24: **403 PostgreSQL tests passed sequentially**, including all 376 Phase 6 tests and 27 new regression tests. Migrations `timetabling.0004`–`0006` applied; the optional review seed ran twice without creating duplicate history or an official booking. Desktop (1440px) and mobile (390px) browser checks covered the chair's submitted schedule, the dean's decision form and mobile navigation without horizontal overflow. The current dated booking expansion treats every matching weekday between term dates as instructional because no holiday/date-exception model exists.
+
+Run the full PostgreSQL suite sequentially. `manage.py check`, `manage.py makemigrations --check --dry-run`, `python -m pip check` and `git diff --check` remain the verification commands. Phase 8 dashboard expansion has not started.

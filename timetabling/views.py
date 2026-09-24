@@ -19,7 +19,7 @@ from resources.selectors import available_resources
 from scheduling.models import Room
 from .models import (Schedule, ScheduleEntry, ClassSection, OfferingRequirement,
                      RoomUnavailability, AssignmentMeetingRequirement,
-                     SchedulingConfiguration, ScheduleGenerationRun)
+                     SchedulingConfiguration, ScheduleGenerationRun, ActiveSchedule)
 from .forms import (ScheduleForm, SectionForm, RequirementForm, ClosureForm, EntryForm,
                     TimetableFilter, MeetingRequirementForm, SchedulingConfigurationForm,
                     GenerationRequestForm)
@@ -70,7 +70,9 @@ class RecordList(TimetableMixin, View):
             keep = {"academic_term", "room", "day_of_week"}
         form.fields = {k: v for k, v in form.fields.items() if k in keep}
         qs = scoped(request.user, model.objects.all())
-        if self.section == "meeting-requirements":
+        if self.section == "schedules":
+            qs = qs.select_related("family", "academic_term", "department")
+        elif self.section == "meeting-requirements":
             qs = qs.select_related("assignment__faculty", "assignment__subject_offering__subject",
                                    "assignment__subject_offering__academic_term", "assignment__subject_offering__department")
         elif self.section == "configurations":
@@ -92,11 +94,15 @@ class RecordList(TimetableMixin, View):
         if not qs.ordered:
             qs = qs.order_by("pk")
         page = Paginator(qs, 20).get_page(request.GET.get("page"))
+        official_ids = set(ActiveSchedule.objects.filter(
+            schedule_id__in=[obj.pk for obj in page if isinstance(obj, Schedule)],
+        ).values_list("schedule_id", flat=True)) if self.section == "schedules" else set()
         for obj in page:
             obj.owner_label = getattr(obj, "department", None) or getattr(obj, "college", None) or "Institution"
             obj.detail_url = reverse("timetabling:schedules-detail", args=[obj.pk]) if self.section == "schedules" else reverse(f"timetabling:{self.section}-edit", args=[obj.pk])
             if isinstance(obj, Schedule):
-                obj.display_status = effective_status(obj)
+                obj.display_status = effective_status(obj) if obj.status in ("draft", "validated") else obj.status
+                obj.is_official = obj.pk in official_ids
         query = request.GET.copy()
         query.pop("page", None)
         return render(request, "timetabling/list.html", {**self.context(), "page_obj": page, "page_query": query.urlencode(), "filter_form": form})
@@ -107,7 +113,10 @@ class RecordForm(TimetableMixin, View):
 
     def get_original(self, request, pk):
         model = SPECS[self.section][0]
-        return get_object_or_404(scoped(request.user, model.objects.all()), pk=pk) if pk else None
+        original = get_object_or_404(scoped(request.user, model.objects.all()), pk=pk) if pk else None
+        if isinstance(original, Schedule) and original.status not in ("draft", "validated", "needs_revision"):
+            raise PermissionDenied("This schedule version is read-only. Create a revision to edit it.")
+        return original
 
     def selected_term(self, request, obj):
         if obj:
@@ -147,12 +156,23 @@ class ScheduleDetail(TimetableMixin, View):
     def get(self, request, pk):
         schedule = get_schedule(request.user, pk)
         authorized(request.user, ScheduleEntry)
+        editable = schedule.status in ("draft", "validated", "needs_revision")
+        active = ActiveSchedule.objects.filter(
+            academic_term_id=schedule.academic_term_id,
+            department_id=schedule.department_id,
+        ).first()
+        is_official = bool(active and active.schedule_id == schedule.pk)
         form = TimetableFilter(request.GET, user=request.user)
         entries = filtered_entries(request.user, schedule, form)
-        report = summarize(get_schedule_conflicts(schedule, user=request.user), schedule.entries.count()) if self.mode == "conflicts" else None
-        return render(request, "timetabling/detail.html", {**self.context(), "schedule": schedule, "status": effective_status(schedule),
+        report = summarize(get_schedule_conflicts(
+            schedule, user=request.user,
+            excluded_schedule_ids=(active.schedule_id,) if active and not is_official else (),
+        ), schedule.entries.count()) if self.mode == "conflicts" else None
+        display_status = effective_status(schedule) if editable and schedule.status in ("draft", "validated") else schedule.status
+        return render(request, "timetabling/detail.html", {**self.context(), "schedule": schedule, "status": display_status,
             "filter_form": form, "entries": entries, "week": week_columns(entries), "mode": self.mode, "report": report,
-            "can_generate": _can_generate(request.user), "can_view_generation_runs": _can_view_runs(request.user)})
+            "can_generate": editable and _can_generate(request.user), "can_view_generation_runs": _can_view_runs(request.user),
+            "can_edit_version": editable, "is_official": is_official})
 
 
 class EntryEditor(TimetableMixin, View):
@@ -162,6 +182,8 @@ class EntryEditor(TimetableMixin, View):
         if request.user.is_authenticated:
             authorized(request.user, ScheduleEntry, "change" if kwargs.get("pk") else "add")
             self.schedule = get_schedule(request.user, kwargs["schedule_id"])
+            if self.schedule.status not in ("draft", "validated", "needs_revision"):
+                raise PermissionDenied("This schedule version is read-only. Create a revision to edit it.")
         return super().dispatch(request, *args, **kwargs)
 
     def original(self, request, pk):
@@ -208,6 +230,8 @@ class EntryDelete(TimetableMixin, View):
         if request.user.is_authenticated:
             authorized(request.user, ScheduleEntry, "delete")
             self.schedule = get_schedule(request.user, kwargs["schedule_id"])
+            if self.schedule.status not in ("draft", "validated", "needs_revision"):
+                raise PermissionDenied("This schedule version is read-only. Create a revision to edit it.")
             self.entry = get_object_or_404(scoped(request.user, entry_queryset()).filter(schedule=self.schedule), pk=kwargs["pk"])
         return super().dispatch(request, *args, **kwargs)
 
@@ -286,6 +310,8 @@ class GeneratorView(ProtectedViewMixin, View):
                 selected = get_schedule(request.user, int(raw_schedule), action="change")
             except (TypeError, ValueError):
                 raise Http404("Invalid schedule")
+            if selected.status not in ("draft", "validated", "needs_revision"):
+                raise PermissionDenied("This schedule version is read-only. Create a revision before generating.")
             configuration = scoped(request.user, SchedulingConfiguration.objects.filter(
                 academic_term_id=selected.academic_term_id, department_id=selected.department_id,
             )).first()

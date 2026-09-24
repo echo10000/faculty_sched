@@ -20,7 +20,7 @@ from .generation_inputs import (
 from .generation_validation import _resolve_generation_contract, serialize_proposals
 from .locking import scheduling_lock
 from .models import ScheduleEntry, ScheduleGenerationRun
-from .mutations import mark_draft
+from .mutations import mark_draft, require_editable
 from .queries import get_schedule, scoped
 
 
@@ -201,6 +201,7 @@ def request_generation(*, user, schedule_id, strategy, overrides):
     require_generation_access(user, strategy)
     with transaction.atomic():
         schedule = get_schedule(user, schedule_id, action="change")
+        require_editable(schedule)
         run = ScheduleGenerationRun.objects.create(
             schedule=schedule, academic_term=schedule.academic_term,
             department=schedule.department, requested_by=user,
@@ -294,6 +295,8 @@ def _accept_locked(*, user, run_id):
         )
         conflicts = list(resolved.conflicts)
         schedule = get_schedule(user, run.schedule_id, action="change")
+        if schedule.status not in (schedule.Status.DRAFT, schedule.Status.VALIDATED, schedule.Status.NEEDS_REVISION):
+            raise StaleProposal("The schedule version is no longer editable.")
         if not _has_errors(conflicts):
             conflicts.extend(validate_candidate_schedule(
                 schedule, retained_entries=resolved.retained_entries,

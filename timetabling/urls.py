@@ -1,10 +1,20 @@
 from django.urls import path
 from . import views
+from . import workflow_views
 
 app_name = "timetabling"
 urlpatterns = [
     path("", views.RecordList.as_view(), name="schedules"),
+    path("my-schedules/", workflow_views.my_submissions, name="my-schedules"),
+    path("review/", workflow_views.review_queue, name="review-queue"),
+    path("official/", workflow_views.official_schedules, name="official-schedules"),
     path("schedules/<int:pk>/", views.ScheduleDetail.as_view(), name="schedules-detail"),
+    path("schedules/<int:pk>/review/", workflow_views.schedule_review, name="schedule-review"),
+    path("schedules/<int:pk>/history/", workflow_views.schedule_history, name="schedule-history"),
+    path("schedules/<int:pk>/submit/", workflow_views.transition, {"action": "submit"}, name="schedule-submit"),
+    path("schedules/<int:pk>/return/", workflow_views.transition, {"action": "return"}, name="schedule-return"),
+    path("schedules/<int:pk>/approve/", workflow_views.transition, {"action": "approve"}, name="schedule-approve"),
+    path("schedules/<int:pk>/revise/", workflow_views.transition, {"action": "revise"}, name="schedule-revise"),
     path("schedules/<int:pk>/timetable/", views.ScheduleDetail.as_view(mode="timetable"), name="timetable"),
     path("schedules/<int:pk>/conflicts/", views.ScheduleDetail.as_view(mode="conflicts"), name="conflicts"),
     path("schedules/<int:pk>/validate/", views.ValidateView.as_view(), name="validate"),

@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from uuid import uuid4
 
 from audit.services import record_event
 from workloads.models import validate_active_term
@@ -26,11 +27,20 @@ def event(action, user, obj, before=None, **details):
 
 
 def mark_draft(schedule, user):
-    if schedule.status != Schedule.Status.DRAFT or schedule.validated_signature:
-        before = snapshot(schedule)
-        schedule.status, schedule.validated_signature = Schedule.Status.DRAFT, ""
-        schedule.save()
+    require_editable(schedule)
+    before = snapshot(schedule)
+    if schedule.status == Schedule.Status.VALIDATED:
+        schedule.status = Schedule.Status.DRAFT
+    schedule.validated_signature = ""
+    schedule.revision_token = uuid4().hex
+    schedule.save(update_fields=["status", "validated_signature", "revision_token", "updated_at"])
+    if before["status"] != schedule.status:
         event("schedule.status_changed", user, schedule, before)
+
+
+def require_editable(schedule):
+    if schedule.status not in (Schedule.Status.DRAFT, Schedule.Status.VALIDATED, Schedule.Status.NEEDS_REVISION):
+        raise ValidationError("This schedule version is read-only. Revise an approved version to make changes.")
 
 
 def effective_status(schedule):
@@ -43,6 +53,8 @@ def save_record(*, user, form_class, data, pk=None, term=None):
     authorized(user, model, "change" if pk else "add")
     mutation_lock()
     original = get_object_or_404(scoped(user, model.objects.select_for_update()), pk=pk) if pk else None
+    if model is Schedule and original:
+        require_editable(original)
     before = snapshot(original) if original else {}
     form = form_class(data, user=user, instance=original, term=term)
     if not form.is_valid():
@@ -52,7 +64,10 @@ def save_record(*, user, form_class, data, pk=None, term=None):
     if not pk:
         obj.created_by = user
     if model is Schedule:
-        obj.status, obj.validated_signature = "draft", ""
+        if original:
+            obj.status = Schedule.Status.NEEDS_REVISION if original.status == Schedule.Status.NEEDS_REVISION else Schedule.Status.DRAFT
+            obj.revision_token = uuid4().hex
+        obj.validated_signature = ""
     obj.save()
     event(f"{model._meta.model_name}.{'updated' if pk else 'created'}", user, obj, before, notes_changed="notes" in form.changed_data)
     if model is Schedule and before.get("status") == "validated":
@@ -64,7 +79,8 @@ def save_record(*, user, form_class, data, pk=None, term=None):
 def save_entry(*, user, schedule_id, data, pk=None, preview=False):
     authorized(user, ScheduleEntry, "change" if pk else "add")
     mutation_lock()
-    schedule = get_schedule(user, schedule_id)
+    schedule = get_schedule(user, schedule_id, lock=True)
+    require_editable(schedule)
     validate_active_term(schedule.academic_term)
     original = get_object_or_404(scoped(user, ScheduleEntry.objects.select_for_update()).filter(schedule=schedule), pk=pk) if pk else None
     before = snapshot(original) if original else {}
@@ -89,7 +105,8 @@ def save_entry(*, user, schedule_id, data, pk=None, preview=False):
 def remove_entry(*, user, schedule_id, pk):
     authorized(user, ScheduleEntry, "delete")
     mutation_lock()
-    schedule = get_schedule(user, schedule_id)
+    schedule = get_schedule(user, schedule_id, lock=True)
+    require_editable(schedule)
     entry = get_object_or_404(scoped(user, ScheduleEntry.objects.select_for_update()).filter(schedule=schedule), pk=pk)
     event("scheduleentry.removed", user, entry, snapshot(entry))
     entry.delete()
@@ -108,7 +125,8 @@ def remove_closure(*, user, pk):
 @transaction.atomic
 def validate_schedule(*, user, schedule_id):
     mutation_lock()
-    schedule = get_schedule(user, schedule_id, "validate")
+    schedule = get_schedule(user, schedule_id, "validate", lock=True)
+    require_editable(schedule)
     authorized(user, ScheduleEntry)
     before = snapshot(schedule)
     starting_signature = dependency_signature(schedule)

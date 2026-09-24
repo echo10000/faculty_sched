@@ -54,6 +54,12 @@ def navigation(request):
         if user.has_perm("timetabling.view_schedulegenerationrun") and user.has_perm("academics.view_academicterm"):
             special.append(("Generation history", "timetabling:generation-runs", {
                 "generation-runs", "generation-run-detail", "generation-run-accept", "generation-run-discard"}))
+        if user.has_perm("timetabling.submit_schedule") and user.has_perm("timetabling.view_schedule") and user.has_perm("academics.view_academicterm"):
+            special.append(("My schedules", "timetabling:my-schedules", {"my-schedules"}))
+        if user.has_perm("timetabling.review_schedule") and user.has_perm("timetabling.view_schedule") and user.has_perm("academics.view_academicterm"):
+            special.append(("Pending review", "timetabling:review-queue", {"review-queue"}))
+        if user.has_perm("timetabling.view_schedule") and user.has_perm("academics.view_academicterm"):
+            special.append(("Official schedules", "timetabling:official-schedules", {"official-schedules"}))
         for label, route, names in special:
             links.append({"label": label, "route": route,
                           "active": bool(match and match.namespace == route.split(":")[0] and match.url_name in names)})

@@ -475,6 +475,7 @@ def validate_candidate_schedule(
     retained_entries,
     proposed_entries,
     user=None,
+    excluded_schedule_ids=(),
 ) -> list[Conflict]:
     retained_entries = tuple(retained_entries)
     proposed_entries = tuple(proposed_entries)
@@ -487,6 +488,7 @@ def validate_candidate_schedule(
     occupancy = authoritative_occupancy(
         schedule,
         excluded_entry_ids=selected_entry_ids,
+        excluded_schedule_ids=excluded_schedule_ids,
     )
     peers = candidates + occupancy
     visible_entry_ids = _visible_entry_ids(user)
@@ -544,13 +546,14 @@ def validate_candidate_schedule(
     return result
 
 
-def get_schedule_conflicts(schedule, *, user=None):
+def get_schedule_conflicts(schedule, *, user=None, excluded_schedule_ids=()):
     entries = list(entry_queryset().filter(schedule=schedule))
     return validate_candidate_schedule(
         schedule,
         retained_entries=entries,
         proposed_entries=(),
         user=user,
+        excluded_schedule_ids=excluded_schedule_ids,
     )
 
 

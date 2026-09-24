@@ -153,6 +153,7 @@ class GenerationRequestForm(StyledFormMixin, forms.Form):
         self.fields["academic_term"].queryset = terms
         schedules = scoped(user, Schedule.objects.filter(
             academic_term__is_active=True, department__is_active=True,
+            status__in=(Schedule.Status.DRAFT, Schedule.Status.VALIDATED, Schedule.Status.NEEDS_REVISION),
         )).select_related("academic_term", "department")
         raw = (self.data if self.is_bound else self.initial).get("academic_term")
         if raw:

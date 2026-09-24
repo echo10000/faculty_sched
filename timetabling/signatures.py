@@ -9,7 +9,9 @@ from scheduling.models import Room
 from workloads.models import (
     FacultyAvailability,
     FacultySubjectAssignment,
+    FacultyTermCapacity,
     SubjectOffering,
+    WorkloadPolicy,
 )
 
 from .models import (
@@ -127,12 +129,16 @@ DEPENDENCY_FIELD_SPECS = (
             "department_id",
             "academic_term_id",
             "is_active",
+            "lecture_units",
+            "laboratory_units",
             "lecture_hours",
             "laboratory_hours",
         ),
     ),
     (Subject, ("id", "is_active", "required_room_type", "owning_department_id")),
-    (Faculty, ("id", "is_active", "home_department_id")),
+    (Faculty, ("id", "is_active", "home_department_id", "recommended_load", "maximum_load")),
+    (FacultyTermCapacity, ("id", "faculty_id", "academic_term_id", "recommended_load", "maximum_load", "enforce_maximum")),
+    (WorkloadPolicy, ("id", "academic_term_id", "college_id", "department_id", "recommended_load", "maximum_load", "lecture_weight", "laboratory_weight", "enforce_maximum")),
     (
         Room,
         (

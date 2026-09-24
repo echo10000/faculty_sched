@@ -44,6 +44,15 @@ TIMETABLE_PERMISSIONS |= {
     "timetabling.view_schedulegenerationrun",
 }
 
+# Human workflow grants are deliberately separate from timetable editing. In
+# particular, a chair's ability to submit a version never grants approval.
+SCHEDULE_EDITOR_PERMISSIONS = {
+    "timetabling.submit_schedule",
+    "timetabling.revise_schedule",
+}
+SCHEDULE_REVIEWER_PERMISSIONS = {"timetabling.review_schedule"}
+SCHEDULE_APPROVER_PERMISSIONS = {"timetabling.approve_schedule"}
+
 
 def profile_for(user):
     if not user.is_authenticated or not user.is_active:
@@ -73,7 +82,12 @@ def role_permissions(profile):
         from django.contrib.auth.models import Permission
         return {f"{app}.{code}" for app, code in Permission.objects.values_list("content_type__app_label", "codename")}
     if profile.role in (AdminProfile.Role.DEAN, AdminProfile.Role.DEPT_CHAIR):
-        return READ_PERMISSIONS | RESOURCE_PERMISSIONS | TEACHING_PERMISSIONS | TIMETABLE_PERMISSIONS | BALANCING_PERMISSIONS
+        permissions = (READ_PERMISSIONS | RESOURCE_PERMISSIONS | TEACHING_PERMISSIONS
+                       | TIMETABLE_PERMISSIONS | BALANCING_PERMISSIONS
+                       | SCHEDULE_EDITOR_PERMISSIONS | SCHEDULE_REVIEWER_PERMISSIONS)
+        if profile.role == AdminProfile.Role.DEAN:
+            permissions |= SCHEDULE_APPROVER_PERMISSIONS
+        return permissions
     return {"core.view_dashboard"}
 
 
