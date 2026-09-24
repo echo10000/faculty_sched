@@ -17,5 +17,6 @@ urlpatterns = [
     path("rooms/", include("resources.room_urls")),
     path("workloads/", include("workloads.urls")),
     path("timetables/", include("timetabling.urls")),
+    path("reports/", include("reporting.urls")),
 ]
 # Legacy workload assignment and scheduling URLs remain unmounted.

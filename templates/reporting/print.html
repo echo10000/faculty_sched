@@ -1,0 +1,43 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ report.title }} · CampusLoad</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <style>@page { size: A4 {% if report.orientation == 'landscape' %}landscape{% else %}portrait{% endif %}; margin: 14mm; }</style>
+</head>
+<body class="report-print-body">
+  <main class="report-print-page">
+    <header class="report-print-header">
+      <div class="report-print-brand">{{ institution_name|default:'CampusLoad' }}</div>
+      <p class="report-print-kicker">CampusLoad · Administrative report</p>
+      <h1>{{ report.title }}</h1>
+      <p class="report-print-source">{{ report.source_label }}</p>
+      <div class="report-print-stamp"><strong>Scope:</strong> {{ scope_label }}</div>
+    </header>
+
+    <section aria-label="Report metadata" class="report-print-context">
+      <dl class="report-print-meta">
+        {% for label, value in report.meta %}
+        <div><dt>{{ label }}</dt><dd{% if label == 'Status' %} class="report-status"{% endif %}>{{ value|default_if_none:'—' }}</dd></div>
+        {% endfor %}
+      </dl>
+    </section>
+
+    <section aria-label="Report results" class="report-print-results">
+      {% if report.rows %}
+      <table class="report-print-table">
+        <caption>{{ report.title }} results</caption>
+        <thead><tr>{% for header in report.headers %}<th scope="col">{{ header }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in report.rows %}<tr>{% for cell in row %}<td>{{ cell|default_if_none:'—' }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+      {% else %}
+      <p class="report-print-empty">{{ report.empty_message|default:'No records match the selected filters.' }}</p>
+      {% endif %}
+    </section>
+    <footer class="report-print-footer">CampusLoad · Faculty Workload &amp; Academic Scheduling</footer>
+  </main>
+</body>
+</html>

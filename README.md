@@ -2,9 +2,9 @@
 
 Faculty Workload and Academic Scheduling System for Negros Oriental State University - Bais Campus (NORSU-BSC).
 
-**Phases 1–8 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations, human schedule approval, active official selection, dated resource bookings, role-aware dashboard monitoring and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
+**Phases 1–9 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations, human schedule approval, active official selection, dated resource bookings, role-aware dashboard monitoring, administrative reporting and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
 
-See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#18-phase-8-implementation-record) for the completed phases, architecture, migration decisions and later roadmap.
+See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#19-phase-9-implementation-record) for the completed phases, architecture, migration decisions and later roadmap.
 
 ## Implemented foundation
 
@@ -15,7 +15,7 @@ See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#18-phase-8-implementation-record) 
 - Permission-protected dashboard, scoped read-only college/department pages, academic calendar and locally bundled Bootstrap 5.3.8.
 - System-admin-only Django admin, including user/group/profile management.
 - Append-only audit records for authentication, admin mutations and development seeding; database protection against audit editing/deletion.
-- Additive migrations, idempotent development seeds and 413 passing PostgreSQL tests, including all 403 Phase 1–7 tests.
+- Additive migrations, idempotent development seeds and PostgreSQL regression coverage across Phases 1–9.
 - Faculty, subject and room list/detail/create/edit/status pages, scoped search/filters/pagination and dashboard counts.
 - Configurable employment categories, academic ranks, buildings, room types and academic-term teaching-capacity policies/overrides.
 
@@ -497,3 +497,13 @@ Official room use is aggregated from dated `OfficialResourceBooking` rows for vi
 Dashboard queries batch workload assignments and policies, aggregate lifecycle/run/room counts in PostgreSQL, and bound recent lists. The project still lacks instructional holiday/date exceptions: official bookings include every matching weekday within the academic term. The live conflict preview covers one recent schedule; full validation remains on each schedule's existing validation page. Phase 9 report expansion has not started.
 
 Phase 8 verification on 2026-09-24: **413 PostgreSQL tests passed sequentially** (403 existing and 10 new dashboard tests). Django system, migration-drift, dependency and Git whitespace checks passed. Desktop (1440px) and mobile (390px) browser checks covered admin, dean and chair dashboards, term switching, scoped counts, status bars, tables and mobile navigation without horizontal overflow. A Phase 7 race test now also accepts PostgreSQL's deadlock rejection as the losing outcome when concurrent inserts check multiple exclusion constraints; it still requires exactly one official booking to commit.
+
+## Phase 9 administrative reports
+
+The **Reports** area at `/reports/` offers faculty workload, faculty teaching schedule, section schedule, room schedule, master academic schedule, current official schedule, approved historical version, approval history, timetable generation history, workload recommendation history, and conflict/validation reports. Each report has scoped term and relevant organization/resource filters, a print view, and PDF, XLSX and CSV downloads. The same authorized dataset feeds each format. Report links appear only when the account has the underlying view permissions; direct export URLs repeat those checks and reject out-of-scope filter IDs.
+
+Workload reports reuse the authoritative Phase 3 calculator for assignments, units, hours, target, maximum, status, utilization and policy source. Working timetable reports are labeled **DRAFT / WORKING DATA — NOT OFFICIAL**. Current official reports use Phase 7 `ActiveSchedule` selection and approved snapshot entries, never the latest approved version by guesswork. A selected older approved version is labeled **APPROVED HISTORICAL VERSION** and reads frozen faculty, subject, section and room labels from `ScheduleApprovalSnapshot`; the viewer must still have access to its schedule and underlying entries. Approval actions use immutable workflow events. Phase 5 and Phase 6 history reports read recorded runs without executing either optimizer. The conflict report invokes the Phase 4 validator live.
+
+Print pages omit application navigation and use A4 layouts. ReportLab creates PDFs, openpyxl creates numeric XLSX workbooks with frozen headers, and CSV is UTF-8 with plain column headings. Official, historical, approval-history and workload downloads are audited. The older `scheduling/exports.py` remains for unmounted legacy routes; it reads legacy `Term`/`Block` and load records and is not used for current reports. The project still has no instructional holiday/date-exception model, so official meeting dates follow Phase 7's matching-weekday behavior. Phase 10 has not started.
+
+Phase 9 verification on 2026-09-24: **424 PostgreSQL tests passed sequentially** (413 existing and 11 new reporting tests). Django system, migration-drift, dependency and Git whitespace checks passed. Browser checks at desktop and 390px mobile widths covered admin, dean and chair report access, scoped choices, historical terms, print pages and export actions without horizontal page overflow.

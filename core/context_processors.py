@@ -44,6 +44,9 @@ def navigation(request):
     if authorized:
         match = request.resolver_match
         special = []
+        from reporting.services import available_catalog
+        if available_catalog(user):
+            special.append(("Reports", "reporting:index", {"index", "detail", "print", "export"}))
         if user.has_perm("workloads.generate_workloadrecommendation") and user.has_perm("academics.view_academicterm"):
             special.append(("Workload balancing", "workloads:balancing", {"balancing"}))
         if user.has_perm("workloads.view_workloadrecommendationrun") and user.has_perm("academics.view_academicterm"):

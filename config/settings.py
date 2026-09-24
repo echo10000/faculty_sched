@@ -17,7 +17,7 @@ CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in env("CSRF_TRUSTED_ORIGINS",
 INSTALLED_APPS = [
     "core.apps.FoundationAdminConfig", "django.contrib.auth", "django.contrib.contenttypes",
     "django.contrib.sessions", "django.contrib.messages", "django.contrib.staticfiles",
-    "core.apps.CoreConfig", "academics", "faculty", "scheduling", "accounts", "audit", "resources", "workloads", "timetabling",
+    "core.apps.CoreConfig", "academics", "faculty", "scheduling", "accounts", "audit", "resources", "workloads", "timetabling", "reporting",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware", "django.contrib.sessions.middleware.SessionMiddleware",

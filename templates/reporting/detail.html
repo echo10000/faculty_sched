@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}{{ report.title }}{% endblock %}
+{% block content %}
+<div class="page-heading report-heading">
+  <div>
+    <p class="eyebrow">REPORTING</p>
+    <h1>{{ report.title }}</h1>
+    <p class="text-secondary mb-0">{{ report.source_label }}</p>
+  </div>
+  <span class="scope-badge">{{ scope_label }}</span>
+</div>
+
+{% if filters %}
+<section class="surface mb-4" aria-label="Report filters">
+  <form method="get" action="">
+    <div class="report-filter-grid">
+      {% for filter in filters %}
+      <div>
+        <label class="form-label" for="report-filter-{{ forloop.counter }}">{{ filter.label }}</label>
+        <select class="form-select" id="report-filter-{{ forloop.counter }}" name="{{ filter.name }}">
+          {% for option in filter.options %}
+          <option value="{{ option.value }}"{% if option.value|stringformat:'s' == filter.selected|stringformat:'s' %} selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endfor %}
+    </div>
+    <button class="btn btn-primary mt-3" type="submit">Apply Filters</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="surface mb-4" aria-label="Report details">
+  <div class="report-section-top">
+    <div>
+      <h2 class="h5 mb-1">Report details</h2>
+      <p class="text-secondary mb-0">Generated {{ generated_at }}{% if generated_by %} by {{ generated_by }}{% endif %}</p>
+    </div>
+    <div class="report-actions">
+      {% for link in export_links %}<a class="btn btn-outline-primary" href="{{ link.url }}">{{ link.label }}</a>{% endfor %}
+      {% if print_url %}<a class="btn btn-outline-secondary" href="{{ print_url }}" target="_blank" rel="noopener">Print view</a>{% endif %}
+    </div>
+  </div>
+  {% if report.meta %}
+  <dl class="report-meta mb-0">
+    {% for label, value in report.meta %}
+    <div class="report-meta-item"><dt>{{ label }}</dt><dd{% if label == 'Status' %} class="report-status"{% endif %}>{{ value|default_if_none:'—' }}</dd></div>
+    {% endfor %}
+  </dl>
+  {% endif %}
+</section>
+
+<section class="surface" aria-label="Report results">
+  <div class="report-section-top">
+    <h2 class="h5 mb-0">Results</h2>
+    <span class="text-secondary">{{ report.rows|length }} record{{ report.rows|length|pluralize }}</span>
+  </div>
+  {% if report.rows %}
+  <div class="table-responsive report-table-wrap">
+    <table class="table align-middle report-table mb-0">
+      <caption class="visually-hidden">{{ report.title }} results</caption>
+      <thead><tr>{% for header in report.headers %}<th scope="col">{{ header }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for row in report.rows %}<tr>{% for cell in row %}<td>{{ cell|default_if_none:'—' }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">{{ report.empty_message|default:'No records match the selected filters.' }}</div>
+  {% endif %}
+</section>
+{% endblock %}

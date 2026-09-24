@@ -495,3 +495,57 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .dashboard-fact-grid { grid-template-columns:1fr; }
   .dashboard-summary-row { flex-wrap:wrap; }
 }
+
+/* Reporting catalog, filters, metadata, and wide result tables. */
+.report-catalog { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); gap:16px; }
+.report-catalog-card { position:relative; display:flex; justify-content:space-between; gap:20px; min-height:152px; }
+.report-catalog-card h2 a { color:var(--ink); text-decoration:none; }
+.report-catalog-card:hover { border-color:#9ebbb4; box-shadow:0 8px 22px #142f430d; }
+.report-card-arrow { color:var(--teal); font-size:1.4rem; line-height:1; }
+.report-filter-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr)); gap:16px; }
+.report-section-top { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:16px; margin-bottom:18px; }
+.report-section-top .text-secondary { font-size:.82rem; }
+.report-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.report-meta { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr)); gap:14px; }
+.report-meta-item { border-top:1px solid var(--line); padding-top:13px; min-width:0; }
+.report-meta dt,.report-print-meta dt { color:var(--muted); font-size:.7rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.report-meta dd,.report-print-meta dd { margin:5px 0 0; overflow-wrap:anywhere; }
+.report-status { color:#1e675d; font-weight:700; }
+.report-table-wrap { max-width:100%; }
+.report-table { min-width:max-content; }
+.report-table th,.report-table td { white-space:normal; min-width:110px; overflow-wrap:anywhere; }
+
+/* The print view is a standalone document with no application chrome. */
+.report-print-body { background:white; color:#182e40; }
+.report-print-page { max-width:1200px; margin:0 auto; padding:32px; }
+.report-print-header { border-bottom:2px solid #142f43; padding-bottom:18px; margin-bottom:20px; }
+.report-print-brand { font-size:.9rem; font-weight:700; }
+.report-print-kicker { margin:16px 0 5px; color:#14746c; font-size:.68rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+.report-print-header h1 { margin:0 0 5px; font-size:1.8rem; }
+.report-print-source { margin:0 0 12px; color:#536977; font-size:.86rem; }
+.report-print-stamp { display:inline-block; border:1px solid #cfe0dd; background:#ecf5f2; border-radius:5px; padding:7px 10px; font-size:.76rem; }
+.report-print-context { margin-bottom:24px; }
+.report-print-meta { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 20px; margin:0; }
+.report-print-meta > div { border-bottom:1px solid #e0e7ec; padding-bottom:9px; break-inside:avoid; }
+.report-print-meta dd { font-size:.8rem; }
+.report-print-table { width:100%; border-collapse:collapse; font-size:.72rem; }
+.report-print-table caption { text-align:left; font-weight:700; padding-bottom:8px; }
+.report-print-table th,.report-print-table td { border:1px solid #cfd9df; padding:7px 8px; text-align:left; vertical-align:top; overflow-wrap:anywhere; }
+.report-print-table th { background:#edf2f4; font-size:.66rem; text-transform:uppercase; letter-spacing:.04em; }
+.report-print-table tr { break-inside:avoid; page-break-inside:avoid; }
+.report-print-empty { padding:20px; border:1px solid #cfd9df; }
+.report-print-footer { margin-top:24px; border-top:1px solid #cfd9df; padding-top:8px; color:#677886; font-size:.67rem; }
+@media(max-width:650px) {
+  .report-print-page { padding:20px; }
+  .report-print-meta { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media print {
+  .report-print-body { margin:0; background:white; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .report-print-page { max-width:none; padding:0; }
+  .report-print-header { break-after:avoid; }
+  .report-print-meta { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .report-print-results { break-before:auto; }
+  .report-print-table { table-layout:fixed; }
+  .report-print-table thead { display:table-header-group; }
+  .report-print-table tfoot { display:table-footer-group; }
+}
