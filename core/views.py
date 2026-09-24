@@ -1,9 +1,13 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied
 from django.db.models import Q
+from django.http import HttpResponseBadRequest
+from django.shortcuts import get_object_or_404
 from django.views.generic import DetailView, ListView, TemplateView
 
 from academics.models import AcademicTerm
 from accounts.permissions import department_scoped_queryset, require_access, scoped_colleges
+from .dashboard_data import build_monitoring
 from .models import College, Department
 
 
@@ -20,6 +24,26 @@ class ProtectedViewMixin(LoginRequiredMixin):
 class DashboardView(ProtectedViewMixin, TemplateView):
     template_name = "core/dashboard.html"
 
+    def get(self, request, *args, **kwargs):
+        self.selected_term = None
+        self.term_options = []
+        if request.user.has_perm("academics.view_academicterm"):
+            from workloads.selectors import accessible_terms
+
+            self.term_options = accessible_terms(request.user)
+            selected = request.GET.get("academic_term")
+            if selected is not None:
+                try:
+                    term_id = int(selected)
+                except (ValueError, TypeError):
+                    return HttpResponseBadRequest("Select a valid academic term.")
+                self.selected_term = get_object_or_404(self.term_options, pk=term_id)
+            else:
+                self.selected_term = accessible_terms(request.user, active=True).first() or self.term_options.first()
+        elif "academic_term" in request.GET:
+            raise PermissionDenied("Academic calendar access is required.")
+        return super().get(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         user = self.request.user
@@ -27,11 +51,14 @@ class DashboardView(ProtectedViewMixin, TemplateView):
         from academics.models import Subject
         from scheduling.models import Room
         from resources.selectors import scope_resources
+        context["selected_term"] = self.selected_term
+        context["term_options"] = self.term_options
+        context["monitoring"] = build_monitoring(user, self.selected_term)
         context["resource_metrics"] = []
         if user.has_perm("workloads.view_workload") and user.has_perm("academics.view_academicterm"):
             from workloads.models import FacultySubjectAssignment
-            from workloads.selectors import accessible_terms, scoped_records
-            teaching_term = accessible_terms(user, active=True).first()
+            from workloads.selectors import scoped_records
+            teaching_term = self.selected_term
             context["teaching_term"] = teaching_term
             context["teaching_assignment_count"] = scoped_records(user, FacultySubjectAssignment.objects.filter(subject_offering__academic_term=teaching_term)).count() if teaching_term else None
         for model, route, label in [(Faculty, "faculty-management:list", "Faculty"), (Subject, "subjects:list", "Subjects"), (Room, "rooms:list", "Rooms")]:

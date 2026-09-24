@@ -4,18 +4,26 @@ from django.core.exceptions import ValidationError
 from django.db.models import Q
 
 from .models import FacultySubjectAssignment, FacultyTermCapacity, WorkloadPolicy
-from .services import resolve_capacity
+from .services import NOT_PROVIDED, resolve_capacity
 
 STATUSES = ("UNCONFIGURED", "UNDERLOAD", "WITHIN_LOAD", "AT_CAPACITY", "OVERLOAD")
 
 
-def resolve_policy(faculty, term):
+def resolve_policy(faculty, term, *, override=NOT_PROVIDED, policies=None):
     """Extend Phase 2 resolution with provenance/enforcement without changing its contract."""
-    values = resolve_capacity(faculty, term)
-    override = FacultyTermCapacity.objects.filter(faculty=faculty, academic_term=term).first()
-    policies = list(WorkloadPolicy.objects.filter(academic_term=term).filter(
-        Q(department=faculty.home_department) | Q(college=faculty.home_department.college) |
-        Q(department__isnull=True, college__isnull=True)))
+    values = resolve_capacity(faculty, term, override=override, policies=policies)
+    if override is NOT_PROVIDED:
+        override = FacultyTermCapacity.objects.filter(faculty=faculty, academic_term=term).first()
+    if policies is None:
+        policies = list(WorkloadPolicy.objects.filter(academic_term=term).filter(
+            Q(department=faculty.home_department) | Q(college=faculty.home_department.college) |
+            Q(department__isnull=True, college__isnull=True)))
+    else:
+        policies = [policy for policy in policies if (
+            policy.department_id == faculty.home_department_id
+            or policy.college_id == faculty.home_department.college_id
+            or (policy.department_id is None and policy.college_id is None)
+        )]
     policies.sort(key=lambda p: 0 if p.department_id else 1 if p.college_id else 2)
     levels = [(override, "Faculty term override"), (faculty, "Faculty baseline")] + [
         (p, "Department workload policy" if p.department_id else "College workload policy" if p.college_id else "Institution workload policy") for p in policies]
@@ -41,7 +49,7 @@ def weighted_load_for(offering, share, policy):
     return load
 
 
-def calculate_workload(faculty, term, *, proposed=None, exclude_pk=None, assignments_override=None):
+def calculate_workload(faculty, term, *, proposed=None, exclude_pk=None, assignments_override=None, policy_override=None):
     """Current-policy teaching load, never schedule hours or legacy assignments.
 
     Offering hours are weekly contact hours. Preserve Decimal arithmetic without
@@ -53,7 +61,7 @@ def calculate_workload(faculty, term, *, proposed=None, exclude_pk=None, assignm
         assignments.append(proposed)
     warnings = []
     try:
-        policy = resolve_policy(faculty, term)
+        policy = policy_override if policy_override is not None else resolve_policy(faculty, term)
     except ValidationError as error:
         policy = {**dict.fromkeys(["recommended_load", "maximum_load", "lecture_weight", "laboratory_weight"]), "sources": {}, "enforce_maximum": False, "enforcement_source": "Invalid configuration"}
         warnings.extend(error.messages)
@@ -94,6 +102,43 @@ def calculate_workload(faculty, term, *, proposed=None, exclude_pk=None, assignm
         "utilization": load / denominator * 100 if denominator is not None and denominator > 0 and load is not None else None,
         "status": status, "warnings": list(dict.fromkeys(warnings)),
     }
+
+
+def calculate_workloads(faculty, term):
+    """Compute authoritative reports for a group with shared source queries.
+
+    This reuses ``calculate_workload`` for all load and status decisions while
+    fetching assignments, policies and overrides once for dashboard summaries.
+    """
+    people = list(faculty)
+    if not people:
+        return []
+    ids = [person.pk for person in people]
+    assignments = FacultySubjectAssignment.objects.filter(
+        faculty_id__in=ids, subject_offering__academic_term=term,
+    ).select_related("subject_offering__subject", "subject_offering__academic_term")
+    by_faculty = {pk: [] for pk in ids}
+    for assignment in assignments:
+        by_faculty[assignment.faculty_id].append(assignment)
+    overrides = {
+        item.faculty_id: item for item in FacultyTermCapacity.objects.filter(
+            academic_term=term, faculty_id__in=ids,
+        )
+    }
+    policies = list(WorkloadPolicy.objects.filter(academic_term=term))
+    reports = []
+    for person in people:
+        try:
+            policy = resolve_policy(
+                person, term, override=overrides.get(person.pk), policies=policies,
+            )
+        except ValidationError:
+            policy = None
+        reports.append(calculate_workload(
+            person, term, assignments_override=by_faculty[person.pk],
+            policy_override=policy,
+        ))
+    return reports
 
 
 def validate_workload(faculty, term, proposed, exclude_pk=None):

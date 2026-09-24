@@ -6,7 +6,7 @@ from threading import Barrier
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, close_old_connections, connections, transaction
+from django.db import IntegrityError, OperationalError, close_old_connections, connections, transaction
 from django.test import TransactionTestCase
 
 from academics.models import AcademicTerm, AcademicYear, Semester, Subject
@@ -96,6 +96,13 @@ class OfficialBookingConcurrencyTests(TransactionTestCase):
                     return "committed"
                 except IntegrityError:
                     return "conflict"
+                except OperationalError as error:
+                    # PostgreSQL can deadlock while the three exclusion constraints
+                    # inspect concurrent inserts. It aborts one transaction, which
+                    # is also a valid losing outcome for this booking race.
+                    if getattr(error.__cause__, "pgcode", None) == "40P01":
+                        return "conflict"
+                    raise
             finally:
                 connections.close_all()
 

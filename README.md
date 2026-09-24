@@ -2,9 +2,9 @@
 
 Faculty Workload and Academic Scheduling System for Negros Oriental State University - Bais Campus (NORSU-BSC).
 
-**Phases 1–7 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations, human schedule approval, active official selection, dated resource bookings and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
+**Phases 1–8 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations, human schedule approval, active official selection, dated resource bookings, role-aware dashboard monitoring and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
 
-See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#16-phase-6-implementation-record) for the completed phases, architecture, migration decisions and later roadmap.
+See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#18-phase-8-implementation-record) for the completed phases, architecture, migration decisions and later roadmap.
 
 ## Implemented foundation
 
@@ -15,7 +15,7 @@ See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#16-phase-6-implementation-record) 
 - Permission-protected dashboard, scoped read-only college/department pages, academic calendar and locally bundled Bootstrap 5.3.8.
 - System-admin-only Django admin, including user/group/profile management.
 - Append-only audit records for authentication, admin mutations and development seeding; database protection against audit editing/deletion.
-- Additive migrations, idempotent development seeds and 376 passing PostgreSQL tests, including all 332 Phase 1–5 tests.
+- Additive migrations, idempotent development seeds and 413 passing PostgreSQL tests, including all 403 Phase 1–7 tests.
 - Faculty, subject and room list/detail/create/edit/status pages, scoped search/filters/pagination and dashboard counts.
 - Configurable employment categories, academic ranks, buildings, room types and academic-term teaching-capacity policies/overrides.
 
@@ -484,4 +484,16 @@ The optional development seed `seed_foundation --create-users --with-review` inc
 
 Phase 7 verification on 2026-09-24: **403 PostgreSQL tests passed sequentially**, including all 376 Phase 6 tests and 27 new regression tests. Migrations `timetabling.0004`–`0006` applied; the optional review seed ran twice without creating duplicate history or an official booking. Desktop (1440px) and mobile (390px) browser checks covered the chair's submitted schedule, the dean's decision form and mobile navigation without horizontal overflow. The current dated booking expansion treats every matching weekday between term dates as instructional because no holiday/date-exception model exists.
 
-Run the full PostgreSQL suite sequentially. `manage.py check`, `manage.py makemigrations --check --dry-run`, `python -m pip check` and `git diff --check` remain the verification commands. Phase 8 dashboard expansion has not started.
+Run the full PostgreSQL suite sequentially. `manage.py check`, `manage.py makemigrations --check --dry-run`, `python -m pip check` and `git diff --check` remain the verification commands.
+
+## Phase 8 role-aware monitoring
+
+The existing **Overview** (`/`) now has an academic-term selector. It defaults to the latest active term available to the user and permits historical terms. Term-specific cards and sections all use the selected term; resource totals and the calendar are identified separately as scope-wide. Missing or malformed term identifiers do not select an unrelated term. Each section requires its own existing permission in addition to the dashboard permission, and all underlying organization-bearing queries use the established scope helpers. Staff see only sections for which they have explicit grants, within their assigned organization.
+
+The dashboard displays authoritative assignment-based workload status (underload, within load, at capacity, overload and unconfigured), with selected faculty load and utilization from `workloads.calculation`. Schedule bars count draft, validated, under-review, needs-revision and approved **versions**. A separate current-official count and table use `ActiveSchedule`, with approval date and reviewer from `ScheduleApprovalSnapshot`; earlier approved versions remain accessible through version history. Reviewers see the oldest pending submissions, returned count and recent approvals, linking to the existing review queue. The most recently edited non-approved schedule receives one live Phase 4 validation check, clearly labeled as a recent check rather than a complete conflict census.
+
+Official room use is aggregated from dated `OfficialResourceBooking` rows for visible rooms and official meetings in the selected scope. It shows rooms used and absolute scheduled hours **across the selected term**. There is no defensible configured denominator for a room-utilization percentage, so no percentage is shown. Scheduled faculty, assignments without official meetings and official weekly meeting hours are reported separately from workload units. Recent Phase 5 generation and Phase 6 balancing run statuses link to their existing history/detail pages; dashboard reads never run either optimizer. Small labeled status bars use scoped counts and CSS, without a new chart dependency.
+
+Dashboard queries batch workload assignments and policies, aggregate lifecycle/run/room counts in PostgreSQL, and bound recent lists. The project still lacks instructional holiday/date exceptions: official bookings include every matching weekday within the academic term. The live conflict preview covers one recent schedule; full validation remains on each schedule's existing validation page. Phase 9 report expansion has not started.
+
+Phase 8 verification on 2026-09-24: **413 PostgreSQL tests passed sequentially** (403 existing and 10 new dashboard tests). Django system, migration-drift, dependency and Git whitespace checks passed. Desktop (1440px) and mobile (390px) browser checks covered admin, dean and chair dashboards, term switching, scoped counts, status bars, tables and mobile navigation without horizontal overflow. A Phase 7 race test now also accepts PostgreSQL's deadlock rejection as the losing outcome when concurrent inserts check multiple exclusion constraints; it still requires exactly one official booking to commit.
