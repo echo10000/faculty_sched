@@ -1,1 +1,1 @@
-<span class="badge {% if status == 'OVERLOAD' or status == 'UNCONFIGURED' %}text-bg-warning{% elif status == 'AT_CAPACITY' %}text-bg-success{% else %}text-bg-primary{% endif %}">{{ status }}</span>
+<span class="badge status-badge status-{{ status|lower }}">{% if status == 'WITHIN_LOAD' %}Within load{% elif status == 'AT_CAPACITY' %}At capacity{% elif status == 'UNCONFIGURED' %}Unconfigured{% elif status == 'OVERLOAD' %}Overload{% elif status == 'UNDERLOAD' %}Underload{% else %}{{ status }}{% endif %}</span>

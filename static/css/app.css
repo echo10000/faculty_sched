@@ -1,15 +1,20 @@
 :root {
-  --ink:#182e40;
-  --muted:#677886;
-  --navy:#142f43;
-  --teal:#14746c;
-  --canvas:#f4f7f9;
-  --line:#e0e7ec;
-  --bs-primary:#14746c;
-  --bs-primary-rgb:20,116,108;
+  --ink:#172b3a;
+  --muted:#667780;
+  --navy:#15364a;
+  --navy-deep:#102c3e;
+  --teal:#0f766e;
+  --teal-hover:#0b625b;
+  --teal-soft:#e8f5f2;
+  --canvas:#f5f7f9;
+  --surface:#fff;
+  --surface-muted:#f8fafb;
+  --line:#dfe6ea;
+  --bs-primary:#0f766e;
+  --bs-primary-rgb:15,118,110;
 }
 body {
-  font-family:Segoe UI,system-ui,sans-serif;
+  font-family:Inter,"Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
   color:var(--ink);
   background:var(--canvas);
 }
@@ -17,16 +22,16 @@ a {
   color:var(--teal);
 }
 .btn-primary {
-  --bs-btn-bg:#14746c;
-  --bs-btn-border-color:#14746c;
-  --bs-btn-hover-bg:#0d5a54;
-  --bs-btn-hover-border-color:#0d5a54;
+  --bs-btn-bg:var(--teal);
+  --bs-btn-border-color:var(--teal);
+  --bs-btn-hover-bg:var(--teal-hover);
+  --bs-btn-hover-border-color:var(--teal-hover);
 }
 .btn-outline-primary {
-  --bs-btn-color:#14746c;
-  --bs-btn-border-color:#14746c;
-  --bs-btn-hover-bg:#14746c;
-  --bs-btn-hover-border-color:#14746c;
+  --bs-btn-color:var(--teal);
+  --bs-btn-border-color:var(--teal);
+  --bs-btn-hover-bg:var(--teal);
+  --bs-btn-hover-border-color:var(--teal);
 }
 h1 {
   font-weight:650;
@@ -465,15 +470,6 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .dashboard-section-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
 .dashboard-section-heading .eyebrow { margin-bottom:7px; }
 .dashboard-section-heading > a { font-size:.82rem; white-space:nowrap; }
-.dashboard-bars { display:grid; gap:12px; }
-.dashboard-bar-label { display:flex; justify-content:space-between; gap:8px; font-size:.83rem; margin-bottom:4px; }
-.dashboard-bar-track { height:9px; border-radius:99px; background:#ebf0f2; overflow:hidden; }
-.dashboard-bar-fill { display:block; height:100%; min-width:0; border-radius:inherit; background:#247c71; }
-.dashboard-bar-fill.workload-underload,.dashboard-bar-fill.schedule-needs_revision { background:#c9842e; }
-.dashboard-bar-fill.workload-overload { background:#ae4c4a; }
-.dashboard-bar-fill.workload-unconfigured,.dashboard-bar-fill.schedule-draft { background:#8a9aa4; }
-.dashboard-bar-fill.schedule-under_review { background:#5b79b0; }
-.dashboard-bar-fill.schedule-approved { background:#288467; }
 .dashboard-summary-list { border-top:1px solid var(--line); margin-top:18px; padding-top:14px; }
 .dashboard-summary-list h3 { margin-bottom:8px; }
 .dashboard-summary-row { display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:8px 0; border-bottom:1px solid #edf1f3; font-size:.83rem; min-width:0; }

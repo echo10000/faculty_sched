@@ -5,7 +5,8 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}CampusLoad{% endblock %} · Faculty Workload & Academic Scheduling</title>
   <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=6">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=7">
+  <link rel="stylesheet" href="{% static 'css/refinement.css' %}?v=1">
 </head>
 <body>
 <a class="visually-hidden-focusable skip-link" href="#main-content">Skip to content</a>
@@ -14,24 +15,30 @@
   <aside class="offcanvas-lg offcanvas-start sidebar" tabindex="-1" id="sidebar" aria-labelledby="sidebar-title">
     <div class="offcanvas-header"><h2 class="h5" id="sidebar-title">CampusLoad</h2><button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close navigation"></button></div>
     <div class="offcanvas-body d-flex flex-column">
-      <a class="brand" href="{% url 'home' %}"><span class="brand-mark" aria-hidden="true">CL</span><span>CampusLoad<small>Academic administration</small></span></a>
-      <p class="nav-caption">WORKSPACE</p>
-      <nav aria-label="Main navigation" class="nav flex-column gap-1">
-      {% for link in navigation_links %}<a class="nav-link {% if link.active %}active{% endif %}" {% if link.active %}aria-current="page"{% endif %} href="{% url link.route %}">{{ link.label }}</a>{% endfor %}
-      {% if can_administer %}<a class="nav-link" href="{% url 'admin:index' %}">System administration <span aria-hidden="true">↗</span></a>{% endif %}
+      <a class="brand" href="{% url 'home' %}" aria-label="CampusLoad home"><span class="brand-mark" aria-hidden="true">CL</span><span>CampusLoad<small>Academic administration</small></span></a>
+      <nav aria-label="Main navigation" class="sidebar-nav">
+      {% for group in navigation_groups %}
+      <details class="nav-group" data-nav-group {% if group.active or group.label == 'Workspace' %}open{% endif %}>
+        <summary class="nav-group-toggle" title="{{ group.label }}"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="{% static 'icons/campusload.svg' %}#{{ group.icon }}"></use></svg><span class="nav-group-label">{{ group.label }}</span><span class="nav-chevron" aria-hidden="true">⌄</span></summary>
+        <div class="nav-group-links">{% for link in group.links %}<a class="nav-link {% if link.active %}active{% endif %}" {% if link.active %}aria-current="page"{% endif %} href="{% url link.route %}" title="{{ link.label }}"><svg class="nav-link-icon" aria-hidden="true" focusable="false"><use href="{% static 'icons/campusload.svg' %}#{{ link.icon }}"></use></svg><span class="nav-link-label">{{ link.label }}</span></a>{% endfor %}</div>
+      </details>
+      {% endfor %}
+      {% if can_administer %}<a class="nav-link admin-link" href="{% url 'admin:index' %}" title="System administration"><svg class="nav-link-icon" aria-hidden="true" focusable="false"><use href="{% static 'icons/campusload.svg' %}#settings"></use></svg><span class="nav-link-label">System administration <span aria-hidden="true">↗</span></span></a>{% endif %}
       </nav>
-      <div class="sidebar-footer mt-auto"><span class="scope-dot" aria-hidden="true"></span> {{ access_scope }}<small>Authorized workspace</small></div>
+      <div class="sidebar-footer mt-auto"><span class="scope-dot" aria-hidden="true"></span><span class="sidebar-footer-text">{{ access_scope }}<small>Authorized workspace</small></span></div>
     </div>
   </aside>
   <div class="main-column">
     <header class="topbar">
       <button class="btn btn-outline-secondary d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar" aria-label="Open navigation">☰</button>
+      <button class="btn btn-outline-secondary btn-sm d-none d-lg-inline-flex sidebar-collapse-button" id="sidebar-collapse" type="button" aria-controls="sidebar" aria-expanded="true" title="Collapse navigation"><span aria-hidden="true">⇤</span><span class="visually-hidden">Collapse navigation</span></button>
       <div class="institution-name">{{ institution_name }}</div>
       <div class="account-summary"><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{{ role_label }}</small></div>
-      <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" type="submit">Sign out</button></form>
+      <form class="d-none d-lg-block" method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" type="submit">Sign out</button></form>
+      <div class="dropdown d-lg-none"><button class="btn btn-outline-secondary btn-sm account-menu-button" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Account menu">Account <span aria-hidden="true">⌄</span></button><div class="dropdown-menu dropdown-menu-end account-menu"><div class="dropdown-header"><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{{ role_label }}</small></div><div class="dropdown-divider"></div><form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="dropdown-item" type="submit">Sign out</button></form></div></div>
     </header>
     <main id="main-content" class="content" tabindex="-1">
-      {% if messages %}{% for message in messages %}<div class="alert alert-info" role="status">{{ message }}</div>{% endfor %}{% endif %}
+      {% if messages %}{% for message in messages %}<div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'warning' %}alert-warning{% elif message.tags == 'error' %}alert-danger{% else %}alert-info{% endif %}" role="status">{{ message }}</div>{% endfor %}{% endif %}
       {% block content %}{% endblock %}
     </main>
     <footer class="page-footer">CampusLoad <span>Faculty Workload & Academic Scheduling</span></footer>
@@ -39,4 +46,5 @@
 </div>
 {% endblock %}
 <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'js/app.js' %}?v=1" defer></script>
 </body></html>
