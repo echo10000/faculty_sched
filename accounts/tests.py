@@ -1,13 +1,20 @@
+from datetime import timedelta
+from io import StringIO
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from audit.models import AuditLog
 from core.models import College, Department
-from .models import AdminProfile
+from .models import AdminProfile, LoginFailureBucket
+from .throttle import _key
 
 
 class AuthenticationAndScopeTests(TestCase):
@@ -184,3 +191,73 @@ class AuthenticationAndScopeTests(TestCase):
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.admin)
         self.assertEqual(client.post("/admin/core/college/add/", {"code": "NO"}).status_code, 403)
+
+
+class LoginThrottleTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.password = "Test-only-correct-horse-123!"
+        college = College.objects.create(code="TH", name="Throttle College")
+        cls.dean = get_user_model().objects.create_user(username="dean", password=cls.password)
+        AdminProfile.objects.create(user=cls.dean, role=AdminProfile.Role.DEAN, college=college)
+        cls.admin = get_user_model().objects.create_user(
+            username="system", password=cls.password, is_staff=True,
+        )
+        AdminProfile.objects.create(user=cls.admin, role=AdminProfile.Role.SUPER_ADMIN)
+
+    def test_account_limit_blocks_correct_password_until_window_expires(self):
+        login = reverse("accounts:login")
+        for _ in range(5):
+            self.assertEqual(self.client.post(login, {"username": "dean", "password": "wrong"}).status_code, 200)
+        bucket = LoginFailureBucket.objects.get(pk=_key("account", "dean"))
+        self.assertEqual(bucket.failures, 5)
+        self.assertNotIn("dean", str(list(LoginFailureBucket.objects.values())))
+        self.assertNotIn("127.0.0.1", str(list(LoginFailureBucket.objects.values())))
+        blocked = self.client.post(login, {"username": "dean", "password": self.password})
+        self.assertEqual(blocked.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        LoginFailureBucket.objects.update(expires_at=timezone.now() - timedelta(seconds=1))
+        self.assertRedirects(self.client.post(login, {"username": "dean", "password": self.password}), "/")
+        self.assertEqual(LoginFailureBucket.objects.get(pk=_key("account", "dean")).failures, 0)
+
+    def test_success_resets_account_failures_but_not_source_failures(self):
+        login = reverse("accounts:login")
+        for _ in range(4):
+            self.client.post(login, {"username": "dean", "password": "wrong"})
+        self.assertRedirects(self.client.post(login, {"username": "dean", "password": self.password}), "/")
+        self.assertEqual(LoginFailureBucket.objects.get(pk=_key("account", "dean")).failures, 0)
+        self.assertEqual(LoginFailureBucket.objects.get(pk=_key("source", "127.0.0.1")).failures, 4)
+
+    def test_admin_login_shares_limit_and_ignores_untrusted_forwarded_for(self):
+        for index in range(5):
+            response = self.client.post("/admin/login/", {
+                "username": "system", "password": "wrong",
+            }, HTTP_X_FORWARDED_FOR=f"203.0.113.{index + 1}")
+            self.assertEqual(response.status_code, 200)
+        self.assertEqual(LoginFailureBucket.objects.get(pk=_key("source", "127.0.0.1")).failures, 5)
+        blocked = self.client.post("/admin/login/", {"username": "system", "password": self.password})
+        self.assertEqual(blocked.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_source_limit_blocks_password_spray_across_accounts(self):
+        login = reverse("accounts:login")
+        with patch("accounts.throttle.SOURCE_LIMIT", 2):
+            for username in ("unknown-one", "unknown-two"):
+                self.client.post(login, {"username": username, "password": "wrong"})
+            self.assertEqual(LoginFailureBucket.objects.get(
+                pk=_key("source", "127.0.0.1"),
+            ).failures, 2)
+            response = self.client.post(login, {"username": "dean", "password": self.password})
+            self.assertEqual(response.status_code, 200)
+            self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_purge_command_removes_only_expired_counters(self):
+        LoginFailureBucket.objects.create(
+            key="a" * 64, failures=5, expires_at=timezone.now() - timedelta(seconds=1),
+        )
+        LoginFailureBucket.objects.create(
+            key="b" * 64, failures=5, expires_at=timezone.now() + timedelta(minutes=15),
+        )
+        call_command("purge_login_failures", stdout=StringIO())
+        self.assertFalse(LoginFailureBucket.objects.filter(pk="a" * 64).exists())
+        self.assertTrue(LoginFailureBucket.objects.filter(pk="b" * 64).exists())

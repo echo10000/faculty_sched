@@ -9,6 +9,7 @@ def navigation(request):
     user = request.user
     profile = profile_for(user)
     authorized = user.is_authenticated and (user.is_superuser or profile is not None)
+    granted = user.get_all_permissions() if authorized else set()
     links = []
     for permission, label, route in [
         ("core.view_dashboard", "Overview", "home"),
@@ -29,8 +30,8 @@ def navigation(request):
         ("core.view_department", "Departments", "department-list"),
         ("academics.view_academicterm", "Academic calendar", "academic-calendar"),
     ]:
-        if authorized and user.has_perm(permission):
-            if permission.startswith(("workloads.", "timetabling.")) and not user.has_perm("academics.view_academicterm"):
+        if permission in granted:
+            if permission.startswith(("workloads.", "timetabling.")) and "academics.view_academicterm" not in granted:
                 continue
             match = request.resolver_match
             active = bool(match and (match.view_name == route or (":" in route and match.namespace == route.split(":")[0])))
@@ -45,23 +46,23 @@ def navigation(request):
         match = request.resolver_match
         special = []
         from reporting.services import available_catalog
-        if available_catalog(user):
+        if available_catalog(user, granted=granted):
             special.append(("Reports", "reporting:index", {"index", "detail", "print", "export"}))
-        if user.has_perm("workloads.generate_workloadrecommendation") and user.has_perm("academics.view_academicterm"):
+        if "workloads.generate_workloadrecommendation" in granted and "academics.view_academicterm" in granted:
             special.append(("Workload balancing", "workloads:balancing", {"balancing"}))
-        if user.has_perm("workloads.view_workloadrecommendationrun") and user.has_perm("academics.view_academicterm"):
+        if "workloads.view_workloadrecommendationrun" in granted and "academics.view_academicterm" in granted:
             special.append(("Recommendation history", "workloads:balancing-runs", {
                 "balancing-runs", "balancing-run-detail", "balancing-run-accept", "balancing-run-discard"}))
-        if all(user.has_perm(permission) for permission in GENERATION_PERMISSIONS):
+        if all(permission in granted for permission in GENERATION_PERMISSIONS):
             special.append(("Automated generator", "timetabling:generator", {"generator"}))
-        if user.has_perm("timetabling.view_schedulegenerationrun") and user.has_perm("academics.view_academicterm"):
+        if "timetabling.view_schedulegenerationrun" in granted and "academics.view_academicterm" in granted:
             special.append(("Generation history", "timetabling:generation-runs", {
                 "generation-runs", "generation-run-detail", "generation-run-accept", "generation-run-discard"}))
-        if user.has_perm("timetabling.submit_schedule") and user.has_perm("timetabling.view_schedule") and user.has_perm("academics.view_academicterm"):
+        if all(permission in granted for permission in ("timetabling.submit_schedule", "timetabling.view_schedule", "academics.view_academicterm")):
             special.append(("My schedules", "timetabling:my-schedules", {"my-schedules"}))
-        if user.has_perm("timetabling.review_schedule") and user.has_perm("timetabling.view_schedule") and user.has_perm("academics.view_academicterm"):
+        if all(permission in granted for permission in ("timetabling.review_schedule", "timetabling.view_schedule", "academics.view_academicterm")):
             special.append(("Pending review", "timetabling:review-queue", {"review-queue"}))
-        if user.has_perm("timetabling.view_schedule") and user.has_perm("academics.view_academicterm"):
+        if "timetabling.view_schedule" in granted and "academics.view_academicterm" in granted:
             special.append(("Official schedules", "timetabling:official-schedules", {"official-schedules"}))
         for label, route, names in special:
             links.append({"label": label, "route": route,

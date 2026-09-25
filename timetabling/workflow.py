@@ -262,11 +262,8 @@ def approve_schedule(*, user, schedule_id, revision_token, acknowledged_warnings
                 dependency_signature=current_signature, approved_by=user,
                 approved_at=now, payload=payload,
             )
-            if old_schedule_id:
-                OfficialResourceBooking.objects.filter(schedule_entry__schedule_id=old_schedule_id).delete()
             schedule.status = Schedule.Status.APPROVED
             schedule.save(update_fields=["status", "updated_at"])
-            OfficialResourceBooking.objects.bulk_create(bookings)
             if active:
                 active.schedule = schedule
                 active.selected_by = user
@@ -277,6 +274,9 @@ def approve_schedule(*, user, schedule_id, revision_token, acknowledged_warnings
                     academic_term=schedule.academic_term, department=schedule.department,
                     schedule=schedule, selected_by=user, selected_at=now,
                 )
+            if old_schedule_id:
+                OfficialResourceBooking.objects.filter(schedule_entry__schedule_id=old_schedule_id).delete()
+            OfficialResourceBooking.objects.bulk_create(bookings)
             _event(schedule, "approved", user, remarks=(remarks or "").strip(), warning_codes=codes)
             if old_schedule_id and old_schedule_id != schedule.pk:
                 _event(schedule, "replaced", user)

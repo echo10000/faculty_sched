@@ -7,6 +7,7 @@ from django.http import Http404, HttpResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 
 from accounts.permissions import require_access
 from audit.services import record_event
@@ -15,6 +16,7 @@ from .services import available_catalog, build_report
 
 
 @login_required
+@never_cache
 def index(request):
     require_access(request.user, "academics.view_academicterm")
     catalog = [
@@ -38,6 +40,7 @@ def _prepared(request, kind):
 
 
 @login_required
+@never_cache
 def detail(request, kind):
     report, filters, context = _prepared(request, kind)
     query = request.GET.urlencode()
@@ -47,7 +50,7 @@ def detail(request, kind):
         "export_links": [
             {"label": label, "url": reverse("reporting:export", args=[kind, fmt]) + suffix}
             for fmt, label in (("pdf", "Export PDF"), ("xlsx", "Export XLSX"), ("csv", "Export CSV"))
-        ],
+        ] if request.user.has_perm("core.export_report") else [],
         "print_url": reverse("reporting:print", args=[kind]) + suffix,
         "generated_at": timezone.localtime(timezone.now()),
         "generated_by": request.user.get_full_name() or request.user.username,
@@ -56,6 +59,7 @@ def detail(request, kind):
 
 
 @login_required
+@never_cache
 def print_view(request, kind):
     report, _, context = _prepared(request, kind)
     return render(request, "reporting/print.html", {
@@ -67,9 +71,11 @@ def print_view(request, kind):
 
 
 @login_required
+@never_cache
 def export(request, kind, fmt):
     if fmt not in {"pdf", "xlsx", "csv"}:
         raise Http404("Unknown export format.")
+    require_access(request.user, "core.export_report")
     report, _, _ = _prepared(request, kind)
     if fmt == "pdf":
         payload, mime = render_pdf(report), "application/pdf"
@@ -79,6 +85,5 @@ def export(request, kind, fmt):
         payload, mime = render_csv(report).encode("utf-8-sig"), "text/csv; charset=utf-8"
     response = HttpResponse(payload, content_type=mime)
     response["Content-Disposition"] = f'attachment; filename="{report["filename_base"]}.{fmt}"'
-    if kind in {"official", "historical", "approvals", "workload"}:
-        record_event("report.exported", actor=request.user, details={"report": kind, "format": fmt})
+    record_event("report.exported", actor=request.user, details={"report": kind, "format": fmt})
     return response

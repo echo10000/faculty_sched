@@ -4,3 +4,4 @@ python-decouple>=3.8,<4.0
 ortools==9.15.6755
 openpyxl>=3.1,<4.0
 reportlab>=4.0,<5.0
+gunicorn==26.2.0; platform_system != "Windows"

@@ -5,19 +5,22 @@ from decimal import Decimal
 from io import BytesIO
 
 from django.contrib.auth.models import Permission
+from django.db import connection
 from django.http import Http404
 from django.test import SimpleTestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from openpyxl import load_workbook
 
+from audit.models import AuditLog
 from timetabling.models import (
-    ActiveSchedule, Schedule, ScheduleApprovalSnapshot, ScheduleGenerationRun,
+    ActiveSchedule, ClassSection, Schedule, ScheduleApprovalSnapshot, ScheduleGenerationRun,
     ScheduleWorkflowEvent,
 )
 from timetabling.tests import TimetableFixture
 from workloads.models import WorkloadRecommendationRun
 from .exports import render_csv, render_pdf, render_xlsx
-from .services import build_report
+from .services import _filter_context, build_report
 
 
 class ExportRendererTests(SimpleTestCase):
@@ -41,6 +44,32 @@ class ReportTests(TimetableFixture):
     def report(self, user, kind, **params):
         return build_report(user, kind, params,
                             institution="Example University", scope="Test scope")[0]
+
+    def test_master_filter_queries_do_not_grow_with_sections_and_schedules(self):
+        params = {"term": str(self.term.pk)}
+
+        def filter_queries():
+            with CaptureQueriesContext(connection) as captured:
+                selected = _filter_context(self.chair, "master", params)
+            return len(captured), {
+                item["name"]: len(item["options"])
+                for item in selected["filters"]
+                if item["name"] in {"section", "schedule"}
+            }
+
+        baseline_queries, baseline_options = filter_queries()
+        for index in range(2, 7):
+            ClassSection.objects.create(
+                academic_term=self.term, department=self.department, code=f"S{index}",
+            )
+            Schedule.objects.create(
+                academic_term=self.term, department=self.department,
+                family=self.schedule.family, version_number=index, name=f"Version {index}",
+            )
+        expanded_queries, expanded_options = filter_queries()
+        self.assertEqual(expanded_options["section"] - baseline_options["section"], 5)
+        self.assertEqual(expanded_options["schedule"] - baseline_options["schedule"], 5)
+        self.assertLessEqual(expanded_queries, baseline_queries)
 
     def test_catalog_and_direct_export_permission(self):
         self.client.force_login(self.staff)
@@ -199,3 +228,56 @@ class ReportTests(TimetableFixture):
         self.assertIn("PHASE 4", report["source_label"])
         self.assertEqual(report["headers"][0], "Severity")
         self.assertTrue(any(self.offering.subject.code in row[2] for row in report["rows"]))
+
+
+class ExportAuthorizationTests(TimetableFixture):
+    def test_role_defaults_and_explicit_staff_grant(self):
+        for user in (self.admin, self.dean, self.chair):
+            with self.subTest(role=user.username):
+                self.assertTrue(user.has_perm("core.export_report"))
+        self.assertFalse(self.staff.has_perm("core.export_report"))
+        self.staff.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label="academics", codename="view_academicterm",
+        ))
+        self.staff.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label="timetabling", codename="view_schedulegenerationrun",
+        ))
+        self.staff = type(self.staff).objects.get(pk=self.staff.pk)
+        self.client.force_login(self.staff)
+        detail_url = reverse("reporting:detail", args=["generation"])
+        print_url = reverse("reporting:print", args=["generation"])
+        export_url = reverse("reporting:export", args=["generation", "csv"])
+        for url in (detail_url, print_url):
+            with self.subTest(url=url):
+                response = self.client.get(url, {"term": self.term.pk})
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("no-store", response["Cache-Control"])
+        self.assertNotContains(self.client.get(detail_url), "Export CSV")
+        self.assertEqual(self.client.get(export_url, {"term": self.term.pk}).status_code, 403)
+        self.assertFalse(AuditLog.objects.filter(action="report.exported").exists())
+        self.staff.user_permissions.add(Permission.objects.get(
+            content_type__app_label="core", codename="export_report",
+        ))
+        self.staff = type(self.staff).objects.get(pk=self.staff.pk)
+        self.client.force_login(self.staff)
+        response = self.client.get(export_url, {"term": self.term.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertContains(self.client.get(detail_url), "Export CSV")
+
+    def test_every_successful_format_is_audited_and_scope_remains_checked(self):
+        self.client.force_login(self.chair)
+        for fmt in ("csv", "xlsx", "pdf"):
+            with self.subTest(fmt=fmt):
+                response = self.client.get(reverse("reporting:export", args=["generation", fmt]),
+                                           {"term": self.term.pk})
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("no-store", response["Cache-Control"])
+                self.assertTrue(AuditLog.objects.filter(
+                    action="report.exported", actor=self.chair,
+                    details={"report": "generation", "format": fmt},
+                ).exists())
+        response = self.client.get(reverse("reporting:export", args=["room-schedule", "csv"]),
+                                   {"term": self.term.pk, "room": self.records[self.external.pk]["rooms"].pk})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(AuditLog.objects.filter(action="report.exported").count(), 3)

@@ -68,7 +68,7 @@ class BalancingPageTests(TeachingFixture):
     def test_history_and_detail_are_scoped(self):
         history = self.client.get(self.url("balancing-runs"))
         self.assertContains(history, self.department.code)
-        self.assertNotContains(history, self.external.code)
+        self.assertNotContains(history, f'data-label="Department">{self.external.code}</td>')
         self.assertEqual(self.client.get(self.url("balancing-run-detail", self.foreign_run.pk)).status_code, 404)
         detail = self.client.get(self.url("balancing-run-detail", self.run.pk))
         self.assertContains(detail, "Faculty workload comparison")

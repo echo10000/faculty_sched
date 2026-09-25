@@ -2,9 +2,23 @@
 
 Faculty Workload and Academic Scheduling System for Negros Oriental State University - Bais Campus (NORSU-BSC).
 
-**Phases 1–9 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations, human schedule approval, active official selection, dated resource bookings, role-aware dashboard monitoring, administrative reporting and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
+**Phases 1–10 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations, human schedule approval, active official selection, dated resource bookings, role-aware dashboard monitoring, administrative reporting and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
 
-See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#19-phase-9-implementation-record) for the completed phases, architecture, migration decisions and later roadmap.
+See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#20-phase-10-implementation-record) for the completed phases, architecture, migration decisions and deployment handoff.
+
+## Technical handoff
+
+CampusLoad is a server-rendered Django monolith with PostgreSQL, Bootstrap, OR-Tools, ReportLab and openpyxl. `timetabling` owns current scheduling and approval; the retained `scheduling` autoscheduler has no public routes. Scope is checked in selectors and write services, and important mutations record transactional, append-only audit events. Reports reuse the workload calculator, conflict validator, stored solver runs and immutable approval snapshots.
+
+| Need | Starting point |
+| --- | --- |
+| Fresh local installation | [Fresh installation](#fresh-installation), then `.env.example` |
+| Linux production and recovery | [Deployment and recovery](docs/DEPLOYMENT.md), then `.env.production.example` |
+| Repeatable presentation | [Capstone demo path](docs/DEMO.md) |
+| Architecture and migration record | [Development plan](DEVELOPMENT_PLAN.md) |
+| Main application | `config/urls.py`, `accounts`, `core`, `resources`, `workloads`, `timetabling`, `reporting` |
+
+The role defaults are System Admin, College Dean, Department Chair and Authorized Staff. Staff require explicit grants, and organizational scope still applies. PostgreSQL is required for the exclusion constraints and database triggers. The principal known date limitation is that every matching weekday in an academic term is treated as instructional; holidays and date exceptions are not modeled.
 
 ## Implemented foundation
 
@@ -15,7 +29,7 @@ See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#19-phase-9-implementation-record) 
 - Permission-protected dashboard, scoped read-only college/department pages, academic calendar and locally bundled Bootstrap 5.3.8.
 - System-admin-only Django admin, including user/group/profile management.
 - Append-only audit records for authentication, admin mutations and development seeding; database protection against audit editing/deletion.
-- Additive migrations, idempotent development seeds and PostgreSQL regression coverage across Phases 1–9.
+- Additive migrations, idempotent development seeds and PostgreSQL regression coverage across Phases 1–10.
 - Faculty, subject and room list/detail/create/edit/status pages, scoped search/filters/pagination and dashboard counts.
 - Configurable employment categories, academic ranks, buildings, room types and academic-term teaching-capacity policies/overrides.
 
@@ -23,15 +37,15 @@ Term-specific teaching assignments, manual timetable creation/conflict checks, a
 
 ## Run this prepared workspace
 
-The review found no running PostgreSQL service. An isolated loopback-only development database was prepared under Git-ignored `.local/`, on port **55432**, with generated credentials. `.env` points to this database; its previous contents are backed up in `.local/original.env`.
+This checkout uses an isolated loopback-only PostgreSQL database on port **55432**. Its `.env` is Git-ignored. On this prepared machine, the existing virtual environment and database helper live in the sibling `CAPSTONE SYSTEM\faculty_sched` workspace; a new clone should follow [Fresh installation](#fresh-installation) instead.
 
 From the repository root in PowerShell:
 
 ```powershell
-.\venv\Scripts\python.exe scripts/dev_database.py start
-.\venv\Scripts\python.exe manage.py migrate
-.\venv\Scripts\python.exe manage.py seed_foundation --create-users --with-balancing
-.\venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+$python = 'C:\Users\PERSONAL\Documents\ChatGPT\CAPSTONE SYSTEM\faculty_sched\.venv\Scripts\python.exe'
+& $python manage.py migrate
+& $python manage.py check
+& $python manage.py runserver 127.0.0.1:8000
 ```
 
 Open [the application](http://127.0.0.1:8000/). Development accounts are:
@@ -43,19 +57,21 @@ Open [the application](http://127.0.0.1:8000/). Development accounts are:
 | `dev.chair` | Department Chair for Example Department One |
 | `dev.staff` | Authorized Staff; dashboard access only initially |
 
-Their generated passwords are in `.local/development-credentials.txt`. Do not commit/share this file or `.env`. The seed never resets existing account passwords.
+Their generated passwords are in the sibling workspace's Git-ignored `.local/development-credentials.txt`. Do not commit/share this file or `.env`. The seed never resets existing account passwords. For a repeatable disposable demo database, see [the demo path](docs/DEMO.md); do not rerun the seed against a database containing decisions you want to preserve.
 
-Stop the development database when finished:
+If the prepared database is stopped, start or stop its sibling helper from that workspace:
 
 ```powershell
-.\venv\Scripts\python.exe scripts/dev_database.py stop
+Push-Location 'C:\Users\PERSONAL\Documents\ChatGPT\CAPSTONE SYSTEM\faculty_sched'
+& $python scripts/dev_database.py start  # or: stop
+Pop-Location
 ```
 
 The Windows helper uses PostgreSQL 17.6 packaged by [Zonky](https://github.com/zonkyio/embedded-postgres-binaries) from Maven Central with SHA-256 verification. It is an optional isolated development helper, not a production database installer. It creates a separate cluster/database and never deletes or reinitializes an existing cluster. `--configure-env` explicitly backs up and updates `.env`; ordinary `start` leaves `.env` unchanged.
 
 ## Fresh installation
 
-Python 3.14.6 / Django 5.2.16 were used for this implementation. Requirements include Django, psycopg2-binary, python-decouple, `ortools==9.15.6755` and retained legacy dependencies. PostgreSQL is required; SQLite does not support the current migrations/exclusions.
+Python 3.14.6 / Django 5.2.17 were used for final verification. Requirements include Django, psycopg2-binary, python-decouple, `ortools==9.15.6755`, ReportLab and openpyxl; Linux installs the pinned Gunicorn dependency. PostgreSQL is required; SQLite does not support the current migrations/exclusions.
 
 ### 1. Install Python dependencies
 
@@ -64,7 +80,7 @@ py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Use `.\.venv\Scripts\python.exe` throughout a fresh installation; the prepared workspace uses `venv` instead. Calling the interpreter directly avoids PowerShell activation-policy issues.
+Use `.\.venv\Scripts\python.exe` throughout a fresh installation; this prepared checkout uses the sibling virtual environment shown above. Calling the interpreter directly avoids PowerShell activation-policy issues.
 
 ### 2. Choose a development database
 
@@ -114,7 +130,7 @@ Paste the generated secret into `.env` and set the DB credentials. Supported con
 | `SCHEDULER_MAX_CANDIDATES` | Positive candidate-count cap; default 100,000 |
 | `SCHEDULER_MAX_SLOT_LITERALS` | Positive slot-literal cap; default 2,000,000 |
 
-Secure session/CSRF cookies default on outside DEBUG. There is no SQLite switch or DATABASE_URL parser. Secrets live in environment variables or Git-ignored `.env`, not SystemSetting. Production proxy/TLS configuration remains release work.
+Secure session/CSRF cookies default on outside DEBUG. There is no SQLite switch or DATABASE_URL parser. Secrets live in environment variables or Git-ignored `.env`, not SystemSetting. Production proxy/TLS choices are documented in [deployment and recovery](docs/DEPLOYMENT.md).
 
 ### 4. Migrate, seed and start
 
@@ -199,10 +215,10 @@ Existing legacy faculty load targets are preserved; new capacity limits default 
 ## Tests and migration validation
 
 ```powershell
-.\venv\Scripts\python.exe manage.py test --settings=config.test_settings
-.\venv\Scripts\python.exe manage.py makemigrations --check --dry-run
-.\venv\Scripts\python.exe manage.py check
-.\venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe manage.py test --settings=config.test_settings
+.\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
+.\.venv\Scripts\python.exe manage.py check
+.\.venv\Scripts\python.exe -m pip check
 git diff --check
 ```
 
@@ -218,7 +234,7 @@ Verified on 2026-09-12: additive migrations and teaching seed succeeded; **134 t
 - Existing department-admin profiles migrate to Authorized Staff. Legacy deans are disabled pending an explicit college assignment. Resolve these through Admin profiles before granting access.
 - Audit is append-only and includes admin/auth/seed operations. Arbitrary ORM writes outside these entry points are not automatically audited; later services must call the audit service inside their transactions.
 - Legacy `seed_demo_data` remains only for old regression fixtures. Use `seed_foundation --with-teaching` or `seed_teaching` for this phase; do not seed enrollment/curriculum demo data into the workspace.
-- Production deployment, operational login throttling, monitoring, TLS/proxy/static serving, least-privilege runtime roles, dependency locking and backup/restore rehearsals remain later phases.
+- Production hosting requires a trusted TLS proxy, appropriate runtime role, operational monitoring and practiced backups; see [deployment and recovery](docs/DEPLOYMENT.md).
 
 ## Phase 3 teaching workspace
 
@@ -416,11 +432,11 @@ Acceptance and discard are POST-only and CSRF-protected. Acceptance re-resolves 
 With `DEBUG=True`, run `seed_foundation --create-users --with-timetables` for the two manual schedules plus two fictional configurations, four meeting requirements and one empty `Example generator workspace` in `DEMO-D1`. The separate `seed_timetables --with-infeasible-generator-example` option adds a non-overlapping term and an empty `Example infeasible generator workspace` whose two-hour meeting cannot fit a one-hour daily window; readiness reports `ZERO_CANDIDATES`. These seeds are idempotent and preserve passwords, roles/scopes and edited rows. They never request, accept, discard or delete a generation run.
 
 ```powershell
-.\venv\Scripts\python.exe scripts\dev_database.py start
-.\venv\Scripts\python.exe manage.py migrate
-.\venv\Scripts\python.exe manage.py seed_foundation --create-users --with-timetables
-.\venv\Scripts\python.exe manage.py runserver
-.\venv\Scripts\python.exe manage.py test --settings=config.test_settings --noinput
+.\.venv\Scripts\python.exe scripts\dev_database.py start
+.\.venv\Scripts\python.exe manage.py migrate
+.\.venv\Scripts\python.exe manage.py seed_foundation --create-users --with-timetables
+.\.venv\Scripts\python.exe manage.py runserver
+.\.venv\Scripts\python.exe manage.py test --settings=config.test_settings --noinput
 ```
 
 Final Phase 5 verification on 2026-09-23: **332 tests passed in 419.237 seconds** (165 prior tests and 167 Phase 5 additions); `manage.py check`, `makemigrations --check --dry-run`, `python -m pip check`, and `git diff --check` passed. Both Phase 5 migrations are applied to the prepared PostgreSQL database. The default seed ran twice, the optional zero-candidate seed ran twice, and a real request returned `PROPOSAL_READY`/`OPTIMAL` with two proposed meetings and zero persisted schedule entries. Browser review at 1440px and 390px covered readiness, proposal/detail, the weekly layout and mobile navigation without page overflow. Run the full test suite sequentially because Django uses a shared temporary PostgreSQL test database.
@@ -442,10 +458,10 @@ System admins may use any department; deans are college-scoped; chairs are depar
 On the prepared local PostgreSQL development database, run:
 
 ```powershell
-.\venv\Scripts\python.exe scripts\dev_database.py start
-.\venv\Scripts\python.exe manage.py migrate
-.\venv\Scripts\python.exe manage.py seed_foundation --create-users --with-balancing
-.\venv\Scripts\python.exe manage.py runserver
+.\.venv\Scripts\python.exe scripts\dev_database.py start
+.\.venv\Scripts\python.exe manage.py migrate
+.\.venv\Scripts\python.exe manage.py seed_foundation --create-users --with-balancing
+.\.venv\Scripts\python.exe manage.py runserver
 ```
 
 For verification, run `manage.py test --settings=config.test_settings --noinput`, then `manage.py check`, `manage.py makemigrations --check --dry-run`, `python -m pip check`, and `git diff --check`. Run PostgreSQL test commands sequentially because they share a test database. `--with-balancing` includes the Phase 5 examples and adds a separate `DEMO-BALANCING` term with two active same-department faculty, two unscheduled offerings, complete current shares, and effective targets/weights. It is DEBUG-only and idempotent; it never generates a recommendation or resets accepted assignments. `manage.py seed_balancing` also runs independently.
@@ -475,11 +491,11 @@ Submit, return, approve and revise URLs accept CSRF-protected POST only. Deans h
 The optional development seed `seed_foundation --create-users --with-review` includes the timetable examples and submits the fictional manual schedule as `dev.chair`. It is DEBUG-only and idempotent, and it creates no approval, snapshot, official selection or booking. Run `seed_review` independently after `seed_foundation --create-users --with-timetables` if desired. Edited example data that cannot pass current validation causes a seed error rather than a fabricated decision.
 
 ```powershell
-.\venv\Scripts\python.exe scripts\dev_database.py start
-.\venv\Scripts\python.exe manage.py migrate
-.\venv\Scripts\python.exe manage.py seed_foundation --create-users --with-review
-.\venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
-.\venv\Scripts\python.exe manage.py test --settings=config.test_settings --noinput
+.\.venv\Scripts\python.exe scripts\dev_database.py start
+.\.venv\Scripts\python.exe manage.py migrate
+.\.venv\Scripts\python.exe manage.py seed_foundation --create-users --with-review
+.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+.\.venv\Scripts\python.exe manage.py test --settings=config.test_settings --noinput
 ```
 
 Phase 7 verification on 2026-09-24: **403 PostgreSQL tests passed sequentially**, including all 376 Phase 6 tests and 27 new regression tests. Migrations `timetabling.0004`–`0006` applied; the optional review seed ran twice without creating duplicate history or an official booking. Desktop (1440px) and mobile (390px) browser checks covered the chair's submitted schedule, the dean's decision form and mobile navigation without horizontal overflow. The current dated booking expansion treats every matching weekday between term dates as instructional because no holiday/date-exception model exists.
@@ -494,7 +510,7 @@ The dashboard displays authoritative assignment-based workload status (underload
 
 Official room use is aggregated from dated `OfficialResourceBooking` rows for visible rooms and official meetings in the selected scope. It shows rooms used and absolute scheduled hours **across the selected term**. There is no defensible configured denominator for a room-utilization percentage, so no percentage is shown. Scheduled faculty, assignments without official meetings and official weekly meeting hours are reported separately from workload units. Recent Phase 5 generation and Phase 6 balancing run statuses link to their existing history/detail pages; dashboard reads never run either optimizer. Small labeled status bars use scoped counts and CSS, without a new chart dependency.
 
-Dashboard queries batch workload assignments and policies, aggregate lifecycle/run/room counts in PostgreSQL, and bound recent lists. The project still lacks instructional holiday/date exceptions: official bookings include every matching weekday within the academic term. The live conflict preview covers one recent schedule; full validation remains on each schedule's existing validation page. Phase 9 report expansion has not started.
+Dashboard queries batch workload assignments and policies, aggregate lifecycle/run/room counts in PostgreSQL, and bound recent lists. The project still lacks instructional holiday/date exceptions: official bookings include every matching weekday within the academic term. The live conflict preview covers one recent schedule; full validation remains on each schedule's existing validation page. Phase 9 reports are documented below.
 
 Phase 8 verification on 2026-09-24: **413 PostgreSQL tests passed sequentially** (403 existing and 10 new dashboard tests). Django system, migration-drift, dependency and Git whitespace checks passed. Desktop (1440px) and mobile (390px) browser checks covered admin, dean and chair dashboards, term switching, scoped counts, status bars, tables and mobile navigation without horizontal overflow. A Phase 7 race test now also accepts PostgreSQL's deadlock rejection as the losing outcome when concurrent inserts check multiple exclusion constraints; it still requires exactly one official booking to commit.
 
@@ -504,6 +520,20 @@ The **Reports** area at `/reports/` offers faculty workload, faculty teaching sc
 
 Workload reports reuse the authoritative Phase 3 calculator for assignments, units, hours, target, maximum, status, utilization and policy source. Working timetable reports are labeled **DRAFT / WORKING DATA — NOT OFFICIAL**. Current official reports use Phase 7 `ActiveSchedule` selection and approved snapshot entries, never the latest approved version by guesswork. A selected older approved version is labeled **APPROVED HISTORICAL VERSION** and reads frozen faculty, subject, section and room labels from `ScheduleApprovalSnapshot`; the viewer must still have access to its schedule and underlying entries. Approval actions use immutable workflow events. Phase 5 and Phase 6 history reports read recorded runs without executing either optimizer. The conflict report invokes the Phase 4 validator live.
 
-Print pages omit application navigation and use A4 layouts. ReportLab creates PDFs, openpyxl creates numeric XLSX workbooks with frozen headers, and CSV is UTF-8 with plain column headings. Official, historical, approval-history and workload downloads are audited. The older `scheduling/exports.py` remains for unmounted legacy routes; it reads legacy `Term`/`Block` and load records and is not used for current reports. The project still has no instructional holiday/date-exception model, so official meeting dates follow Phase 7's matching-weekday behavior. Phase 10 has not started.
+Print pages omit application navigation and use A4 layouts. ReportLab creates PDFs, openpyxl creates numeric XLSX workbooks with frozen headers, and CSV is UTF-8 with plain column headings. Official, historical, approval-history and workload downloads are audited. The older `scheduling/exports.py` remains for unmounted legacy routes; it reads legacy `Term`/`Block` and load records and is not used for current reports. The project still has no instructional holiday/date-exception model, so official meeting dates follow Phase 7's matching-weekday behavior. At the Phase 9 handoff, Phase 10 had not started.
 
 Phase 9 verification on 2026-09-24: **424 PostgreSQL tests passed sequentially** (413 existing and 11 new reporting tests). Django system, migration-drift, dependency and Git whitespace checks passed. Browser checks at desktop and 390px mobile widths covered admin, dean and chair report access, scoped choices, historical terms, print pages and export actions without horizontal page overflow.
+
+## Phase 10 deployment handoff
+
+Phase 10 keeps the existing functional architecture. It adds a production environment template, deployment/recovery runbook, repeatable demo path, PostgreSQL-backed login throttling, explicit report-export permission, non-cacheable report responses, additional database integrity guards and query reductions in navigation and reporting. Reports remain scoped and approved schedules remain protected by the existing workflow and booking constraints. See [deployment and recovery](docs/DEPLOYMENT.md) for Linux, HTTPS, static assets, backups and operational checks; see [capstone demo path](docs/DEMO.md) for a disposable DEBUG seed and reviewer sequence.
+
+### Known limitations
+
+- Every matching weekday in an academic term is treated as instructional; holidays and date exceptions are not modeled.
+- Report exports are rendered synchronously in a web worker and should be monitored and sized for the institution's data volume.
+- The included local verification is on Windows/PostgreSQL. The Linux Gunicorn command and backup/restore procedure require a smoke test on the actual deployment host.
+
+Phase 10 stops at deployment preparation and capstone readiness. No production host or public service is configured in this repository.
+
+Phase 10 verification on 2026-09-25: **437 PostgreSQL tests passed sequentially**, preserving all 424 prior tests. Django `check`, a production-like `check --deploy`, migration drift, dependency and Git whitespace checks passed. A fresh PostgreSQL database accepted all migrations; the full DEBUG demo seed ran twice without duplicate review history, approval, booking or recommendation runs. Desktop and 390px mobile browser checks covered scoped workflows and print without horizontal overflow. Linux deployment and backup/restore commands still need a smoke test on the target host.

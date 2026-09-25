@@ -51,3 +51,14 @@ class AdminProfile(models.Model):
 
     def __str__(self):
         return f"{self.user} ({self.get_role_display()})"
+
+
+class LoginFailureBucket(models.Model):
+    """Opaque, short-lived counter shared by all application workers."""
+
+    key = models.CharField(max_length=64, primary_key=True)
+    failures = models.PositiveSmallIntegerField(default=0)
+    expires_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        default_permissions = ()

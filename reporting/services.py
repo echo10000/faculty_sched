@@ -43,10 +43,11 @@ CATALOG = (
 SCHEDULE_KINDS = {"faculty-schedule", "section-schedule", "room-schedule", "master", "official", "historical"}
 
 
-def available_catalog(user):
+def available_catalog(user, *, granted=None):
     if not user.is_authenticated:
         return []
-    granted = user.get_all_permissions()
+    if granted is None:
+        granted = user.get_all_permissions()
     return [
         {"key": key, "title": title, "description": description}
         for key, title, description, permissions in CATALOG
@@ -124,7 +125,7 @@ def _filter_context(user, kind, params):
         room, item = _selected(user, params, "room", scope_resources(user, Room.objects.all()), "Room")
         filters.append(item)
     if kind in {"section-schedule", "master"}:
-        sections = timetable_scope(user, ClassSection.objects.filter(academic_term=term)) if term else ClassSection.objects.none()
+        sections = timetable_scope(user, ClassSection.objects.filter(academic_term=term).select_related("academic_term")) if term else ClassSection.objects.none()
         section, item = _selected(user, params, "section", sections, "Section")
         filters.append(item)
     if kind == "master":
@@ -136,7 +137,7 @@ def _filter_context(user, kind, params):
         program, item = _selected(user, params, "program", programs, "Program")
         filters.append(item)
     if kind in SCHEDULE_KINDS | {"approvals", "conflicts"}:
-        schedules = timetable_scope(user, Schedule.objects.filter(academic_term=term)) if term else Schedule.objects.none()
+        schedules = timetable_scope(user, Schedule.objects.filter(academic_term=term).select_related("academic_term")) if term else Schedule.objects.none()
         if department:
             schedules = schedules.filter(department=department)
         schedule, item = _selected(user, params, "schedule", schedules, "Schedule version")

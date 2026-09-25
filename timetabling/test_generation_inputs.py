@@ -5,7 +5,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Permission
 from django.core.exceptions import PermissionDenied
-from django.db import connection, transaction
+from django.db import IntegrityError, connection, transaction
 from django.http import Http404
 from django.test import TransactionTestCase, override_settings
 
@@ -330,20 +330,16 @@ class GenerationInputTests(TimetableFixture):
         self.assertNotIn(self.offering.pk, prepared.input_summary["offering_ids"])
         self.assertEqual(prepared.solver_input.demands, ())
 
-    def test_term_and_organization_mismatches_are_detected(self):
+    def test_term_mismatch_is_rejected_and_organization_mismatch_is_detected(self):
         later_section = ClassSection.objects.create(
             academic_term=self.later,
             department=self.department,
             code="LATER-SECTION",
         )
-        OfferingRequirement.objects.filter(pk=self.requirement.pk).update(
-            section=later_section
-        )
-        self.assertIn("TERM_MISMATCH", self.codes(self.build()))
-
-        OfferingRequirement.objects.filter(pk=self.requirement.pk).update(
-            section=self.section
-        )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            OfferingRequirement.objects.filter(pk=self.requirement.pk).update(
+                section=later_section
+            )
         Subject.objects.filter(pk=self.offering.subject_id).update(
             owning_department=self.sibling
         )

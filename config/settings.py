@@ -60,7 +60,11 @@ CSRF_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = env("SECURE_SSL_REDIRECT", default=not DEBUG, cast=bool)
 SECURE_HSTS_SECONDS = env("SECURE_HSTS_SECONDS", default=0 if DEBUG else 31536000, cast=int)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False, cast=bool)
-SECURE_HSTS_PRELOAD = False
+SECURE_HSTS_PRELOAD = env("SECURE_HSTS_PRELOAD", default=False, cast=bool)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+# Enable only behind a trusted proxy that removes client-supplied forwarded headers.
+if env("TRUST_PROXY_SSL_HEADER", default=False, cast=bool):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 X_FRAME_OPTIONS = "DENY"
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = env("TIME_ZONE", default="Asia/Manila")
@@ -73,6 +77,15 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+        "django.security": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+    },
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 INSTITUTION_NAME = env("INSTITUTION_NAME", default="Negros Oriental State University - Bais Campus")
 SCHEDULER_PREPROCESSING_TIME_LIMIT_SECONDS = env(

@@ -13,7 +13,10 @@ class College(TrackedModel):
 
     class Meta:
         ordering = ["name"]
-        permissions = [("view_dashboard", "Can access the dashboard")]
+        permissions = [
+            ("view_dashboard", "Can access the dashboard"),
+            ("export_report", "Can export reports"),
+        ]
 
     def __str__(self):
         return self.code

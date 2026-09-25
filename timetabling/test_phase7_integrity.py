@@ -8,6 +8,7 @@ from academics.models import AcademicTerm
 from faculty.models import Faculty
 from scheduling.models import Room
 from workloads.models import FacultySubjectAssignment
+from workloads.models import SubjectOffering
 
 from .conflicts import get_schedule_conflicts
 from .models import (
@@ -71,7 +72,6 @@ class OfficialDatabaseIntegrityTests(TimetableFixture):
 
     def test_booking_source_keys_and_dates_cannot_drift(self):
         booking = OfficialResourceBooking.objects.filter(schedule_entry=self.entry).order_by("booking_date").first()
-        OfficialResourceBooking.objects.filter(pk=booking.pk).delete()
         wrong_room = Room.objects.create(code="OFFICIAL-FORGE", name="Forged room", capacity=40, owner_department=self.department)
         with self.assertRaises(IntegrityError), transaction.atomic():
             OfficialResourceBooking.objects.create(
@@ -95,3 +95,76 @@ class OfficialDatabaseIntegrityTests(TimetableFixture):
             FacultySubjectAssignment.objects.filter(pk=self.assignment.pk).update(faculty=other_faculty)
         with self.assertRaises(IntegrityError), transaction.atomic():
             AcademicTerm.objects.filter(pk=self.term.pk).update(start_date=date(2026, 1, 2))
+
+    def test_active_official_bookings_reject_direct_deletion(self):
+        original_ids = list(OfficialResourceBooking.objects.filter(
+            schedule_entry=self.entry,
+        ).values_list("pk", flat=True))
+        self.assertTrue(original_ids)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            OfficialResourceBooking.objects.filter(pk=original_ids[0]).delete()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            OfficialResourceBooking.objects.filter(schedule_entry=self.entry).delete()
+        self.assertEqual(
+            list(OfficialResourceBooking.objects.filter(
+                schedule_entry=self.entry,
+            ).values_list("pk", flat=True)),
+            original_ids,
+        )
+
+    def test_active_section_identity_rejects_direct_update(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            ClassSection.objects.filter(pk=self.section.pk).update(academic_term=self.later)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            ClassSection.objects.filter(pk=self.section.pk).update(department=self.sibling)
+        self.section.refresh_from_db()
+        self.assertEqual(self.section.academic_term_id, self.term.pk)
+
+
+class DraftSourceScopeIntegrityTests(TimetableFixture):
+    def test_requirement_reassignment_cannot_cross_term(self):
+        other_section = ClassSection.objects.create(
+            academic_term=self.later, department=self.department, code="LATER-SCOPE",
+        )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            OfferingRequirement.objects.filter(pk=self.requirement.pk).update(section=other_section)
+        other_department_section = ClassSection.objects.create(
+            academic_term=self.term, department=self.sibling, code="OTHER-DEPARTMENT",
+        )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            OfferingRequirement.objects.filter(pk=self.requirement.pk).update(section=other_department_section)
+        self.requirement.refresh_from_db()
+        self.assertEqual(self.requirement.section_id, self.section.pk)
+
+        same_scope = ClassSection.objects.create(
+            academic_term=self.term, department=self.department, code="SAME-SCOPE",
+        )
+        OfferingRequirement.objects.filter(pk=self.requirement.pk).update(section=same_scope)
+        self.requirement.refresh_from_db()
+        self.assertEqual(self.requirement.section_id, same_scope.pk)
+
+    def test_bulk_created_requirement_cannot_cross_department(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            OfferingRequirement.objects.bulk_create([
+                OfferingRequirement(
+                    subject_offering=self.offerings[self.sibling.pk],
+                    section=self.section,
+                ),
+            ])
+
+    def test_referenced_section_and_offering_identity_cannot_drift(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            ClassSection.objects.filter(pk=self.section.pk).update(academic_term=self.later)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            ClassSection.objects.filter(pk=self.section.pk).update(department=self.sibling)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            SubjectOffering.objects.filter(pk=self.offering.pk).update(academic_term=self.later)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            SubjectOffering.objects.filter(pk=self.offering.pk).update(department=self.sibling)
+
+        unreferenced = ClassSection.objects.create(
+            academic_term=self.term, department=self.department, code="UNREFERENCED",
+        )
+        ClassSection.objects.filter(pk=unreferenced.pk).update(academic_term=self.later)
+        unreferenced.refresh_from_db()
+        self.assertEqual(unreferenced.academic_term_id, self.later.pk)

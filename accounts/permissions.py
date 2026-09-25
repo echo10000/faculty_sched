@@ -44,6 +44,8 @@ TIMETABLE_PERMISSIONS |= {
     "timetabling.view_schedulegenerationrun",
 }
 
+REPORT_PERMISSIONS = {"core.export_report"}
+
 # Human workflow grants are deliberately separate from timetable editing. In
 # particular, a chair's ability to submit a version never grants approval.
 SCHEDULE_EDITOR_PERMISSIONS = {
@@ -83,7 +85,7 @@ def role_permissions(profile):
         return {f"{app}.{code}" for app, code in Permission.objects.values_list("content_type__app_label", "codename")}
     if profile.role in (AdminProfile.Role.DEAN, AdminProfile.Role.DEPT_CHAIR):
         permissions = (READ_PERMISSIONS | RESOURCE_PERMISSIONS | TEACHING_PERMISSIONS
-                       | TIMETABLE_PERMISSIONS | BALANCING_PERMISSIONS
+                       | TIMETABLE_PERMISSIONS | BALANCING_PERMISSIONS | REPORT_PERMISSIONS
                        | SCHEDULE_EDITOR_PERMISSIONS | SCHEDULE_REVIEWER_PERMISSIONS)
         if profile.role == AdminProfile.Role.DEAN:
             permissions |= SCHEDULE_APPROVER_PERMISSIONS
