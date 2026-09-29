@@ -5,6 +5,7 @@ from . import workflow_views
 app_name = "timetabling"
 urlpatterns = [
     path("", views.RecordList.as_view(), name="schedules"),
+    path("prepare/", views.PrepareScheduleView.as_view(), name="prepare"),
     path("my-schedules/", workflow_views.my_submissions, name="my-schedules"),
     path("review/", workflow_views.review_queue, name="review-queue"),
     path("official/", workflow_views.official_schedules, name="official-schedules"),

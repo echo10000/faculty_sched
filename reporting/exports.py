@@ -15,6 +15,7 @@ import csv
 from datetime import date, datetime, time
 from io import BytesIO, StringIO
 from numbers import Number
+from pathlib import Path
 from xml.sax.saxutils import escape
 
 from openpyxl import Workbook
@@ -24,7 +25,8 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, Spacer, TableStyle
+from reportlab.platypus import HRFlowable, Image, LongTable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from django.conf import settings
 from django.utils import timezone
 
 
@@ -155,7 +157,30 @@ def render_pdf(report):
         "ReportHeader", parent=cell_style, textColor=colors.white, fontName="Helvetica-Bold"
     )
 
+    seal_path = Path(settings.BASE_DIR) / "static" / "images" / "landing" / "norsu-seal.png"
+    institution_style = ParagraphStyle(
+        "Institution", parent=styles["Normal"], fontName="Helvetica-Bold",
+        fontSize=10, leading=13, textColor=colors.HexColor("#15364A"),
+    )
+    campus_style = ParagraphStyle(
+        "Campus", parent=styles["Normal"], fontSize=8, leading=11,
+        textColor=colors.HexColor("#526579"),
+    )
+    identity = Table([[
+        Image(str(seal_path), width=15 * mm, height=15 * mm),
+        [Paragraph("NEGROS ORIENTAL STATE UNIVERSITY", institution_style),
+         Paragraph("Bayawan–Santa Catalina Campus", campus_style)],
+    ]], colWidths=[19 * mm, pagesize[0] - document.leftMargin - document.rightMargin - 19 * mm])
+    identity.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
     story = [
+        identity,
+        Spacer(1, 3 * mm),
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#D4AF32")),
+        Spacer(1, 4 * mm),
         _pdf_paragraph(report["title"], title_style),
         _pdf_paragraph(report["source_label"], source_style),
         Spacer(1, 4 * mm),
@@ -195,7 +220,7 @@ def render_pdf(report):
         canvas.saveState()
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(colors.HexColor("#526579"))
-        canvas.drawString(doc.leftMargin, pagesize[1] - 12 * mm, _as_text(report["source_label"]))
+        canvas.drawString(doc.leftMargin, pagesize[1] - 12 * mm, "NORSU · Bayawan–Santa Catalina Campus")
         canvas.drawRightString(pagesize[0] - doc.rightMargin, 9 * mm, f"Page {doc.page}")
         canvas.restoreState()
 

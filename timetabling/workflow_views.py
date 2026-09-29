@@ -53,7 +53,7 @@ def review_queue(request):
     )
     page = Paginator(schedules, 20).get_page(request.GET.get("page"))
     return render(request, "timetabling/workflow_list.html", {
-        "title": "Pending review", "page_obj": page, "kind": "review",
+        "title": "Schedules for review", "page_obj": page, "kind": "review",
     })
 
 

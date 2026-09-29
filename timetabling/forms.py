@@ -25,6 +25,7 @@ class ScopedForm(StyledFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         if "department" in self.fields:
             self.fields["department"].queryset = department_scoped_queryset(user, Department.objects.filter(is_active=True, college__is_active=True), "pk")
+            self.fields["department"].label_from_instance = lambda department: f"{department.name} ({department.code})"
         if "academic_term" in self.fields:
             self.fields["academic_term"].queryset = accessible_terms(user, active=True)
             if term:
@@ -217,6 +218,7 @@ class TimetableFilter(StyledFormMixin, forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["academic_term"].queryset = accessible_terms(user)
         self.fields["department"].queryset = department_scoped_queryset(user, Department.objects.all(), "pk")
+        self.fields["department"].label_from_instance = lambda department: f"{department.name} ({department.code})"
         self.fields["faculty"].queryset = scoped_faculty(user)
         self.fields["room"].queryset = scope_resources(user, Room.objects.all())
         self.fields["section"].queryset = scoped(user, ClassSection.objects.all())

@@ -4,9 +4,11 @@ from django.db.models import Q
 from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404
 from django.views.generic import DetailView, ListView, TemplateView
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
 
 from academics.models import AcademicTerm
-from accounts.permissions import department_scoped_queryset, require_access, scoped_colleges
+from accounts.permissions import department_scoped_queryset, is_system_admin, profile_for, require_access, scoped_colleges
 from .dashboard_data import build_monitoring
 from .models import College, Department
 
@@ -19,6 +21,11 @@ class ProtectedViewMixin(LoginRequiredMixin):
             return self.handle_no_permission()
         require_access(request.user, self.permission)
         return super().dispatch(request, *args, **kwargs)
+
+
+@method_decorator(never_cache, name="dispatch")
+class LandingView(TemplateView):
+    template_name = "core/landing.html"
 
 
 class DashboardView(ProtectedViewMixin, TemplateView):
@@ -54,6 +61,51 @@ class DashboardView(ProtectedViewMixin, TemplateView):
         context["selected_term"] = self.selected_term
         context["term_options"] = self.term_options
         context["monitoring"] = build_monitoring(user, self.selected_term)
+        profile = profile_for(user)
+        role = "admin" if is_system_admin(user) else profile.role.lower() if profile else "staff"
+        context["dashboard_role"] = role
+        actions = []
+        def action(permission, label, route, description):
+            if user.has_perm(permission) and (not route.startswith(("workloads:", "timetabling:")) or user.has_perm("academics.view_academicterm")):
+                actions.append({"label": label, "route": route, "description": description})
+        if role == "admin":
+            action("academics.view_academicterm", "Academic terms", "academic-calendar", "Review institution-wide academic periods.")
+            action("core.view_college", "Colleges", "college-list", "Review the institutional structure.")
+            action("core.view_department", "Departments", "department-list", "Review department records.")
+            if user.is_staff:
+                actions.append({"label": "Manage access and setup", "route": "admin:index", "description": "Open authorized system administration."})
+        elif role == "dean":
+            action("timetabling.review_schedule", "Schedules for review", "timetabling:review-queue", "Review submitted college schedules.")
+            action("workloads.view_workload", "Faculty workload", "workloads:monitor", "Review teaching loads in your scope.")
+            action("timetabling.view_schedule", "Official schedules", "timetabling:official-schedules", "See the current official selections.")
+        elif role == "dept_chair":
+            action("timetabling.view_schedule", "Prepare schedule", "timetabling:prepare", "Follow class setup through submission.")
+            action("workloads.view_facultysubjectassignment", "Teaching assignments", "workloads:assignments", "Review who teaches each class.")
+            action("workloads.view_workload", "Faculty workload", "workloads:monitor", "Check teaching loads before scheduling.")
+        else:
+            for permission, label, route, description in (
+                ("workloads.view_facultysubjectassignment", "Teaching assignments", "workloads:assignments", "Review authorized class assignments."),
+                ("workloads.view_workload", "Faculty workload", "workloads:monitor", "Review authorized teaching loads."),
+                ("timetabling.view_schedule", "Prepare schedule", "timetabling:prepare", "Follow your authorized scheduling steps."),
+                ("timetabling.review_schedule", "Schedules for review", "timetabling:review-queue", "Review authorized submissions."),
+            ):
+                action(permission, label, route, description)
+        from reporting.services import available_catalog
+        if available_catalog(user):
+            actions.append({"label": "Reports", "route": "reporting:index", "description": "Open authorized academic reports."})
+        context["quick_actions"] = actions
+        monitoring = context["monitoring"]
+        attention = []
+        if monitoring["schedules"] and user.has_perm("timetabling.review_schedule"):
+            count = monitoring["schedules"]["pending_count"]
+            attention.append({"text": f"{count} schedule{'s' if count != 1 else ''} waiting for review." if count else "No schedules are currently waiting for review.", "route": "timetabling:review-queue", "label": "Review schedules", "actionable": bool(count)})
+        if monitoring["schedules"] and monitoring["schedules"]["returned_count"] and user.has_perm("timetabling.change_schedule"):
+            attention.append({"text": f"{monitoring['schedules']['returned_count']} schedule version(s) need revision.", "route": "timetabling:my-schedules" if user.has_perm("timetabling.submit_schedule") else "timetabling:schedules", "label": "View schedules", "actionable": True})
+        if monitoring["workload"] and user.has_perm("workloads.view_workload"):
+            count = next((item["count"] for item in monitoring["workload"]["counts"] if item["key"] == "OVERLOAD"), 0)
+            if count:
+                attention.append({"text": f"{count} faculty member(s) are above their configured workload limit.", "route": "workloads:monitor", "label": "Review workload", "actionable": True})
+        context["attention_items"] = attention
         context["resource_metrics"] = []
         if user.has_perm("workloads.view_workload") and user.has_perm("academics.view_academicterm"):
             from workloads.models import FacultySubjectAssignment

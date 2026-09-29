@@ -232,7 +232,7 @@ class ResourceIsolationTests(ResourceFixture):
             self.assertEqual(self.client.post(reverse(f"{namespace}:add"), self.payload(namespace)).status_code, 403)
             self.assertEqual(self.client.post(reverse(f"{namespace}:edit", args=[obj.pk]), self.payload(namespace)).status_code, 403)
             self.assertEqual(self.client.post(reverse(f"{namespace}:status", args=[obj.pk]), {"active": "false"}).status_code, 403)
-            self.assertNotContains(self.client.get("/"), f'href="{reverse(f"{namespace}:list")}"')
+            self.assertNotContains(self.client.get("/dashboard/"), f'href="{reverse(f"{namespace}:list")}"')
 
     def test_lists_and_dashboard_counts_follow_each_role_scope(self):
         for user, expected in [(self.admin, 3), (self.dean, 2), (self.chair, 1)]:
@@ -240,12 +240,12 @@ class ResourceIsolationTests(ResourceFixture):
             for namespace in ("faculty-management", "subjects", "rooms"):
                 response = self.client.get(reverse(f"{namespace}:list"))
                 self.assertEqual(response.context["paginator"].count, expected)
-            dashboard = self.client.get("/")
+            dashboard = self.client.get("/dashboard/")
             for name in ("faculty", "subject", "room"):
                 self.assertEqual(dashboard.context[f"{name}_count"], expected)
                 self.assertEqual(dashboard.context[f"active_{name}_count"], expected)
         set_resource_status(user=self.chair, model=Faculty, pk=self.faculty.pk, active=False)
-        dashboard = self.client.get("/")
+        dashboard = self.client.get("/dashboard/")
         self.assertEqual(dashboard.context["faculty_count"], 1)
         self.assertEqual(dashboard.context["active_faculty_count"], 0)
 
@@ -289,7 +289,7 @@ class ResourceIsolationTests(ResourceFixture):
         self.assertEqual(self.client.get(reverse("faculty-management:detail", args=[self.records[self.sibling.pk]["faculty-management"].pk])).status_code, 404)
         self.assertEqual(self.client.post(reverse("faculty-management:status", args=[self.faculty.pk]), {"active": "false"}).status_code, 403)
         self.assertEqual(self.client.get(reverse("faculty-management:edit", args=[self.faculty.pk])).status_code, 403)
-        self.assertNotIn("subject_count", self.client.get("/").context)
+        self.assertNotIn("subject_count", self.client.get("/dashboard/").context)
 
     def test_broad_groups_and_is_staff_do_not_grant_institution_access(self):
         group = Group.objects.create(name="Broad resource grants")

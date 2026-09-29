@@ -10,6 +10,10 @@
   --surface:#fff;
   --surface-muted:#f8fafb;
   --line:#dfe6ea;
+  --institution-gold:#d4af32;
+  --status-success:#246a4b;
+  --status-warning:#805006;
+  --status-danger:#9b3835;
   --bs-primary:#0f766e;
   --bs-primary-rgb:15,118,110;
 }
@@ -515,6 +519,10 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .report-print-body { background:white; color:#182e40; }
 .report-print-page { max-width:1200px; margin:0 auto; padding:32px; }
 .report-print-header { border-bottom:2px solid #142f43; padding-bottom:18px; margin-bottom:20px; }
+.report-print-header .formal-report-identity { display:flex; align-items:center; gap:11px; margin-bottom:14px; }
+.report-print-header .report-seal { width:52px; height:52px; object-fit:contain; }
+.report-print-header .formal-report-identity strong { display:block; font-size:.78rem; letter-spacing:.08em; }
+.report-print-header .formal-report-identity span { display:block; color:#526579; font-size:.75rem; }
 .report-print-brand { font-size:.9rem; font-weight:700; }
 .report-print-kicker { margin:16px 0 5px; color:#14746c; font-size:.68rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
 .report-print-header h1 { margin:0 0 5px; font-size:1.8rem; }

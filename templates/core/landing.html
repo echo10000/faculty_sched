@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}CampusLoad · NORSU Bayawan–Santa Catalina Campus{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/landing.css' %}?v=1">{% endblock %}
+{% block layout %}
+<div class="landing-page">
+  <header class="public-header">
+    <nav class="navbar navbar-expand-lg public-nav" aria-label="Public navigation">
+      <div class="container landing-container">
+        <a class="public-brand" href="{% url 'landing' %}" aria-label="CampusLoad home">
+          <img src="{% static 'images/landing/norsu-seal.png' %}" alt="Negros Oriental State University seal" width="48" height="48">
+          <span><strong>CampusLoad</strong><small>Negros Oriental State University<br>Bayawan–Santa Catalina Campus</small></span>
+        </a>
+        <button class="navbar-toggler public-menu-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#public-menu" aria-controls="public-menu" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+        <div class="collapse navbar-collapse" id="public-menu">
+          <ul class="navbar-nav ms-auto align-items-lg-center">
+            <li class="nav-item"><a class="nav-link" href="#home">Home</a></li>
+            <li class="nav-item"><a class="nav-link" href="#about">About</a></li>
+            <li class="nav-item"><a class="nav-link" href="#features">Features</a></li>
+            <li class="nav-item"><a class="nav-link" href="#campus">Campus</a></li>
+          </ul>
+          {% if user.is_authenticated %}<a class="btn btn-primary public-nav-action" href="{% url 'home' %}">Open Dashboard</a>{% else %}<a class="btn btn-primary public-nav-action" href="{% url 'accounts:login' %}">Login</a>{% endif %}
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main-content">
+    <section class="landing-hero" id="home" aria-labelledby="landing-title">
+      <div class="landing-hero-image" aria-hidden="true"></div>
+      <div class="landing-container landing-hero-inner">
+        <div class="landing-hero-copy">
+          <p class="landing-overline">NEGROS ORIENTAL STATE UNIVERSITY <span aria-hidden="true">/</span> BAYAWAN–SANTA CATALINA CAMPUS</p>
+          <h1 id="landing-title">A clearer way to manage the academic workload.</h1>
+          <p class="landing-hero-lead"><strong>CampusLoad</strong> is an AI-powered faculty workload and academic scheduling system for one accountable university workspace.</p>
+          <p class="landing-hero-support">Prepare timetables, identify conflicts, review proposed schedules, and make informed administrative decisions.</p>
+          <div class="landing-actions">
+            {% if user.is_authenticated %}<a class="btn btn-light btn-lg" href="{% url 'home' %}">Open Dashboard <span aria-hidden="true">→</span></a>{% else %}<a class="btn btn-light btn-lg" href="{% url 'accounts:login' %}">Login to CampusLoad <span aria-hidden="true">→</span></a>{% endif %}
+            <a class="landing-text-link" href="#about">Learn more <span aria-hidden="true">↓</span></a>
+          </div>
+          <span class="landing-hero-caption">NORSU Bayawan–Santa Catalina Campus</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section about-section" id="about" aria-labelledby="about-title">
+      <div class="landing-container about-grid">
+        <div><p class="landing-section-label">ABOUT CAMPUSLOAD</p><h2 id="about-title">Academic planning, with the details in one place.</h2></div>
+        <div class="about-copy"><p>CampusLoad brings faculty assignments, workload monitoring, timetable preparation, room allocation, and schedule review into one administrative system.</p><p>It offers constraint-based proposals and conflict checks while authorized university personnel retain control of review and approval.</p><a href="#features" class="landing-inline-link">Explore system capabilities <span aria-hidden="true">→</span></a></div>
+      </div>
+    </section>
+
+    <section class="landing-section features-section" id="features" aria-labelledby="features-title">
+      <div class="landing-container">
+        <div class="landing-section-heading"><div><p class="landing-section-label">SYSTEM CAPABILITIES</p><h2 id="features-title">Built around academic operations.</h2></div><p>Practical tools for planning, checking, and reviewing teaching schedules.</p></div>
+        <div class="feature-grid">
+          <article class="feature-card"><svg aria-hidden="true"><use href="{% static 'icons/campusload.svg' %}#chart"></use></svg><h3>Faculty workload</h3><p>Monitor assignments, capacity, and workload distribution.</p></article>
+          <article class="feature-card"><svg aria-hidden="true"><use href="{% static 'icons/campusload.svg' %}#calendar"></use></svg><h3>Timetable generation</h3><p>Prepare proposed schedules with constraint-based optimization.</p></article>
+          <article class="feature-card"><svg aria-hidden="true"><use href="{% static 'icons/campusload.svg' %}#checklist"></use></svg><h3>Conflict detection</h3><p>Check faculty, room, and section scheduling conflicts.</p></article>
+          <article class="feature-card"><svg aria-hidden="true"><use href="{% static 'icons/campusload.svg' %}#swap"></use></svg><h3>Workload balancing</h3><p>Compare assignment options to support balanced workloads.</p></article>
+          <article class="feature-card"><svg aria-hidden="true"><use href="{% static 'icons/campusload.svg' %}#review"></use></svg><h3>Human review</h3><p>Keep schedule decisions with authorized reviewers and approvers.</p></article>
+          <article class="feature-card"><svg aria-hidden="true"><use href="{% static 'icons/campusload.svg' %}#file"></use></svg><h3>Reports & monitoring</h3><p>View operational dashboards and authorized academic reports.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section campus-section" id="campus" aria-labelledby="campus-title">
+      <div class="landing-container campus-grid">
+        <div class="campus-photos"><img class="campus-building" src="{% static 'images/landing/campus-building.webp' %}" alt="NORSU campus building with the university seal above its entrance" width="515" height="388" loading="lazy"><img class="campus-grounds" src="{% static 'images/landing/campus-grounds.webp' %}" alt="Open-air seating area on the NORSU campus" width="330" height="219" loading="lazy"></div>
+        <div class="campus-copy"><p class="landing-section-label">OUR CAMPUS</p><h2 id="campus-title">Rooted in NORSU Bayawan–Santa Catalina.</h2><p>CampusLoad was developed to support faculty workload and academic scheduling operations for the colleges and departments of Negros Oriental State University’s Bayawan–Santa Catalina Campus.</p><div class="campus-identity"><img src="{% static 'images/landing/norsu-seal.png' %}" alt="" width="42" height="42" loading="lazy"><span>Negros Oriental State University<small>Bayawan–Santa Catalina Campus</small></span></div></div>
+      </div>
+    </section>
+
+    <section class="landing-cta" aria-labelledby="cta-title"><div class="landing-container landing-cta-inner"><div><p class="landing-section-label">CAMPUSLOAD ACCESS</p><h2 id="cta-title">Your academic workspace is ready.</h2><p>Authorized university personnel can manage faculty workloads, prepare timetables, and review official schedules.</p></div>{% if user.is_authenticated %}<a class="btn btn-light btn-lg" href="{% url 'home' %}">Open Dashboard <span aria-hidden="true">→</span></a>{% else %}<a class="btn btn-light btn-lg" href="{% url 'accounts:login' %}">Login to CampusLoad <span aria-hidden="true">→</span></a>{% endif %}</div></section>
+  </main>
+
+  <footer class="landing-footer"><div class="landing-container landing-footer-inner"><div><strong>CampusLoad</strong><span>AI-Powered Faculty Workload and Academic Scheduling System</span></div><p>Negros Oriental State University<br>Bayawan–Santa Catalina Campus</p><small>© {% now 'Y' %} Negros Oriental State University</small></div></footer>
+</div>
+{% endblock %}

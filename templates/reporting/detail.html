@@ -3,6 +3,7 @@
 {% block content %}
 <div class="page-heading report-heading">
   <div>
+    {% include 'reporting/_formal_identity.html' %}
     <p class="eyebrow">REPORTING</p>
     <h1>{{ report.title }}</h1>
     <p class="text-secondary mb-0">{{ report.source_label }}</p>

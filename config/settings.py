@@ -87,7 +87,7 @@ LOGGING = {
     },
 }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-INSTITUTION_NAME = env("INSTITUTION_NAME", default="Negros Oriental State University - Bais Campus")
+INSTITUTION_NAME = env("INSTITUTION_NAME", default="Negros Oriental State University - Bayawan–Santa Catalina Campus")
 SCHEDULER_PREPROCESSING_TIME_LIMIT_SECONDS = env(
     "SCHEDULER_PREPROCESSING_TIME_LIMIT_SECONDS", default=10, cast=int
 )

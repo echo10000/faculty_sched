@@ -104,6 +104,8 @@ class ResourceFilterForm(StyledFormMixin, forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["college"].queryset = scoped_colleges(user, College.objects.all())
         self.fields["department"].queryset = department_scoped_queryset(user, Department.objects.all(), "pk")
+        self.fields["college"].label_from_instance = lambda college: f"{college.name} ({college.code})"
+        self.fields["department"].label_from_instance = lambda department: f"{department.name} ({department.code})"
         if kind == "faculty":
             self.fields["employment_category"] = forms.ModelChoiceField(queryset=EmploymentCategory.objects.all(), required=False)
             self.fields["academic_rank"] = forms.ModelChoiceField(queryset=AcademicRank.objects.all(), required=False)

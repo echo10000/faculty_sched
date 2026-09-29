@@ -15,17 +15,17 @@ def navigation(request):
         ("core.view_dashboard", "Overview", "home"),
         ("faculty.view_faculty", "Faculty", "faculty-management:list"),
         ("workloads.view_facultyavailability", "Faculty availability", "workloads:availability"),
-        ("workloads.view_workload", "Workload monitoring", "workloads:monitor"),
+        ("workloads.view_workload", "Faculty workload", "workloads:monitor"),
         ("academics.view_subject", "Subjects", "subjects:list"),
-        ("workloads.view_subjectoffering", "Subject offerings", "workloads:offerings"),
-        ("workloads.view_facultysubjectassignment", "Faculty assignments", "workloads:assignments"),
+        ("workloads.view_subjectoffering", "Classes offered", "workloads:offerings"),
+        ("workloads.view_facultysubjectassignment", "Teaching assignments", "workloads:assignments"),
         ("scheduling.view_room", "Rooms", "rooms:list"),
-        ("timetabling.view_schedule", "Manual schedules", "timetabling:schedules"),
+        ("timetabling.view_schedule", "Manage schedules", "timetabling:schedules"),
         ("timetabling.view_classsection", "Class sections", "timetabling:sections"),
-        ("timetabling.view_offeringrequirement", "Offering requirements", "timetabling:requirements"),
-        ("timetabling.view_assignmentmeetingrequirement", "Meeting requirements", "timetabling:meeting-requirements"),
-        ("timetabling.view_schedulingconfiguration", "Scheduling configurations", "timetabling:configurations"),
-        ("timetabling.view_roomunavailability", "Room unavailability", "timetabling:closures"),
+        ("timetabling.view_offeringrequirement", "Class scheduling requirements", "timetabling:requirements"),
+        ("timetabling.view_assignmentmeetingrequirement", "Class meeting requirements", "timetabling:meeting-requirements"),
+        ("timetabling.view_schedulingconfiguration", "Schedule generation settings", "timetabling:configurations"),
+        ("timetabling.view_roomunavailability", "Blocked room times", "timetabling:closures"),
         ("core.view_college", "Colleges", "college-list"),
         ("core.view_department", "Departments", "department-list"),
         ("academics.view_academicterm", "Academic calendar", "academic-calendar"),
@@ -53,20 +53,21 @@ def navigation(request):
         if available_catalog(user, granted=granted):
             special.append(("Reports", "reporting:index", {"index", "detail", "print", "export"}))
         if "workloads.generate_workloadrecommendation" in granted and "academics.view_academicterm" in granted:
-            special.append(("Workload balancing", "workloads:balancing", {"balancing"}))
+            special.append(("Balance faculty workload", "workloads:balancing", {"balancing"}))
         if "workloads.view_workloadrecommendationrun" in granted and "academics.view_academicterm" in granted:
-            special.append(("Recommendation history", "workloads:balancing-runs", {
+            special.append(("Workload recommendation history", "workloads:balancing-runs", {
                 "balancing-runs", "balancing-run-detail", "balancing-run-accept", "balancing-run-discard"}))
         if all(permission in granted for permission in GENERATION_PERMISSIONS):
-            special.append(("Automated generator", "timetabling:generator", {"generator"}))
+            special.append(("Generate schedule", "timetabling:generator", {"generator"}))
         if "timetabling.view_schedulegenerationrun" in granted and "academics.view_academicterm" in granted:
-            special.append(("Generation history", "timetabling:generation-runs", {
+            special.append(("Generated schedule history", "timetabling:generation-runs", {
                 "generation-runs", "generation-run-detail", "generation-run-accept", "generation-run-discard"}))
         if all(permission in granted for permission in ("timetabling.submit_schedule", "timetabling.view_schedule", "academics.view_academicterm")):
             special.append(("My schedules", "timetabling:my-schedules", {"my-schedules"}))
         if all(permission in granted for permission in ("timetabling.review_schedule", "timetabling.view_schedule", "academics.view_academicterm")):
-            special.append(("Pending review", "timetabling:review-queue", {"review-queue"}))
+            special.append(("Schedules for review", "timetabling:review-queue", {"review-queue"}))
         if "timetabling.view_schedule" in granted and "academics.view_academicterm" in granted:
+            special.append(("Prepare schedule", "timetabling:prepare", {"prepare"}))
             special.append(("Official schedules", "timetabling:official-schedules", {"official-schedules"}))
         for label, route, names in special:
             links.append({"label": label, "route": route,
@@ -79,7 +80,7 @@ def navigation(request):
         "workloads:balancing-runs": "history", "subjects:list": "book",
         "workloads:offerings": "layers", "timetabling:sections": "people",
         "timetabling:requirements": "checklist", "timetabling:meeting-requirements": "clock",
-        "timetabling:schedules": "calendar", "timetabling:generator": "spark",
+        "timetabling:schedules": "calendar", "timetabling:prepare": "checklist", "timetabling:generator": "spark",
         "timetabling:configurations": "sliders", "rooms:list": "building",
         "timetabling:closures": "block", "timetabling:generation-runs": "history",
         "timetabling:my-schedules": "calendar", "timetabling:review-queue": "review",
@@ -90,15 +91,21 @@ def navigation(request):
     for link in links:
         link["icon"] = icons.get(link["route"], "file")
     # Group only links that passed the existing permission checks above.
-    sections = (
-        ("Workspace", "grid", ("home",)),
-        ("People", "people", ("faculty-management:list", "workloads:availability", "workloads:monitor", "workloads:assignments", "workloads:balancing", "workloads:balancing-runs")),
-        ("Academics", "book", ("subjects:list", "workloads:offerings", "timetabling:sections", "timetabling:requirements", "timetabling:meeting-requirements")),
-        ("Scheduling", "calendar", ("timetabling:schedules", "timetabling:generator", "timetabling:configurations", "rooms:list", "timetabling:closures", "timetabling:generation-runs", "timetabling:my-schedules")),
-        ("Review & approval", "review", ("timetabling:review-queue", "timetabling:official-schedules")),
-        ("Reports", "file", ("reporting:index",)),
-        ("Administration", "settings", ("college-list", "department-list", "academic-calendar")),
-    )
+    overview = ("Overview", "grid", ("home",))
+    faculty = ("Faculty & workload", "people", ("faculty-management:list", "workloads:availability", "workloads:assignments", "workloads:monitor", "workloads:balancing"))
+    academic = ("Academic setup", "book", ("workloads:offerings", "timetabling:sections", "subjects:list", "rooms:list"))
+    scheduling = ("Scheduling", "calendar", ("timetabling:prepare", "timetabling:schedules", "timetabling:generator", "timetabling:my-schedules"))
+    review = ("Review & approval", "review", ("timetabling:review-queue", "timetabling:official-schedules"))
+    reports = ("Reports", "file", ("reporting:index",))
+    more = ("More & settings", "settings", ("timetabling:meeting-requirements", "timetabling:requirements", "timetabling:configurations", "timetabling:closures", "timetabling:generation-runs", "workloads:balancing-runs"))
+    administration = ("Administration", "settings", ("academic-calendar", "college-list", "department-list"))
+    role = profile.role if profile else ""
+    if user.is_authenticated and is_system_admin(user):
+        sections = (overview, administration, reports, faculty, academic, scheduling, review, more)
+    elif role == "dean":
+        sections = (overview, review, faculty, reports, scheduling, academic, more, administration)
+    else:
+        sections = (overview, scheduling, faculty, academic, review, reports, more, administration)
     navigation_groups = []
     for label, icon, routes in sections:
         items = sorted((link for link in links if link["route"] in routes),
@@ -107,7 +114,8 @@ def navigation(request):
             navigation_groups.append({"label": label, "icon": icon, "links": items,
                                       "active": any(link["active"] for link in items)})
     name = SystemSetting.objects.filter(key="institution_name").values_list("value", flat=True).first() or settings.INSTITUTION_NAME
-    scope = "Institution-wide" if user.is_authenticated and is_system_admin(user) else str(profile.department or profile.college) if profile else "No assigned scope"
+    assigned_unit = profile.department or profile.college if profile else None
+    scope = "Institution-wide" if user.is_authenticated and is_system_admin(user) else assigned_unit.name if assigned_unit else "No assigned scope"
     return {
         "institution_name": name, "navigation_links": links, "navigation_groups": navigation_groups, "access_scope": scope,
         "role_label": "System Admin" if user.is_authenticated and user.is_superuser else profile.get_role_display() if profile else "Account",

@@ -7,6 +7,7 @@ from django.http import Http404, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views import View
+from django.views.generic import TemplateView
 
 from core.views import ProtectedViewMixin
 from accounts.permissions import require_access
@@ -35,13 +36,66 @@ from .conflicts import get_schedule_conflicts, summarize
 from .timetable import filtered_entries, week_columns
 
 SPECS = {
-    "schedules": (Schedule, ScheduleForm, "Manual schedules"),
+    "schedules": (Schedule, ScheduleForm, "Manage schedules"),
     "sections": (ClassSection, SectionForm, "Class sections"),
-    "requirements": (OfferingRequirement, RequirementForm, "Offering requirements"),
-    "closures": (RoomUnavailability, ClosureForm, "Room unavailability"),
-    "meeting-requirements": (AssignmentMeetingRequirement, MeetingRequirementForm, "Assignment meeting requirements"),
-    "configurations": (SchedulingConfiguration, SchedulingConfigurationForm, "Scheduling configurations"),
+    "requirements": (OfferingRequirement, RequirementForm, "Class scheduling requirements"),
+    "closures": (RoomUnavailability, ClosureForm, "Blocked room times"),
+    "meeting-requirements": (AssignmentMeetingRequirement, MeetingRequirementForm, "Class meeting requirements"),
+    "configurations": (SchedulingConfiguration, SchedulingConfigurationForm, "Schedule generation settings"),
 }
+
+SECTION_HELP = {
+    "schedules": ("View and manage schedule versions for the selected term and department.", "Create schedule", "No schedules match this selection."),
+    "sections": ("Organize the student groups that need classes this term.", "Add class section", "No class sections match this selection."),
+    "requirements": ("Connect offered classes with sections and the room needs used in scheduling.", "Add class scheduling requirement", "No class scheduling requirements match this selection."),
+    "closures": ("Mark periods when rooms cannot be assigned to classes.", "Add blocked room time", "No blocked room times match this selection."),
+    "meeting-requirements": ("Specify how often and how long each assigned class should meet. CampusLoad uses this when building a timetable.", "Add meeting requirement", "No class meeting requirements match this selection."),
+    "configurations": ("Choose the days, hours, and rules used when CampusLoad generates a schedule.", "Add generation settings", "No schedule generation settings match this selection."),
+}
+
+
+class PrepareScheduleView(ProtectedViewMixin, TemplateView):
+    """A permission-filtered guide to existing scheduling screens."""
+
+    permission = "timetabling.view_schedule"
+    template_name = "timetabling/prepare.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            require_access(request.user, "academics.view_academicterm")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+        terms = accessible_terms(user)
+        raw_term = self.request.GET.get("academic_term")
+        if raw_term:
+            try:
+                term = get_object_or_404(terms, pk=int(raw_term))
+            except ValueError:
+                raise Http404("Invalid term")
+        else:
+            term = accessible_terms(user, active=True).first() or terms.first()
+        schedules = scoped(user, Schedule.objects.filter(academic_term=term).select_related("department", "academic_term")) if term else Schedule.objects.none()
+        raw_schedule = self.request.GET.get("schedule")
+        if raw_schedule:
+            try:
+                schedule = get_object_or_404(schedules, pk=int(raw_schedule))
+            except ValueError:
+                raise Http404("Invalid schedule")
+        else:
+            schedule = schedules.order_by("-updated_at", "-pk").first()
+        editable = schedule and schedule.status in ("draft", "validated", "needs_revision")
+        display_status = effective_status(schedule) if schedule and schedule.status in ("draft", "validated") else schedule.status if schedule else None
+        context.update(terms=terms, term=term, schedules=schedules.order_by("department__name", "name"), schedule=schedule,
+            editable=editable, display_status=display_status,
+            display_status_label=dict(Schedule.Status.choices).get(display_status, "Unknown"),
+            can_generate=bool(editable and _can_generate(user)),
+            can_check=bool(editable and user.has_perm("timetabling.validate_schedule")),
+            can_submit=bool(editable and user.has_perm("timetabling.submit_schedule") and user.has_perm("timetabling.change_schedule")),
+            can_add_meeting=bool(editable and user.has_perm("timetabling.add_scheduleentry")))
+        return context
 
 
 class TimetableMixin(ProtectedViewMixin):
@@ -56,7 +110,11 @@ class TimetableMixin(ProtectedViewMixin):
 
     def context(self):
         model, _, title = SPECS[self.section]
+        item_name = SECTION_HELP[self.section][1].removeprefix("Add ").removeprefix("Create ")
         return {"title": title, "section": self.section, "list_url": reverse(f"timetabling:{self.section}"),
+            "description": SECTION_HELP[self.section][0], "add_label": SECTION_HELP[self.section][1],
+            "empty_message": SECTION_HELP[self.section][2],
+            "save_label": "Save " + item_name.lower(), "edit_label": "Edit " + item_name.lower(),
             "can_add": self.request.user.has_perm(f"timetabling.add_{model._meta.model_name}"),
             "can_change": self.request.user.has_perm(f"timetabling.change_{model._meta.model_name}")}
 
@@ -98,7 +156,8 @@ class RecordList(TimetableMixin, View):
             schedule_id__in=[obj.pk for obj in page if isinstance(obj, Schedule)],
         ).values_list("schedule_id", flat=True)) if self.section == "schedules" else set()
         for obj in page:
-            obj.owner_label = getattr(obj, "department", None) or getattr(obj, "college", None) or "Institution"
+            owner = getattr(obj, "department", None) or getattr(obj, "college", None)
+            obj.owner_label = owner.name if owner else "Institution"
             obj.detail_url = reverse("timetabling:schedules-detail", args=[obj.pk]) if self.section == "schedules" else reverse(f"timetabling:{self.section}-edit", args=[obj.pk])
             if isinstance(obj, Schedule):
                 obj.display_status = effective_status(obj) if obj.status in ("draft", "validated") else obj.status
@@ -172,7 +231,8 @@ class ScheduleDetail(TimetableMixin, View):
         return render(request, "timetabling/detail.html", {**self.context(), "schedule": schedule, "status": display_status,
             "filter_form": form, "entries": entries, "week": week_columns(entries), "mode": self.mode, "report": report,
             "can_generate": editable and _can_generate(request.user), "can_view_generation_runs": _can_view_runs(request.user),
-            "can_edit_version": editable, "is_official": is_official})
+            "can_edit_version": editable, "can_submit_action": editable and request.user.has_perm("timetabling.submit_schedule") and request.user.has_perm("timetabling.change_schedule"),
+            "is_official": is_official})
 
 
 class EntryEditor(TimetableMixin, View):
@@ -191,6 +251,7 @@ class EntryEditor(TimetableMixin, View):
 
     def context_entry(self, form, conflicts=None, preview=False, editing=False):
         context = {**self.context(), "title": "Manual meeting", "schedule": self.schedule, "form": form, "is_entry": True,
+            "description": "Add a class meeting to this schedule and check it for conflicts before saving.",
             "conflicts": conflicts or [], "previewed": preview, "editing": editing,
             "list_url": reverse("timetabling:schedules-detail", args=[self.schedule.pk])}
         assignment = form.cleaned_data.get("assignment") if hasattr(form, "cleaned_data") else form.instance.assignment if form.instance.assignment_id else None

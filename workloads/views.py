@@ -21,8 +21,15 @@ from .selectors import accessible_terms, scoped_faculty, scoped_records
 
 SPECS = {
     "availability": (FacultyAvailability, AvailabilityForm, "Faculty availability"),
-    "offerings": (SubjectOffering, OfferingForm, "Subject offerings"),
-    "assignments": (FacultySubjectAssignment, AssignmentForm, "Faculty assignments"),
+    "offerings": (SubjectOffering, OfferingForm, "Classes offered"),
+    "assignments": (FacultySubjectAssignment, AssignmentForm, "Teaching assignments"),
+}
+
+SECTION_HELP = {
+    "monitor": ("Review teaching assignments and workload status for faculty in your authorized scope.", "", "No faculty workload records match this selection."),
+    "availability": ("Record times when faculty members are available or unavailable to teach.", "Add faculty availability", "No faculty availability records match this selection."),
+    "offerings": ("Review the classes offered by departments for the selected academic term.", "Add class offering", "No classes offered match this selection."),
+    "assignments": ("Assign faculty members to the classes they will teach for the selected term.", "Add teaching assignment", "No teaching assignments match this selection."),
 }
 
 
@@ -50,7 +57,10 @@ class TeachingMixin(ProtectedViewMixin):
         return super().dispatch(request, *args, **kwargs)
 
     def context(self):
-        context = {"section": self.section, "term": self.term, "title": "Workload monitoring" if self.section == "monitor" else SPECS[self.section][2], "list_url": term_url(f"workloads:{self.section}", self.term)}
+        context = {"section": self.section, "term": self.term, "title": "Faculty workload" if self.section == "monitor" else SPECS[self.section][2], "list_url": term_url(f"workloads:{self.section}", self.term),
+                   "description": SECTION_HELP[self.section][0], "add_label": SECTION_HELP[self.section][1], "empty_message": SECTION_HELP[self.section][2],
+                   "save_label": "Save " + SECTION_HELP[self.section][1].removeprefix("Add ").lower(),
+                   "edit_label": "Edit " + SECTION_HELP[self.section][1].removeprefix("Add ").lower()}
         if self.section in SPECS:
             model = SPECS[self.section][0]
             context.update(can_add=self.request.user.has_perm(permission_for(model, "add")), can_change=self.request.user.has_perm(permission_for(model, "change")), can_delete=self.section != "offerings" and self.request.user.has_perm(permission_for(model, "delete")), add_url=term_url(f"workloads:{self.section}-add", self.term))

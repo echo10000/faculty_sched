@@ -1,5 +1,22 @@
 :root { --radius:14px; --surface-shadow:0 2px 10px rgba(16,44,62,.035); --status-neutral:#81909a; --status-good:#329477; --status-warning:#c18a3b; --status-danger:#bd6460; --status-info:#5b7eaa; }
 body { font-size:.94rem; line-height:1.55; }
+.norsu-seal { width:48px; height:48px; object-fit:contain; border-radius:50%; flex:none; }
+.sidebar .brand { align-items:flex-start; gap:10px; font-size:1.07rem; line-height:1.2; }
+.sidebar .sidebar-seal { width:43px; height:43px; }
+.sidebar .brand-copy { min-width:0; }
+.sidebar .brand small { margin-top:5px; font-size:.59rem; line-height:1.4; }
+.topbar .institution-name { display:flex; align-items:baseline; gap:8px; max-width:none; white-space:nowrap; }
+.topbar .institution-name strong { color:var(--navy); font-size:.8rem; letter-spacing:.05em; }
+.topbar .institution-name span { color:var(--muted); font-size:.77rem; }
+.page-heading .eyebrow { border-left:3px solid var(--institution-gold); padding-left:9px; }
+.formal-context { margin:0 0 8px; color:var(--muted); font-size:.67rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase; }
+.login-intro { background-image:linear-gradient(90deg,rgba(16,44,62,.94),rgba(16,44,62,.85)),url('../images/landing/campus-hero.webp'); background-position:center,center; background-size:cover; }
+.login-intro .brand { align-items:center; font-size:1.25rem; }
+.login-intro .brand small { color:#dce8e9; font-size:.67rem; line-height:1.45; }
+.login-seal { width:52px; height:52px; }
+.login-home-link { align-self:flex-start; color:#eff7f4; font-size:.84rem; font-weight:650; text-underline-offset:4px; }
+.login-home-link:hover { color:#fff; }
+@media(max-width:650px) { .login-intro { gap:18px; } .login-home-link { font-size:.75rem; } }
 h1 { font-size:2rem; font-weight:700; letter-spacing:-.035em; }
 h2,.h5 { font-weight:650; letter-spacing:-.018em; }
 .sidebar .offcanvas-body { padding:25px 16px; overflow-y:auto; }
@@ -104,6 +121,10 @@ h2,.h5 { font-weight:650; letter-spacing:-.018em; }
 .decision-reassign { background:#fff0d7!important; color:#805006!important; }
 .decision-new { background:#e5f2ec!important; color:#246a4b!important; }
 .report-card-arrow { align-self:flex-end; white-space:nowrap; color:var(--teal); font-size:.79rem; font-weight:700; }
+.formal-report-identity { display:flex; align-items:center; gap:11px; margin-bottom:15px; color:var(--navy); }
+.formal-report-identity .report-seal { width:45px; height:45px; }
+.formal-report-identity strong { display:block; font-size:.72rem; font-weight:750; letter-spacing:.09em; }
+.formal-report-identity span { display:block; margin-top:2px; color:var(--muted); font-size:.72rem; }
 @media(prefers-reduced-motion:reduce) { .metric-card,.sidebar .nav-link,.nav-group-toggle,.nav-chevron { transition:none!important; } }
 @media(min-width:992px) {
   .sidebar-collapsed .sidebar { width:76px; --bs-offcanvas-width:76px; }
@@ -129,5 +150,21 @@ h2,.h5 { font-weight:650; letter-spacing:-.018em; }
   .dashboard-term-filter { align-items:stretch; }
   .page-heading { gap:10px; }
   .topbar { gap:8px; }
-  .topbar .institution-name { max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .topbar .institution-name { max-width:145px; display:block; overflow:hidden; white-space:normal; line-height:1.2; }
+  .topbar .institution-name strong { display:block; }
+  .topbar .institution-name span { display:block; font-size:.62rem; }
 }
+/* Task guidance builds on the existing CampusLoad surfaces. */
+.dashboard-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
+.dashboard-action{display:block;padding:1rem;border:1px solid var(--cl-border,#dce4e8);border-radius:14px;text-decoration:none;background:var(--cl-surface,#fff);transition:border-color .15s,transform .15s}
+.dashboard-action:hover{border-color:var(--cl-teal,#188a88);transform:translateY(-2px)}
+.dashboard-action strong,.dashboard-action small{display:block}
+.dashboard-action small{margin-top:.3rem;color:var(--bs-secondary-color,#667580)}
+.attention-item{padding:.7rem 0;border-bottom:1px solid var(--cl-border,#dce4e8)}
+.attention-item:last-child{border-bottom:0}
+.prepare-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;list-style:none;counter-reset:prepare;margin:0 0 1rem;padding:0}
+.prepare-steps>li{counter-increment:prepare;min-width:0}
+.prepare-steps>li h2:before{content:counter(prepare) '. ';color:var(--cl-teal,#188a88)}
+.prepare-steps>li:last-child{grid-column:1/-1}
+@media(max-width:767px){.dashboard-action-grid,.prepare-steps{grid-template-columns:1fr}.prepare-steps>li:last-child{grid-column:auto}}
+@media(prefers-reduced-motion:reduce){.dashboard-action{transition:none}.dashboard-action:hover{transform:none}}

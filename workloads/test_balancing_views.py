@@ -67,7 +67,7 @@ class BalancingPageTests(TeachingFixture):
 
     def test_history_and_detail_are_scoped(self):
         history = self.client.get(self.url("balancing-runs"))
-        self.assertContains(history, self.department.code)
+        self.assertContains(history, self.department.name)
         self.assertNotContains(history, f'data-label="Department">{self.external.code}</td>')
         self.assertEqual(self.client.get(self.url("balancing-run-detail", self.foreign_run.pk)).status_code, 404)
         detail = self.client.get(self.url("balancing-run-detail", self.run.pk))
@@ -136,16 +136,16 @@ class BalancingPageTests(TeachingFixture):
         self.assertEqual(self.client.get(self.url("balancing-run-detail", self.run.pk)).status_code, 404)
         detail = self.client.get(self.url("balancing-run-detail", own.pk))
         self.assertContains(detail, "Accept recommendation")
-        self.assertNotContains(detail, "Recommendation history")
+        self.assertNotContains(detail, "Workload recommendation history")
 
     def test_navigation_permissions(self):
         page = self.client.get(self.url("balancing"))
-        self.assertContains(page, "Workload balancing")
-        self.assertContains(page, "Recommendation history")
+        self.assertContains(page, "Balance faculty workload")
+        self.assertContains(page, "Workload recommendation history")
         self.client.force_login(self.staff)
         page = self.client.get(reverse("home"))
-        self.assertNotContains(page, "Workload balancing")
-        self.assertNotContains(page, "Recommendation history")
+        self.assertNotContains(page, "Balance faculty workload")
+        self.assertNotContains(page, "Workload recommendation history")
 
     def test_anonymous_redirects(self):
         self.client.logout()

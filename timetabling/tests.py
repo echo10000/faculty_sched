@@ -217,13 +217,13 @@ class PageTests(TimetableFixture):
     def test_validation_post_csrf_and_navigation(self):
         from django.test import Client
         self.client.force_login(self.chair)
-        self.assertContains(self.client.get("/"), "Manual schedules")
+        self.assertContains(self.client.get("/dashboard/"), "Manage schedules")
         self.assertEqual(self.client.get(self.url("validate", self.schedule.pk)).status_code, 405)
         secure = Client(enforce_csrf_checks=True)
         secure.force_login(self.chair)
         self.assertEqual(secure.post(self.url("entries-add", self.schedule.pk), self.data()).status_code, 403)
         self.client.force_login(self.staff)
-        self.assertNotContains(self.client.get("/"), "Manual schedules")
+        self.assertNotContains(self.client.get("/dashboard/"), "Manage schedules")
 
 
 class IntegrationTests(TimetableFixture):

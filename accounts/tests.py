@@ -42,12 +42,12 @@ class AuthenticationAndScopeTests(TestCase):
         user.user_permissions.add(Permission.objects.get(content_type__app_label="core", codename=codename))
 
     def test_anonymous_is_redirected_to_real_login(self):
-        response = self.client.get("/")
-        self.assertRedirects(response, "/accounts/login/?next=/")
+        response = self.client.get("/dashboard/")
+        self.assertRedirects(response, "/accounts/login/?next=/dashboard/")
 
     def test_login_and_post_logout_are_audited(self):
         response = self.client.post(reverse("accounts:login"), {"username": "dean", "password": self.password})
-        self.assertRedirects(response, "/")
+        self.assertRedirects(response, "/dashboard/")
         self.assertTrue(AuditLog.objects.filter(actor=self.dean, action="auth.login").exists())
         self.assertEqual(self.client.get(reverse("accounts:logout")).status_code, 405)
         self.assertRedirects(self.client.post(reverse("accounts:logout")), reverse("accounts:login"))
@@ -63,7 +63,7 @@ class AuthenticationAndScopeTests(TestCase):
 
     def test_login_rejects_external_redirect(self):
         response = self.client.post(reverse("accounts:login"), {"username": "dean", "password": self.password, "next": "https://evil.example/"})
-        self.assertEqual(response.url, "/")
+        self.assertEqual(response.url, "/dashboard/")
 
     def test_login_and_logout_enforce_csrf(self):
         client = Client(enforce_csrf_checks=True)
@@ -82,15 +82,15 @@ class AuthenticationAndScopeTests(TestCase):
 
     def test_revocation_blocks_existing_session(self):
         self.client.force_login(self.dean)
-        self.assertEqual(self.client.get("/").status_code, 200)
+        self.assertEqual(self.client.get("/dashboard/").status_code, 200)
         AdminProfile.objects.filter(user=self.dean).update(is_enabled=False)
-        self.assertEqual(self.client.get("/").status_code, 403)
+        self.assertEqual(self.client.get("/dashboard/").status_code, 403)
 
     def test_missing_profile_is_denied_even_with_permissions(self):
         user = get_user_model().objects.create_user(username="unassigned", password=self.password)
         self.grant(user, "view_dashboard")
         self.client.force_login(user)
-        self.assertEqual(self.client.get("/").status_code, 403)
+        self.assertEqual(self.client.get("/dashboard/").status_code, 403)
 
     def test_dean_lists_counts_and_detail_are_college_scoped(self):
         self.client.force_login(self.dean)
@@ -102,7 +102,7 @@ class AuthenticationAndScopeTests(TestCase):
         self.assertNotContains(response, self.external.name)
         self.assertEqual(self.client.get(f"/colleges/{self.second.pk}/").status_code, 404)
         self.assertEqual(self.client.get(f"/departments/{self.external.pk}/").status_code, 404)
-        dashboard = self.client.get("/")
+        dashboard = self.client.get("/dashboard/")
         self.assertEqual(dashboard.context["college_count"], 1)
         self.assertEqual(dashboard.context["department_count"], 2)
 
@@ -112,16 +112,16 @@ class AuthenticationAndScopeTests(TestCase):
         self.assertContains(response, self.department.name)
         self.assertNotContains(response, self.sibling.name)
         self.assertEqual(self.client.get(f"/departments/{self.sibling.pk}/").status_code, 404)
-        self.assertEqual(self.client.get("/").context["department_count"], 1)
+        self.assertEqual(self.client.get("/dashboard/").context["department_count"], 1)
 
     def test_staff_has_dashboard_only_until_explicit_grant(self):
         self.client.force_login(self.staff)
-        dashboard = self.client.get("/")
+        dashboard = self.client.get("/dashboard/")
         self.assertEqual(dashboard.status_code, 200)
         self.assertNotContains(dashboard, 'href="/departments/"')
         self.assertEqual(self.client.get("/departments/").status_code, 403)
         self.grant(self.staff, "view_department")
-        self.assertContains(self.client.get("/"), 'href="/departments/"')
+        self.assertContains(self.client.get("/dashboard/"), 'href="/departments/"')
         self.assertContains(self.client.get("/departments/"), self.department.name)
         self.assertEqual(self.client.get(f"/departments/{self.sibling.pk}/").status_code, 404)
 
@@ -148,7 +148,7 @@ class AuthenticationAndScopeTests(TestCase):
         self.client.force_login(self.staff)
         response = self.client.get("/admin/core/college/")
         self.assertEqual(response.status_code, 302)
-        self.assertNotContains(self.client.get("/"), "System administration")
+        self.assertNotContains(self.client.get("/dashboard/"), "System administration")
         before = College.objects.count()
         response = self.client.post("/admin/core/college/add/", {"name": "Unauthorized", "code": "NO"})
         self.assertEqual(response.status_code, 302)
@@ -163,7 +163,7 @@ class AuthenticationAndScopeTests(TestCase):
     def test_retiring_organization_revokes_scope(self):
         self.client.force_login(self.chair)
         College.objects.filter(pk=self.first.pk).update(is_active=False)
-        self.assertEqual(self.client.get("/").status_code, 403)
+        self.assertEqual(self.client.get("/dashboard/").status_code, 403)
 
     def test_legacy_modules_are_not_exposed(self):
         self.client.force_login(self.admin)
@@ -217,14 +217,14 @@ class LoginThrottleTests(TestCase):
         self.assertEqual(blocked.status_code, 200)
         self.assertNotIn("_auth_user_id", self.client.session)
         LoginFailureBucket.objects.update(expires_at=timezone.now() - timedelta(seconds=1))
-        self.assertRedirects(self.client.post(login, {"username": "dean", "password": self.password}), "/")
+        self.assertRedirects(self.client.post(login, {"username": "dean", "password": self.password}), "/dashboard/")
         self.assertEqual(LoginFailureBucket.objects.get(pk=_key("account", "dean")).failures, 0)
 
     def test_success_resets_account_failures_but_not_source_failures(self):
         login = reverse("accounts:login")
         for _ in range(4):
             self.client.post(login, {"username": "dean", "password": "wrong"})
-        self.assertRedirects(self.client.post(login, {"username": "dean", "password": self.password}), "/")
+        self.assertRedirects(self.client.post(login, {"username": "dean", "password": self.password}), "/dashboard/")
         self.assertEqual(LoginFailureBucket.objects.get(pk=_key("account", "dean")).failures, 0)
         self.assertEqual(LoginFailureBucket.objects.get(pk=_key("source", "127.0.0.1")).failures, 4)
 

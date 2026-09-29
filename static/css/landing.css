@@ -1,0 +1,70 @@
+:root { --institution-gold:#d4af32; --institution-navy:#102c3e; }
+html { scroll-behavior:smooth; }
+.landing-page { background:#fff; color:var(--ink); }
+.landing-container { width:min(100% - 48px,1180px); margin-inline:auto; }
+.public-header { position:relative; z-index:10; background:#fff; border-bottom:1px solid var(--line); }
+.public-nav { min-height:88px; padding:10px 0; }
+.public-brand { display:inline-flex; align-items:center; gap:12px; color:var(--navy); text-decoration:none; line-height:1.2; }
+.public-brand img { flex:none; width:48px; height:48px; object-fit:contain; }
+.public-brand strong { display:block; font-size:1.18rem; letter-spacing:-.025em; }
+.public-brand small { display:block; margin-top:3px; color:var(--muted); font-size:.67rem; font-weight:500; }
+.public-nav .navbar-nav { gap:8px; }
+.public-nav .nav-link { padding:9px 12px!important; color:#405667; font-size:.87rem; font-weight:600; }
+.public-nav .nav-link:hover { color:var(--teal); }
+.public-nav-action { margin-left:24px; white-space:nowrap; }
+.public-menu-toggle { border-color:var(--line); }
+.landing-hero { position:relative; isolation:isolate; min-height:590px; display:flex; align-items:center; overflow:hidden; background:var(--institution-navy); color:#fff; }
+.landing-hero-image { position:absolute; z-index:-2; inset:0 0 0 39%; background:url('../images/landing/campus-hero.webp') center 44% / cover no-repeat; }
+.landing-hero::after { content:""; position:absolute; z-index:-1; inset:0; background:linear-gradient(90deg,#102c3e 0%,#102c3e 37%,rgba(16,44,62,.88) 51%,rgba(16,44,62,.2) 100%); }
+.landing-hero-inner { padding-block:78px 88px; }
+.landing-hero-copy { max-width:620px; }
+.landing-overline,.landing-section-label { margin:0 0 18px; color:var(--teal); font-size:.69rem; font-weight:750; letter-spacing:.16em; line-height:1.5; }
+.landing-overline { color:#f3d87e; }
+.landing-overline span { padding-inline:6px; color:#f1f5f5a6; }
+.landing-hero h1 { max-width:660px; margin:0 0 20px; color:#fff; font-size:clamp(2.65rem,4.7vw,4.8rem); font-weight:700; line-height:1.07; letter-spacing:-.05em; }
+.landing-hero-lead { max-width:570px; margin:0 0 14px; color:#e8f0f2; font-size:1.14rem; line-height:1.6; }
+.landing-hero-support { max-width:540px; margin:0; color:#c7d8df; font-size:.94rem; line-height:1.65; }
+.landing-actions { display:flex; align-items:center; flex-wrap:wrap; gap:25px; margin-top:32px; }
+.landing-actions .btn,.landing-cta .btn { padding:.78rem 1.22rem; color:var(--institution-navy); font-size:.91rem; font-weight:700; border-radius:8px; }
+.landing-actions .btn span,.landing-cta .btn span { margin-left:14px; }
+.landing-text-link { color:#f4f8f8; font-size:.88rem; font-weight:650; text-underline-offset:4px; }
+.landing-text-link:hover { color:#fff; }
+.landing-hero-caption { display:block; margin-top:61px; color:#d9e5e8; font-size:.72rem; letter-spacing:.04em; }
+.landing-section { padding-block:94px; }
+.about-grid { display:grid; grid-template-columns:minmax(0,.95fr) minmax(0,1fr); gap:8%; align-items:start; }
+.landing-section h2,.landing-cta h2 { max-width:680px; margin:0; font-size:clamp(2rem,3vw,3rem); line-height:1.16; letter-spacing:-.04em; font-weight:700; }
+.about-copy { padding-top:22px; }
+.about-copy p,.campus-copy p:not(.landing-section-label) { max-width:59ch; color:#526873; font-size:1rem; line-height:1.75; }
+.landing-inline-link { display:inline-block; margin-top:10px; font-weight:700; text-decoration:none; border-bottom:1px solid currentColor; padding-bottom:4px; }
+.features-section { background:#f5f7f7; border-block:1px solid var(--line); }
+.landing-section-heading { display:flex; align-items:end; justify-content:space-between; gap:30px; margin-bottom:34px; }
+.landing-section-heading p:last-child { max-width:290px; margin:0 0 4px; color:var(--muted); font-size:.88rem; line-height:1.6; }
+.feature-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.feature-card { min-height:215px; padding:26px; border:1px solid var(--line); border-radius:14px; background:#fff; box-shadow:0 4px 16px rgba(16,44,62,.025); transition:border-color .18s ease,transform .18s ease; }
+.feature-card:hover { border-color:#b6d0ca; transform:translateY(-2px); }
+.feature-card svg { width:25px; height:25px; margin-bottom:24px; fill:none; stroke:var(--teal); stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.feature-card h3 { margin:0 0 9px; font-size:1.04rem; font-weight:700; }
+.feature-card p { margin:0; color:var(--muted); font-size:.86rem; line-height:1.6; }
+.campus-grid { display:grid; grid-template-columns:minmax(0,1.06fr) minmax(0,.94fr); gap:9%; align-items:center; }
+.campus-photos { position:relative; min-height:430px; padding:0 86px 45px 0; }
+.campus-building { width:100%; height:390px; object-fit:cover; border-radius:15px; box-shadow:0 12px 32px rgba(16,44,62,.12); }
+.campus-grounds { position:absolute; right:0; bottom:0; width:43%; height:175px; object-fit:cover; border:6px solid #fff; border-radius:13px; box-shadow:0 8px 22px rgba(16,44,62,.12); }
+.campus-copy p:not(.landing-section-label) { margin-top:22px; }
+.campus-identity { display:flex; align-items:center; gap:12px; margin-top:27px; padding-top:20px; border-top:1px solid var(--line); font-size:.86rem; font-weight:700; }
+.campus-identity img { object-fit:contain; }
+.campus-identity small { display:block; margin-top:3px; color:var(--muted); font-size:.73rem; font-weight:500; }
+.landing-cta { background:var(--institution-navy); color:#fff; }
+.landing-cta-inner { display:flex; justify-content:space-between; align-items:center; gap:44px; padding-block:65px; }
+.landing-cta .landing-section-label { color:#f3d87e; }
+.landing-cta h2 { color:#fff; font-size:clamp(1.9rem,2.8vw,2.8rem); }
+.landing-cta p:last-child { margin:12px 0 0; max-width:650px; color:#cbdce2; font-size:.9rem; line-height:1.6; }
+.landing-cta .btn { flex:none; }
+.landing-footer { background:#0c2534; color:#d6e2e6; }
+.landing-footer-inner { display:grid; grid-template-columns:1fr 1fr auto; gap:30px; align-items:center; padding-block:37px; }
+.landing-footer strong { display:block; color:#fff; font-size:1.09rem; }
+.landing-footer span,.landing-footer small { color:#a8bdc7; font-size:.73rem; }
+.landing-footer p { margin:0; font-size:.78rem; line-height:1.55; }
+.landing-page :focus-visible { outline:3px solid #dfb944; outline-offset:3px; }
+@media(max-width:991px) { .public-nav .navbar-collapse { padding:18px 0 8px; } .public-nav-action { margin:12px 0 0; } .landing-hero-image { inset:0; opacity:.58; } .landing-hero::after { background:linear-gradient(90deg,rgba(16,44,62,.98),rgba(16,44,62,.65)); } .feature-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .campus-grid { gap:5%; } }
+@media(max-width:700px) { .landing-container { width:min(100% - 36px,1180px); } .public-nav { min-height:76px; } .public-brand img { width:43px; height:43px; } .public-brand strong { font-size:1.02rem; } .public-brand small { font-size:.59rem; } .landing-hero { min-height:610px; } .landing-hero-image { background-position:56% center; opacity:.38; } .landing-hero::after { background:rgba(16,44,62,.78); } .landing-hero-inner { padding-block:74px 50px; } .landing-hero h1 { font-size:clamp(2.35rem,10vw,3.5rem); } .landing-hero-lead { font-size:1rem; } .landing-hero-caption { margin-top:54px; } .landing-section { padding-block:68px; } .about-grid,.campus-grid { grid-template-columns:1fr; gap:25px; } .about-copy { padding-top:0; } .landing-section-heading { display:block; } .landing-section-heading p:last-child { margin-top:13px; } .feature-grid { grid-template-columns:1fr; } .feature-card { min-height:0; padding:23px; } .feature-card svg { margin-bottom:17px; } .campus-photos { min-height:0; padding:0 45px 27px 0; } .campus-building { height:275px; } .campus-grounds { height:125px; } .landing-cta-inner { display:block; padding-block:57px; } .landing-cta .btn { margin-top:25px; } .landing-footer-inner { grid-template-columns:1fr; gap:17px; } }
+@media(prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .feature-card { transition:none; } }

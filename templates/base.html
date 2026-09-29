@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
   <link rel="stylesheet" href="{% static 'css/app.css' %}?v=7">
   <link rel="stylesheet" href="{% static 'css/refinement.css' %}?v=1">
+  {% block extra_css %}{% endblock %}
 </head>
 <body>
 <a class="visually-hidden-focusable skip-link" href="#main-content">Skip to content</a>
@@ -15,7 +16,7 @@
   <aside class="offcanvas-lg offcanvas-start sidebar" tabindex="-1" id="sidebar" aria-labelledby="sidebar-title">
     <div class="offcanvas-header"><h2 class="h5" id="sidebar-title">CampusLoad</h2><button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close navigation"></button></div>
     <div class="offcanvas-body d-flex flex-column">
-      <a class="brand" href="{% url 'home' %}" aria-label="CampusLoad home"><span class="brand-mark" aria-hidden="true">CL</span><span>CampusLoad<small>Academic administration</small></span></a>
+      <a class="brand" href="{% url 'home' %}" aria-label="CampusLoad dashboard" title="CampusLoad · NORSU Bayawan–Santa Catalina Campus">{% include 'core/_norsu_seal.html' with seal_class='sidebar-seal' %}<span class="brand-copy">CampusLoad<small>Negros Oriental State University<br>Bayawan–Santa Catalina Campus</small></span></a>
       <nav aria-label="Main navigation" class="sidebar-nav">
       {% for group in navigation_groups %}
       <details class="nav-group" data-nav-group {% if group.active or group.label == 'Workspace' %}open{% endif %}>
@@ -32,7 +33,7 @@
     <header class="topbar">
       <button class="btn btn-outline-secondary d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar" aria-label="Open navigation">☰</button>
       <button class="btn btn-outline-secondary btn-sm d-none d-lg-inline-flex sidebar-collapse-button" id="sidebar-collapse" type="button" aria-controls="sidebar" aria-expanded="true" title="Collapse navigation"><span aria-hidden="true">⇤</span><span class="visually-hidden">Collapse navigation</span></button>
-      <div class="institution-name">{{ institution_name }}</div>
+      <div class="institution-name"><strong>NORSU</strong><span>Bayawan–Santa Catalina Campus</span></div>
       <div class="account-summary"><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{{ role_label }}</small></div>
       <form class="d-none d-lg-block" method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" type="submit">Sign out</button></form>
       <div class="dropdown d-lg-none"><button class="btn btn-outline-secondary btn-sm account-menu-button" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Account menu">Account <span aria-hidden="true">⌄</span></button><div class="dropdown-menu dropdown-menu-end account-menu"><div class="dropdown-header"><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{{ role_label }}</small></div><div class="dropdown-divider"></div><form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="dropdown-item" type="submit">Sign out</button></form></div></div>
@@ -41,7 +42,7 @@
       {% if messages %}{% for message in messages %}<div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'warning' %}alert-warning{% elif message.tags == 'error' %}alert-danger{% else %}alert-info{% endif %}" role="status">{{ message }}</div>{% endfor %}{% endif %}
       {% block content %}{% endblock %}
     </main>
-    <footer class="page-footer">CampusLoad <span>Faculty Workload & Academic Scheduling</span></footer>
+    <footer class="page-footer">CampusLoad <span>· Negros Oriental State University · Bayawan–Santa Catalina Campus</span></footer>
   </div>
 </div>
 {% endblock %}

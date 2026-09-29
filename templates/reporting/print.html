@@ -11,7 +11,7 @@
 <body class="report-print-body">
   <main class="report-print-page">
     <header class="report-print-header">
-      <div class="report-print-brand">{{ institution_name|default:'CampusLoad' }}</div>
+      {% include 'reporting/_formal_identity.html' %}
       <p class="report-print-kicker">CampusLoad · Administrative report</p>
       <h1>{{ report.title }}</h1>
       <p class="report-print-source">{{ report.source_label }}</p>
@@ -37,7 +37,7 @@
       <p class="report-print-empty">{{ report.empty_message|default:'No records match the selected filters.' }}</p>
       {% endif %}
     </section>
-    <footer class="report-print-footer">CampusLoad · Faculty Workload &amp; Academic Scheduling</footer>
+    <footer class="report-print-footer">CampusLoad · Negros Oriental State University · Bayawan–Santa Catalina Campus</footer>
   </main>
 </body>
 </html>

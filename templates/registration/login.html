@@ -2,7 +2,7 @@
 {% block title %}Sign in{% endblock %}
 {% block layout %}
 <main id="main-content" class="login-layout">
-  <section class="login-intro"><div class="brand"><span class="brand-mark">CL</span>CampusLoad</div><div><p class="eyebrow">ACADEMIC ADMINISTRATION</p><h1>A clear view of<br>your academic workspace.</h1><p class="lead">{{ institution_name }}</p></div><small>Faculty Workload & Academic Scheduling</small></section>
+  <section class="login-intro"><div class="brand">{% include 'core/_norsu_seal.html' with seal_class='login-seal' %}<span>CampusLoad<small>Negros Oriental State University<br>Bayawan–Santa Catalina Campus</small></span></div><div><p class="eyebrow">NORSU · BAYAWAN–SANTA CATALINA CAMPUS</p><h1>A clear view of<br>your academic workspace.</h1><p class="lead">Faculty Workload &amp; Academic Scheduling</p></div><a class="login-home-link" href="{% url 'landing' %}">← Back to Home</a></section>
   <section class="login-panel"><div class="login-card"><p class="eyebrow text-secondary">WELCOME BACK</p><h2>Sign in to your workspace</h2><p class="text-secondary mb-4">Use your university administrator account.</p>
   {% if form.errors %}<div class="alert alert-danger" role="alert">Unable to sign in. Check your credentials or contact your system administrator.</div>{% endif %}
   <form method="post" action="{% url 'accounts:login' %}">{% csrf_token %}

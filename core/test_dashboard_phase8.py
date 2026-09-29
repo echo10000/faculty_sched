@@ -23,7 +23,7 @@ class DashboardPhase8Tests(TimetableFixture):
     def dashboard(self, user, term=None, **filters):
         self.client.force_login(user)
         params = {"academic_term": (term or self.term).pk, **filters}
-        response = self.client.get("/", params)
+        response = self.client.get("/dashboard/", params)
         self.assertEqual(response.status_code, 200)
         return response.context
 
@@ -43,7 +43,7 @@ class DashboardPhase8Tests(TimetableFixture):
                 self.assertEqual(sum(self.counts(context["monitoring"]["workload"]).values()), total)
                 self.assertEqual(context["monitoring"]["rooms"]["active_count"], total)
         self.client.force_login(self.staff)
-        self.assertIsNone(self.client.get("/").context["monitoring"]["schedules"])
+        self.assertIsNone(self.client.get("/dashboard/").context["monitoring"]["schedules"])
         self.staff.user_permissions.add(*Permission.objects.filter(
             content_type__app_label__in=["academics", "timetabling"],
             codename__in=["view_academicterm", "view_schedule"],
@@ -80,8 +80,8 @@ class DashboardPhase8Tests(TimetableFixture):
         self.assertEqual(sum(self.counts(future["monitoring"]["schedules"]).values()), 2)
         self.assertEqual({term.pk for term in current["term_options"]}, {older.pk, newer.pk})
         self.client.force_login(self.chair)
-        self.assertEqual(self.client.get("/", {"academic_term": "not-an-id"}).status_code, 400)
-        self.assertEqual(self.client.get("/", {"academic_term": 999999}).status_code, 404)
+        self.assertEqual(self.client.get("/dashboard/", {"academic_term": "not-an-id"}).status_code, 400)
+        self.assertEqual(self.client.get("/dashboard/", {"academic_term": 999999}).status_code, 404)
 
     def test_schedule_lifecycle_review_and_official_version_are_distinct(self):
         self.candidate().save()
@@ -191,7 +191,7 @@ class DashboardPhase8Tests(TimetableFixture):
         self.assertIsNone(context["monitoring"]["workload"])
         self.assertIsNone(context["monitoring"]["generation"])
         self.assertIsNone(context["monitoring"]["balancing"])
-        self.assertNotContains(self.client.get("/", {"academic_term": self.term.pk}),
+        self.assertNotContains(self.client.get("/dashboard/", {"academic_term": self.term.pk}),
                                "Protected external timetable")
 
     def test_recent_generation_and_balancing_runs_are_scoped_and_term_filtered(self):
@@ -230,14 +230,14 @@ class DashboardPhase8Tests(TimetableFixture):
     def test_dashboard_queries_do_not_grow_per_faculty(self):
         self.client.force_login(self.chair)
         with CaptureQueriesContext(connection) as before:
-            self.client.get("/", {"academic_term": self.term.pk})
+            self.client.get("/dashboard/", {"academic_term": self.term.pk})
         Faculty.objects.bulk_create([
             Faculty(employee_id=f"PERF{index}", first_name="Test", last_name="Faculty",
                     home_department=self.department)
             for index in range(12)
         ])
         with CaptureQueriesContext(connection) as after:
-            response = self.client.get("/", {"academic_term": self.term.pk})
+            response = self.client.get("/dashboard/", {"academic_term": self.term.pk})
         self.assertEqual(response.status_code, 200)
         self.assertLessEqual(len(after), len(before) + 6)
         self.assertLess(len(after), 220)

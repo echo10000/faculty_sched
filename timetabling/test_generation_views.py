@@ -113,9 +113,9 @@ class GenerationPageTests(TimetableFixture):
         self.assertContains(response, "Accept proposal")
         self.assertEqual(self.client.get(self.url("generation-runs")).status_code, 403)
         self.assertEqual(self.client.get(self.url("generation-run-detail", self.run.pk)).status_code, 404)
-        self.assertNotContains(self.client.get(self.url("generator")), "Generation history")
+        self.assertNotContains(self.client.get(self.url("generator")), "Generated schedule history")
         self.assertNotContains(self.client.get(self.url("generation-run-detail", own_run.pk)),
-                               "Generation history")
+                               "Generated schedule history")
         self.assertEqual(self.client.post(self.url("generation-run-discard", own_run.pk)).status_code, 302)
         own_run.refresh_from_db()
         self.assertEqual(own_run.status, "DISCARDED")
@@ -132,8 +132,8 @@ class GenerationPageTests(TimetableFixture):
         self.assertEqual(page.status_code, 200)
         self.assertNotContains(page, "Accept proposal")
         self.assertNotContains(page, "Discard proposal")
-        home = self.client.get("/")
-        self.assertContains(home, "Generation history")
+        home = self.client.get("/dashboard/")
+        self.assertContains(home, "Generated schedule history")
         self.assertNotContains(home, "Automated generator")
 
     def test_terminal_transition_conflict_and_stale_feedback(self):
@@ -181,7 +181,7 @@ class GenerationPageTests(TimetableFixture):
         self.assertContains(preview, "Protected peer occupancy")
         history = self.client.get(self.url("generation-runs"))
         self.assertContains(history, "Requested by")
-        self.assertContains(history, self.department.code)
+        self.assertContains(history, self.department.name)
         self.assertContains(history, self.chair.username)
 
     def test_form_scope_and_configuration_weekday_round_trip(self):

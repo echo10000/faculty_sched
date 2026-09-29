@@ -6,7 +6,8 @@ from core import views
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("accounts.urls")),
-    path("", views.DashboardView.as_view(), name="home"),
+    path("", views.LandingView.as_view(), name="landing"),
+    path("dashboard/", views.DashboardView.as_view(), name="home"),
     path("colleges/", views.CollegeListView.as_view(), name="college-list"),
     path("colleges/<int:pk>/", views.CollegeDetailView.as_view(), name="college-detail"),
     path("departments/", views.DepartmentListView.as_view(), name="department-list"),
