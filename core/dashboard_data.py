@@ -21,7 +21,7 @@ SCHEDULE_LABELS = (
     ("validated", "Validated"),
     ("under_review", "Under review"),
     ("needs_revision", "Needs revision"),
-    ("approved", "Approved versions"),
+    ("approved", "Published versions"),
 )
 GENERATION_LABELS = (
     ("PROPOSAL_READY", "Ready"),
@@ -128,14 +128,14 @@ def build_monitoring(user, term):
             meeting_counts = dict(scoped_timetable(user, ScheduleEntry.objects.filter(
                 schedule_id__in=[selection.schedule_id for selection in current],
             )).values("schedule_id").annotate(total=Count("pk")).values_list("schedule_id", "total"))
-        pending = list(schedules.filter(status=Schedule.Status.UNDER_REVIEW).select_related(
+        pending = list(schedules.filter(status__in=(Schedule.Status.DRAFT, Schedule.Status.VALIDATED, Schedule.Status.NEEDS_REVISION, Schedule.Status.UNDER_REVIEW)).select_related(
             "department", "family", "submitted_by",
-        ).order_by("submitted_at", "pk")[:5]) if user.has_perm("timetabling.review_schedule") else []
+        ).order_by("submitted_at", "pk")[:5]) if user.has_perm("timetabling.finalize_schedule") else []
         recent_approved = list(ScheduleApprovalSnapshot.objects.filter(
             schedule_id__in=schedules.filter(status=Schedule.Status.APPROVED).values("pk"),
         ).select_related("schedule__family", "approved_by").order_by(
             "-approved_at", "-pk",
-        )[:3]) if user.has_perm("timetabling.review_schedule") else []
+        )[:3]) if user.has_perm("timetabling.finalize_schedule") else []
         issues = []
         if can_entry:
             # One bounded live check uses Phase 4's validator; a dashboard-wide
@@ -159,7 +159,8 @@ def build_monitoring(user, term):
             "counts": _distribution(SCHEDULE_LABELS, counts),
             "official_count": active_queryset.count(),
             "pending_count": counts.get(Schedule.Status.UNDER_REVIEW, 0)
-            if user.has_perm("timetabling.review_schedule") else None,
+            if user.has_perm("timetabling.finalize_schedule") else None,
+            "finalization_count": sum(counts.get(state, 0) for state in (Schedule.Status.DRAFT, Schedule.Status.VALIDATED, Schedule.Status.NEEDS_REVISION, Schedule.Status.UNDER_REVIEW)),
             "returned_count": counts.get(Schedule.Status.NEEDS_REVISION, 0),
             "recent_official": [{
                 "selection": selection,

@@ -107,6 +107,9 @@ class ResourceFilterForm(StyledFormMixin, forms.Form):
         self.fields["college"].label_from_instance = lambda college: f"{college.name} ({college.code})"
         self.fields["department"].label_from_instance = lambda department: f"{department.name} ({department.code})"
         if kind == "faculty":
+            if user.has_perm("academics.view_academicterm") and user.has_perm("workloads.view_workload"):
+                from workloads.selectors import accessible_terms
+                self.fields["academic_term"] = forms.ModelChoiceField(queryset=accessible_terms(user), required=False, label="Workload term")
             self.fields["employment_category"] = forms.ModelChoiceField(queryset=EmploymentCategory.objects.all(), required=False)
             self.fields["academic_rank"] = forms.ModelChoiceField(queryset=AcademicRank.objects.all(), required=False)
         if kind == "rooms":

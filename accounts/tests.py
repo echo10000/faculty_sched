@@ -27,8 +27,8 @@ class AuthenticationAndScopeTests(TestCase):
         cls.external = Department.objects.create(college=cls.second, code="B1", name="Bravo One")
         cls.password = "Test-only-correct-horse-123!"
         cls.admin = cls.make_user("system", AdminProfile.Role.SUPER_ADMIN, is_staff=True)
-        cls.dean = cls.make_user("dean", AdminProfile.Role.DEAN, college=cls.first)
-        cls.chair = cls.make_user("chair", AdminProfile.Role.DEPT_CHAIR, department=cls.department)
+        cls.dean = cls.make_user("dean", AdminProfile.Role.STAFF, college=cls.first)
+        cls.chair = cls.make_user("chair", AdminProfile.Role.STAFF, department=cls.department)
         cls.staff = cls.make_user("staff", AdminProfile.Role.STAFF, department=cls.department)
         cls.college_staff = cls.make_user("college-staff", AdminProfile.Role.STAFF, college=cls.first)
 
@@ -114,12 +114,12 @@ class AuthenticationAndScopeTests(TestCase):
         self.assertEqual(self.client.get(f"/departments/{self.sibling.pk}/").status_code, 404)
         self.assertEqual(self.client.get("/dashboard/").context["department_count"], 1)
 
-    def test_staff_has_dashboard_only_until_explicit_grant(self):
+    def test_staff_default_access_remains_department_scoped(self):
         self.client.force_login(self.staff)
         dashboard = self.client.get("/dashboard/")
         self.assertEqual(dashboard.status_code, 200)
-        self.assertNotContains(dashboard, 'href="/departments/"')
-        self.assertEqual(self.client.get("/departments/").status_code, 403)
+        self.assertContains(dashboard, 'href="/departments/"')
+        self.assertEqual(self.client.get("/departments/").status_code, 200)
         self.grant(self.staff, "view_department")
         self.assertContains(self.client.get("/dashboard/"), 'href="/departments/"')
         self.assertContains(self.client.get("/departments/"), self.department.name)
@@ -173,7 +173,7 @@ class AuthenticationAndScopeTests(TestCase):
 
     def test_scope_constraints_reject_model_and_database_bypass(self):
         with self.assertRaises(ValidationError):
-            AdminProfile.objects.create(user=get_user_model().objects.create_user(username="bad-scope"), role="dean")
+            AdminProfile.objects.create(user=get_user_model().objects.create_user(username="bad-scope"), role="staff")
         with self.assertRaises(IntegrityError), transaction.atomic():
             AdminProfile.objects.filter(user=self.dean).update(college=None)
         with self.assertRaises(IntegrityError), transaction.atomic():
@@ -199,7 +199,7 @@ class LoginThrottleTests(TestCase):
         cls.password = "Test-only-correct-horse-123!"
         college = College.objects.create(code="TH", name="Throttle College")
         cls.dean = get_user_model().objects.create_user(username="dean", password=cls.password)
-        AdminProfile.objects.create(user=cls.dean, role=AdminProfile.Role.DEAN, college=college)
+        AdminProfile.objects.create(user=cls.dean, role=AdminProfile.Role.STAFF, college=college)
         cls.admin = get_user_model().objects.create_user(
             username="system", password=cls.password, is_staff=True,
         )

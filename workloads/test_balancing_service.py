@@ -125,8 +125,7 @@ class BalancingLifecycleTests(TeachingFixture):
         self.assertIn("INCOMPLETE_PROTECTED_OFFERING", [row["code"] for row in run.diagnostics])
 
     def test_permissions_scope_and_own_run(self):
-        with self.assertRaises(PermissionDenied):
-            self.request(self.staff)
+        self.assertIsNotNone(self.request(self.staff))
         other = request_balancing_run(user=self.dean, academic_term=self.term, department=self.sibling)
         with self.assertRaises(Exception) as error:
             scoped_balancing_run(self.chair, other.pk)

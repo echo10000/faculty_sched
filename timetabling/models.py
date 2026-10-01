@@ -105,7 +105,7 @@ class Schedule(CheckedRecord):
         VALIDATED = "validated", "Validated"
         UNDER_REVIEW = "under_review", "Under review"
         NEEDS_REVISION = "needs_revision", "Needs revision"
-        APPROVED = "approved", "Approved"
+        APPROVED = "approved", "Published"
 
     academic_term = models.ForeignKey("academics.AcademicTerm", on_delete=models.PROTECT)
     department = models.ForeignKey("core.Department", on_delete=models.PROTECT)
@@ -128,6 +128,7 @@ class Schedule(CheckedRecord):
         permissions = [
             ("validate_schedule", "Can validate a manual schedule"),
             ("generate_schedule", "Can generate a schedule"),
+            ("finalize_schedule", "Can finalize and publish a schedule"),
             ("submit_schedule", "Can submit a schedule for review"),
             ("review_schedule", "Can review a submitted schedule"),
             ("approve_schedule", "Can approve a submitted schedule"),
@@ -576,6 +577,7 @@ class ScheduleWorkflowEvent(models.Model):
         APPROVED = "approved", "Approved"
         REPLACED = "replaced", "Official schedule replaced"
         REVISED = "revised", "Revision created"
+        FINALIZED = "finalized", "Finalized and published"
 
     schedule = models.ForeignKey(Schedule, on_delete=models.PROTECT, related_name="workflow_events")
     action = models.CharField(max_length=16, choices=Action.choices)
@@ -587,7 +589,7 @@ class ScheduleWorkflowEvent(models.Model):
 
     class Meta:
         ordering = ["created_at", "pk"]
-        constraints = [models.CheckConstraint(condition=models.Q(action__in=["submitted", "resubmitted", "returned", "approved", "replaced", "revised"]), name="schedule_workflow_known_action")]
+        constraints = [models.CheckConstraint(condition=models.Q(action__in=["submitted", "resubmitted", "returned", "approved", "replaced", "revised", "finalized"]), name="schedule_workflow_known_action")]
 
 
 class ScheduleApprovalSnapshot(models.Model):

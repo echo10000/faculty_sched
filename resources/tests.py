@@ -36,8 +36,8 @@ class ResourceFixture(TestCase):
         cls.sibling = Department.objects.create(code="A2", name="Sibling", college=cls.college)
         cls.external = Department.objects.create(code="B1", name="External", college=cls.other_college)
         cls.admin = cls.make_user("admin", "super_admin", is_staff=True)
-        cls.dean = cls.make_user("dean", "dean", college=cls.college)
-        cls.chair = cls.make_user("chair", "dept_chair", department=cls.department)
+        cls.dean = cls.make_user("dean", "staff", college=cls.college)
+        cls.chair = cls.make_user("chair", "staff", department=cls.department)
         cls.staff = cls.make_user("staff", "staff", department=cls.department)
         cls.college_staff = cls.make_user("college-staff", "staff", college=cls.college)
         cls.category = EmploymentCategory.objects.create(code="full_time", name="Full time")
@@ -60,6 +60,14 @@ class ResourceFixture(TestCase):
     def make_user(cls, name, role, is_staff=False, **scope):
         user = get_user_model().objects.create_user(username=name, password="test-only-password", is_staff=is_staff)
         AdminProfile.objects.create(user=user, role=role, **scope)
+        if name in ('dean', 'chair'):
+            from accounts.permissions import SCHEDULE_EDITOR_PERMISSIONS, SCHEDULE_REVIEWER_PERMISSIONS, SCHEDULE_APPROVER_PERMISSIONS
+            permissions = SCHEDULE_EDITOR_PERMISSIONS | SCHEDULE_REVIEWER_PERMISSIONS
+            if name == 'dean':
+                permissions |= SCHEDULE_APPROVER_PERMISSIONS
+            for permission in permissions:
+                app, code = permission.split('.')
+                user.user_permissions.add(Permission.objects.get(content_type__app_label=app, codename=code))
         return user
 
     def grant(self, user, model, *actions):
@@ -221,18 +229,17 @@ class ResourceManagementTests(ResourceFixture):
 
 
 class ResourceIsolationTests(ResourceFixture):
-    def test_anonymous_and_ungranted_staff_cannot_access_any_resource_page(self):
+    def test_anonymous_denied_and_staff_resource_access_is_scoped(self):
         for namespace, obj in self.records[self.department.pk].items():
-            for action in ("list", "add", "detail", "edit", "status"):
-                url = reverse(f"{namespace}:{action}", args=[] if action in ("list", "add") else [obj.pk])
-                self.assertEqual(self.client.get(url).status_code, 302)
+            self.assertEqual(self.client.get(reverse(f'{namespace}:list')).status_code, 302)
         self.client.force_login(self.staff)
         for namespace, obj in self.records[self.department.pk].items():
-            self.assertEqual(self.client.get(reverse(f"{namespace}:list")).status_code, 403)
-            self.assertEqual(self.client.post(reverse(f"{namespace}:add"), self.payload(namespace)).status_code, 403)
-            self.assertEqual(self.client.post(reverse(f"{namespace}:edit", args=[obj.pk]), self.payload(namespace)).status_code, 403)
-            self.assertEqual(self.client.post(reverse(f"{namespace}:status", args=[obj.pk]), {"active": "false"}).status_code, 403)
-            self.assertNotContains(self.client.get("/dashboard/"), f'href="{reverse(f"{namespace}:list")}"')
+            page = self.client.get(reverse(f'{namespace}:list'))
+            self.assertEqual(page.status_code, 200)
+            self.assertEqual(page.context['paginator'].count, 1)
+            self.assertEqual(self.client.get(reverse(f'{namespace}:add')).status_code, 200)
+            outside = self.records[self.external.pk][namespace]
+            self.assertEqual(self.client.get(reverse(f'{namespace}:edit', args=[outside.pk])).status_code, 404)
 
     def test_lists_and_dashboard_counts_follow_each_role_scope(self):
         for user, expected in [(self.admin, 3), (self.dean, 2), (self.chair, 1)]:
@@ -281,15 +288,15 @@ class ResourceIsolationTests(ResourceFixture):
                 self.assertEqual(response.context["paginator"].count, 0)
                 self.assertTrue(response.context["filter_form"].errors)
 
-    def test_explicit_staff_grants_do_not_expand_scope_or_other_actions(self):
+    def test_staff_default_resource_actions_do_not_expand_scope(self):
         self.grant(self.staff, Faculty, "view", "add")
         self.client.force_login(self.staff)
         self.assertEqual(self.client.get(reverse("faculty-management:list")).context["paginator"].count, 1)
         self.assertEqual(self.client.post(reverse("faculty-management:add"), self.payload("faculty-management")).status_code, 302)
         self.assertEqual(self.client.get(reverse("faculty-management:detail", args=[self.records[self.sibling.pk]["faculty-management"].pk])).status_code, 404)
-        self.assertEqual(self.client.post(reverse("faculty-management:status", args=[self.faculty.pk]), {"active": "false"}).status_code, 403)
-        self.assertEqual(self.client.get(reverse("faculty-management:edit", args=[self.faculty.pk])).status_code, 403)
-        self.assertNotIn("subject_count", self.client.get("/dashboard/").context)
+        self.assertEqual(self.client.post(reverse("faculty-management:status", args=[self.faculty.pk]), {"active": "false"}).status_code, 302)
+        self.assertEqual(self.client.get(reverse("faculty-management:edit", args=[self.faculty.pk])).status_code, 200)
+        self.assertIn("subject_count", self.client.get("/dashboard/").context)
 
     def test_broad_groups_and_is_staff_do_not_grant_institution_access(self):
         group = Group.objects.create(name="Broad resource grants")
@@ -318,7 +325,7 @@ class ResourceIsolationTests(ResourceFixture):
 
     def test_service_layer_checks_authorization_without_view(self):
         with self.assertRaises(PermissionDenied):
-            save_resource(user=self.staff, form_class=FacultyForm, data=self.payload("faculty-management"))
+            save_resource(user=type(self.staff).objects.create_user(username="unprofiled"), form_class=FacultyForm, data=self.payload("faculty-management"))
         with self.assertRaises(PermissionDenied):
             save_resource(user=self.chair, form_class=RoomForm, data={**self.payload("rooms"), "owner_department": ""})
 
@@ -332,7 +339,7 @@ class ResourceIsolationTests(ResourceFixture):
         self.grant(self.staff, Faculty, "view")
         self.client.force_login(self.staff)
         response = self.client.get(reverse("faculty-management:detail", args=[self.faculty.pk]))
-        self.assertNotContains(response, "Teaching capacity by active term")
+        self.assertContains(response, "Teaching capacity by active term")
         self.assertContains(response, 'aria-current="page" href="/faculty/"')
         self.client.force_login(self.chair)
         self.assertContains(self.client.get(reverse("faculty-management:detail", args=[self.faculty.pk])), "Teaching capacity by active term")
@@ -468,7 +475,7 @@ class ResourceSeedTests(TestCase):
             self.assertEqual([model.objects.count() for model in (Faculty, Subject, Room, WorkloadPolicy, FacultyTermCapacity)], counts)
             faculty.refresh_from_db()
             self.assertEqual(faculty.first_name, "Preserve my edit")
-            self.assertEqual(set(hashes), {"dev.admin", "dev.dean", "dev.chair", "dev.staff"})
+            self.assertEqual(set(hashes), {"dev.admin", "dev.dean", "dev.chair", "dev.staff", "dev.faculty"})
             self.assertEqual(Assignment.objects.count(), 0)
             self.assertEqual(Faculty.objects.count(), 2)
 

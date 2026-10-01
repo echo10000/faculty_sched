@@ -67,9 +67,9 @@ class GenerationServiceTests(TimetableFixture):
         self.staff.user_permissions.add(*permissions)
         return type(self.staff).objects.get(pk=self.staff.pk)
 
-    def test_exact_bundle_staff_can_accept_own_proposal_without_history_grant(self):
+    def test_staff_can_accept_own_proposal_with_default_history_access(self):
         staff = self.exact_bundle_staff()
-        self.assertFalse(staff.has_perm("timetabling.view_schedulegenerationrun"))
+        self.assertTrue(staff.has_perm("timetabling.view_schedulegenerationrun"))
         run = request_generation(
             user=staff, schedule_id=self.schedule.pk,
             strategy="FILL_GAPS", overrides=GenerationOverrides(),
@@ -80,7 +80,7 @@ class GenerationServiceTests(TimetableFixture):
         self.assertEqual(ScheduleEntry.objects.filter(generation_run=run).count(),
                          run.proposed_meeting_count)
 
-    def test_exact_bundle_staff_can_discard_only_own_proposal(self):
+    def test_staff_can_discard_proposals_within_scope(self):
         staff = self.exact_bundle_staff()
         own = request_generation(
             user=staff, schedule_id=self.schedule.pk,
@@ -92,14 +92,11 @@ class GenerationServiceTests(TimetableFixture):
             department=self.department, requested_by=self.chair,
             strategy="FILL_GAPS", status="PROPOSAL_READY",
         )
-        with self.assertRaises(Http404):
-            accept_generation(user=staff, run_id=other.pk)
-        with self.assertRaises(Http404):
-            discard_generation(user=staff, run_id=other.pk)
+        self.assertEqual(discard_generation(user=staff, run_id=other.pk).status, "DISCARDED")
         self.assertEqual(discard_generation(user=staff, run_id=own.pk).status,
                          "DISCARDED")
         other.refresh_from_db()
-        self.assertEqual(other.status, "PROPOSAL_READY")
+        self.assertEqual(other.status, "DISCARDED")
 
     def test_readiness_failure_keeps_solver_unimported(self):
         self.configuration.delete()
@@ -121,7 +118,7 @@ class GenerationServiceTests(TimetableFixture):
         from .models import Schedule
         with self.assertRaises(PermissionDenied):
             request_generation(
-                user=self.staff, schedule_id=self.schedule.pk,
+                user=type(self.staff).objects.create_user(username="denied-generation"), schedule_id=self.schedule.pk,
                 strategy="FILL_GAPS", overrides=GenerationOverrides(),
             )
         foreign = Schedule.objects.create(

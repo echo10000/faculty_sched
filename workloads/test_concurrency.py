@@ -21,7 +21,7 @@ class ConcurrentAssignmentTests(TransactionTestCase):
         college = College.objects.create(code="RACE", name="Race test college")
         department = Department.objects.create(code="RACE-D", name="Race department", college=college)
         user = get_user_model().objects.create_user(username="race-chair")
-        AdminProfile.objects.create(user=user, role="dept_chair", department=department)
+        AdminProfile.objects.create(user=user, role="staff", department=department)
         faculty = Faculty.objects.create(employee_id="RACE-F", first_name="Race", last_name="Teacher", home_department=department)
         year = AcademicYear.objects.create(label="Race year", start_date=date(2026, 1, 1), end_date=date(2026, 12, 31))
         semester = Semester.objects.create(code="RACE", name="Race semester")

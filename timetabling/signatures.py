@@ -16,6 +16,7 @@ from workloads.models import (
 
 from .models import (
     AssignmentMeetingRequirement,
+    ActiveSchedule,
     ClassSection,
     OfferingRequirement,
     RoomUnavailability,
@@ -26,6 +27,7 @@ from .models import (
 
 
 DEPENDENCY_FIELD_SPECS = (
+    (ActiveSchedule, ("id", "academic_term_id", "department_id", "schedule_id")),
     (Schedule, ("id", "name", "department_id", "academic_term_id")),
     (
         ScheduleEntry,

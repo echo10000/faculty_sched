@@ -374,15 +374,12 @@ class CalculationTests(TeachingFixture):
 
 
 class TeachingSecurityTests(TeachingFixture):
-    def test_all_sections_require_grants_and_calendar_access(self):
+    def test_staff_default_teaching_access_stays_scoped(self):
         self.client.force_login(self.staff)
-        for section in ("monitor", "availability", "offerings", "assignments"):
-            self.assertEqual(self.client.get(self.url(section)).status_code, 403)
-        self.grant(self.staff, FacultySubjectAssignment, "view")
-        self.assertEqual(self.client.get(self.url("assignments")).status_code, 403)
-        self.grant(self.staff, AcademicTerm, "view")
-        self.assertEqual(self.client.get(self.url("assignments")).status_code, 200)
-        self.assertEqual(self.client.post(self.url("assignments-add"), self.assignment_data()).status_code, 403)
+        for section in ('monitor', 'availability', 'offerings', 'assignments'):
+            self.assertEqual(self.client.get(self.url(section)).status_code, 200)
+        self.assertEqual(self.client.post(self.url('assignments-add'), self.assignment_data()).status_code, 302)
+        self.assertEqual(self.client.get(self.url('faculty', self.records[self.external.pk]['faculty-management'].pk)).status_code, 404)
 
     def test_scoped_lists_and_monitor_counts(self):
         for user, count in ((self.admin, 3), (self.dean, 2), (self.chair, 1)):
@@ -441,15 +438,17 @@ class TeachingSecurityTests(TeachingFixture):
         self.assertEqual(response.context["page_obj"].paginator.count, 1)
         self.assertContains(self.client.get(self.url("faculty", self.faculty.pk)), "Department workload policy")
         self.client.force_login(self.staff)
-        self.assertNotContains(self.client.get("/dashboard/"), 'href="/workloads/availability/"')
+        self.assertContains(self.client.get("/dashboard/"), 'href="/workloads/availability/"')
 
     def test_future_datasets_are_scoped_and_permission_checked(self):
         self.assertEqual(len(list(faculty_candidates(self.chair, self.term))), 1)
         self.assertEqual(len(offering_data(self.dean, self.term)), 2)
+        self.assertEqual(len(list(faculty_candidates(self.staff, self.term))), 1)
+        self.assertEqual(len(offering_data(self.staff, self.term)), 1)
+        from django.contrib.auth import get_user_model
+        unlinked = get_user_model().objects.create_user(username='no-dataset-profile')
         with self.assertRaises(PermissionDenied):
-            list(faculty_candidates(self.staff, self.term))
-        with self.assertRaises(PermissionDenied):
-            offering_data(self.staff, self.term)
+            list(faculty_candidates(unlinked, self.term))
 
 
 class TeachingSeedTests(TestCase):

@@ -71,28 +71,19 @@ class GenerationPageTests(TimetableFixture):
         self.assertEqual(secure.post(accept).status_code, 403)
         self.assertEqual(self.client.post(self.url("generation-run-accept", self.foreign_run.pk)).status_code, 404)
 
-    def test_anonymous_redirects_and_staff_denied(self):
+    def test_anonymous_redirects_and_staff_has_generator(self):
         self.client.logout()
         self.assertEqual(self.client.get(self.url("generator")).status_code, 302)
         self.client.force_login(self.staff)
-        self.assertEqual(self.client.get(self.url("generator")).status_code, 403)
-
-    def test_staff_needs_complete_bundle_and_replace_needs_delete(self):
-        permissions = [Permission.objects.get(
-            content_type__app_label=code.split(".")[0], codename=code.split(".")[1],
-        ) for code in GENERATION_PERMISSIONS]
-        self.staff.user_permissions.add(*permissions[:-1])
-        self.client.force_login(type(self.staff).objects.get(pk=self.staff.pk))
-        self.assertEqual(self.client.get(self.url("generator")).status_code, 403)
-        self.assertEqual(self.client.post(self.url("generation-run-accept", self.run.pk)).status_code, 403)
-        self.staff.user_permissions.add(permissions[-1])
-        self.client.force_login(type(self.staff).objects.get(pk=self.staff.pk))
         self.assertEqual(self.client.get(self.url("generator")).status_code, 200)
-        response = self.client.post(self.url("generator"), {
-            "schedule": self.schedule.pk, "strategy": "REPLACE_UNLOCKED",
-        })
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("strategy", response.context["form"].errors)
+
+    def test_staff_replace_generation_produces_draft_only(self):
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.get(self.url('generator')).status_code, 200)
+        self.assertTrue(self.staff.has_perm('timetabling.delete_scheduleentry'))
+        response = self.client.post(self.url('generator'), {'schedule': self.schedule.pk, 'strategy': 'REPLACE_UNLOCKED'})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Schedule.objects.filter(pk=self.schedule.pk, status='approved').exists())
 
     def test_exact_generation_bundle_can_review_own_proposal_without_history_permission(self):
         self.staff.user_permissions.add(*(Permission.objects.get(
@@ -111,27 +102,27 @@ class GenerationPageTests(TimetableFixture):
             }, follow=True)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Accept proposal")
-        self.assertEqual(self.client.get(self.url("generation-runs")).status_code, 403)
-        self.assertEqual(self.client.get(self.url("generation-run-detail", self.run.pk)).status_code, 404)
-        self.assertNotContains(self.client.get(self.url("generator")), "Generated schedule history")
-        self.assertNotContains(self.client.get(self.url("generation-run-detail", own_run.pk)),
+        self.assertEqual(self.client.get(self.url("generation-runs")).status_code, 200)
+        self.assertEqual(self.client.get(self.url("generation-run-detail", self.run.pk)).status_code, 200)
+        self.assertContains(self.client.get(self.url("generator")), "Generated schedule history")
+        self.assertContains(self.client.get(self.url("generation-run-detail", own_run.pk)),
                                "Generated schedule history")
         self.assertEqual(self.client.post(self.url("generation-run-discard", own_run.pk)).status_code, 302)
         own_run.refresh_from_db()
         self.assertEqual(own_run.status, "DISCARDED")
 
-    def test_history_only_staff_sees_no_terminal_controls(self):
+    def test_staff_default_access_includes_history_and_terminal_controls(self):
         self.staff.user_permissions.add(*Permission.objects.filter(
             content_type__app_label="timetabling", codename="view_schedulegenerationrun",
         ), *Permission.objects.filter(
             content_type__app_label="academics", codename="view_academicterm",
         ))
         self.client.force_login(type(self.staff).objects.get(pk=self.staff.pk))
-        self.assertEqual(self.client.get(self.url("generator")).status_code, 403)
+        self.assertEqual(self.client.get(self.url("generator")).status_code, 200)
         page = self.client.get(self.url("generation-run-detail", self.run.pk))
         self.assertEqual(page.status_code, 200)
-        self.assertNotContains(page, "Accept proposal")
-        self.assertNotContains(page, "Discard proposal")
+        self.assertContains(page, "Accept proposal")
+        self.assertContains(page, "Discard proposal")
         home = self.client.get("/dashboard/")
         self.assertContains(home, "Generated schedule history")
         self.assertNotContains(home, "Automated generator")

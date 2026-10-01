@@ -10,11 +10,11 @@ from django.db import transaction
 from accounts.models import AdminProfile
 from timetabling.conflicts import get_schedule_conflicts
 from timetabling.models import Schedule
-from timetabling.workflow import submit_schedule
+from timetabling.mutations import validate_schedule
 
 
 class Command(BaseCommand):
-    help = "Optionally submit the fictional manual timetable for human review (DEBUG only)."
+    help = "Optionally validate the fictional manual timetable; publication remains explicit (DEBUG only)."
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -22,7 +22,7 @@ class Command(BaseCommand):
             raise CommandError("Development seeding requires DEBUG=True.")
         chair = get_user_model().objects.filter(username="dev.chair", is_active=True).first()
         profile = AdminProfile.objects.filter(
-            user=chair, role=AdminProfile.Role.DEPT_CHAIR, is_enabled=True,
+            user=chair, role=AdminProfile.Role.STAFF, is_enabled=True,
         ).first() if chair else None
         if not profile:
             raise CommandError("Create the optional dev.chair account with seed_foundation --create-users first.")
@@ -38,7 +38,7 @@ class Command(BaseCommand):
             ).order_by("pk").first()
         if schedule is None:
             raise CommandError("The fictional manual timetable was not available.")
-        if schedule.status in (Schedule.Status.UNDER_REVIEW, Schedule.Status.APPROVED):
+        if schedule.status in (Schedule.Status.VALIDATED, Schedule.Status.UNDER_REVIEW, Schedule.Status.APPROVED):
             self.stdout.write("Review example already submitted; preserving its history.")
             return
         if schedule.status == Schedule.Status.NEEDS_REVISION:
@@ -47,13 +47,9 @@ class Command(BaseCommand):
         warnings = {item.code for item in get_schedule_conflicts(schedule, user=chair)
                     if item.severity == "WARNING"}
         try:
-            submit_schedule(
-                user=chair, schedule_id=schedule.pk,
-                revision_token=schedule.revision_token,
-                acknowledged_warnings=warnings,
-            )
+            validate_schedule(user=chair, schedule_id=schedule.pk)
         except ValidationError as error:
             raise CommandError("The fictional schedule cannot be submitted: " + "; ".join(error.messages)) from error
         self.stdout.write(self.style.SUCCESS(
-            "Fictional schedule submitted for review. No approval or official booking was created."
+            "Fictional schedule validated for staff review. No publication or official booking was created."
         ))

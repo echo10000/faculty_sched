@@ -43,7 +43,7 @@ class DashboardPhase8Tests(TimetableFixture):
                 self.assertEqual(sum(self.counts(context["monitoring"]["workload"]).values()), total)
                 self.assertEqual(context["monitoring"]["rooms"]["active_count"], total)
         self.client.force_login(self.staff)
-        self.assertIsNone(self.client.get("/dashboard/").context["monitoring"]["schedules"])
+        self.assertIsNotNone(self.client.get("/dashboard/").context["monitoring"]["schedules"])
         self.staff.user_permissions.add(*Permission.objects.filter(
             content_type__app_label__in=["academics", "timetabling"],
             codename__in=["view_academicterm", "view_schedule"],
@@ -51,7 +51,7 @@ class DashboardPhase8Tests(TimetableFixture):
         self.staff = type(self.staff).objects.get(pk=self.staff.pk)
         staff = self.dashboard(self.staff, department=self.external.pk)
         self.assertEqual(sum(self.counts(staff["monitoring"]["schedules"]).values()), 1)
-        self.assertIsNone(staff["monitoring"]["workload"])
+        self.assertIsNotNone(staff["monitoring"]["workload"])
 
     def test_workload_counts_match_authoritative_service_without_double_counting(self):
         self.policy(recommended_load=Decimal("3"), maximum_load=Decimal("6"))
@@ -188,9 +188,9 @@ class DashboardPhase8Tests(TimetableFixture):
         context = self.dashboard(staff)
         self.assertEqual(sum(self.counts(context["monitoring"]["schedules"]).values()), 1)
         self.assertIsNotNone(context["monitoring"]["rooms"])
-        self.assertIsNone(context["monitoring"]["workload"])
-        self.assertIsNone(context["monitoring"]["generation"])
-        self.assertIsNone(context["monitoring"]["balancing"])
+        self.assertIsNotNone(context["monitoring"]["workload"])
+        self.assertIsNotNone(context["monitoring"]["generation"])
+        self.assertIsNotNone(context["monitoring"]["balancing"])
         self.assertNotContains(self.client.get("/dashboard/", {"academic_term": self.term.pk}),
                                "Protected external timetable")
 
@@ -242,7 +242,7 @@ class DashboardPhase8Tests(TimetableFixture):
         self.assertLessEqual(len(after), len(before) + 6)
         self.assertLess(len(after), 220)
 
-    def test_ungranted_staff_cannot_open_monitoring_pages(self):
+    def test_staff_default_access_includes_monitoring_pages(self):
         self.client.force_login(self.staff)
         for url in (
             reverse("workloads:monitor") + f"?academic_term={self.term.pk}",
@@ -252,4 +252,4 @@ class DashboardPhase8Tests(TimetableFixture):
             reverse("workloads:balancing-runs"),
         ):
             with self.subTest(url=url):
-                self.assertEqual(self.client.get(url).status_code, 403)
+                self.assertEqual(self.client.get(url).status_code, 200)

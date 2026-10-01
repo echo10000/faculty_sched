@@ -21,7 +21,7 @@ class ConcurrentTimetableTests(TransactionTestCase):
         college = College.objects.create(code="R", name="Race college")
         dept = Department.objects.create(college=college, code="R", name="Race department")
         self.user = get_user_model().objects.create_user(username="race-chair")
-        AdminProfile.objects.create(user=self.user, role="dept_chair", department=dept)
+        AdminProfile.objects.create(user=self.user, role="staff", department=dept)
         year = AcademicYear.objects.create(label="Race year", start_date=date(2026, 1, 1), end_date=date(2026, 12, 31))
         semester = Semester.objects.create(code="R", name="Race")
         term = AcademicTerm.objects.create(academic_year=year, semester=semester, code="R", start_date=year.start_date, end_date=year.end_date)

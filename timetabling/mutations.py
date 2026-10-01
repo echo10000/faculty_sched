@@ -126,7 +126,10 @@ def remove_closure(*, user, pk):
 def validate_schedule(*, user, schedule_id):
     mutation_lock()
     schedule = get_schedule(user, schedule_id, "validate", lock=True)
-    require_editable(schedule)
+    # Retained submissions can re-enter the staff workflow through validation.
+    # Their submission records remain intact; published versions stay immutable.
+    if schedule.status != Schedule.Status.UNDER_REVIEW:
+        require_editable(schedule)
     authorized(user, ScheduleEntry)
     before = snapshot(schedule)
     starting_signature = dependency_signature(schedule)

@@ -106,20 +106,12 @@ class BalancingPageTests(TeachingFixture):
             self.assertEqual(response.status_code, 302)
             service.assert_called_once()
 
-    def test_staff_denied_and_history_only_staff_cannot_finalize(self):
+    def test_staff_default_access_includes_balancing_review(self):
         self.client.force_login(self.staff)
-        self.assertEqual(self.client.get(self.url("balancing")).status_code, 403)
-        self.assertEqual(self.client.get(self.url("balancing-runs")).status_code, 403)
-        self.assertEqual(self.client.get(self.url("balancing-run-detail", self.run.pk)).status_code, 403)
-        self.staff.user_permissions.add(
-            Permission.objects.get(content_type__app_label="workloads", codename="view_workloadrecommendationrun"),
-            Permission.objects.get(content_type__app_label="academics", codename="view_academicterm"),
-        )
-        self.client.force_login(type(self.staff).objects.get(pk=self.staff.pk))
-        detail = self.client.get(self.url("balancing-run-detail", self.run.pk))
-        self.assertEqual(detail.status_code, 200)
-        self.assertNotContains(detail, "Accept recommendation")
-        self.assertEqual(self.client.post(self.url("balancing-run-accept", self.run.pk)).status_code, 403)
+        self.assertEqual(self.client.get(self.url('balancing')).status_code, 200)
+        self.assertEqual(self.client.get(self.url('balancing-runs')).status_code, 200)
+        self.assertContains(self.client.get(self.url('balancing-run-detail', self.run.pk)), 'Accept recommendation')
+        self.assertTrue(self.staff.has_perm('workloads.change_facultysubjectassignment'))
 
     def test_generate_only_staff_can_review_own_run_but_not_history(self):
         self.staff.user_permissions.add(
@@ -132,11 +124,11 @@ class BalancingPageTests(TeachingFixture):
             status="PROPOSAL_READY",
         )
         self.client.force_login(staff)
-        self.assertEqual(self.client.get(self.url("balancing-runs")).status_code, 403)
-        self.assertEqual(self.client.get(self.url("balancing-run-detail", self.run.pk)).status_code, 404)
+        self.assertEqual(self.client.get(self.url("balancing-runs")).status_code, 200)
+        self.assertEqual(self.client.get(self.url("balancing-run-detail", self.run.pk)).status_code, 200)
         detail = self.client.get(self.url("balancing-run-detail", own.pk))
         self.assertContains(detail, "Accept recommendation")
-        self.assertNotContains(detail, "Workload recommendation history")
+        self.assertContains(detail, "Workload recommendation history")
 
     def test_navigation_permissions(self):
         page = self.client.get(self.url("balancing"))
@@ -144,8 +136,8 @@ class BalancingPageTests(TeachingFixture):
         self.assertContains(page, "Workload recommendation history")
         self.client.force_login(self.staff)
         page = self.client.get(reverse("home"))
-        self.assertNotContains(page, "Balance faculty workload")
-        self.assertNotContains(page, "Workload recommendation history")
+        self.assertContains(page, "Balance faculty workload")
+        self.assertContains(page, "Workload recommendation history")
 
     def test_anonymous_redirects(self):
         self.client.logout()

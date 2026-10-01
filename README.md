@@ -2,13 +2,13 @@
 
 Faculty Workload and Academic Scheduling System for Negros Oriental State University - Bais Campus (NORSU-BSC).
 
-**Phases 1–10 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations, human schedule approval, active official selection, dated resource bookings, role-aware dashboard monitoring, administrative reporting and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
+**Phases 1–10 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations, staff schedule finalization and publication, active official selection, dated resource bookings, role-aware dashboard monitoring, administrative reporting and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
 
 See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md#20-phase-10-implementation-record) for the completed phases, architecture, migration decisions and deployment handoff.
 
 ## Technical handoff
 
-CampusLoad is a server-rendered Django monolith with PostgreSQL, Bootstrap, OR-Tools, ReportLab and openpyxl. `timetabling` owns current scheduling and approval; the retained `scheduling` autoscheduler has no public routes. Scope is checked in selectors and write services, and important mutations record transactional, append-only audit events. Reports reuse the workload calculator, conflict validator, stored solver runs and immutable approval snapshots.
+CampusLoad is a server-rendered Django monolith with PostgreSQL, Bootstrap, OR-Tools, ReportLab and openpyxl. `timetabling` owns current scheduling and publication; the retained `scheduling` autoscheduler has no public routes. Scope is checked in selectors and write services, and important mutations record transactional, append-only audit events. Reports reuse the workload calculator, conflict validator, stored solver runs and immutable approval snapshots.
 
 | Need | Starting point |
 | --- | --- |
@@ -18,12 +18,12 @@ CampusLoad is a server-rendered Django monolith with PostgreSQL, Bootstrap, OR-T
 | Architecture and migration record | [Development plan](DEVELOPMENT_PLAN.md) |
 | Main application | `config/urls.py`, `accounts`, `core`, `resources`, `workloads`, `timetabling`, `reporting` |
 
-The role defaults are System Admin, College Dean, Department Chair and Authorized Staff. Staff require explicit grants, and organizational scope still applies. PostgreSQL is required for the exclusion constraints and database triggers. The principal known date limitation is that every matching weekday in an academic term is treated as instructional; holidays and date exceptions are not modeled.
+The supported roles are Admin, Authorized Staff, and read-only Faculty. Staff prepare and publish schedules within one assigned college or department. Faculty access uses the existing Faculty.user relationship. PostgreSQL is required for the exclusion constraints and database triggers. The principal known date limitation is that every matching weekday in an academic term is treated as instructional; holidays and date exceptions are not modeled.
 
 ## Implemented foundation
 
 - Existing Django User, secure password hashing, login, CSRF-protected POST logout and inactive/disabled account denial.
-- System Admin, College Dean, Department Chair and Authorized Staff; organizational scope enforced independently of model permissions.
+- Admin, Authorized Staff and read-only Faculty; organizational scope enforced independently of model permissions.
 - College, Department, AcademicYear, configurable Semester, AcademicTerm and initial SystemSetting models.
 - Protected hierarchy, date/uniqueness/scope constraints and PostgreSQL validation triggers.
 - Permission-protected dashboard, scoped read-only college/department pages, academic calendar and locally bundled Bootstrap 5.3.8.
@@ -52,10 +52,11 @@ Open [the application](http://127.0.0.1:8000/). Development accounts are:
 
 | Account | Role |
 | --- | --- |
-| `dev.admin` | System Admin; can open Django admin |
-| `dev.dean` | College Dean for Example College A |
-| `dev.chair` | Department Chair for Example Department One |
-| `dev.staff` | Authorized Staff; dashboard access only initially |
+| `dev.admin` | Admin; can open Django admin |
+| `dev.dean` | Authorized Staff for Example College A |
+| `dev.chair` | Authorized Staff for Example Department One |
+| `dev.staff` | Authorized Staff for Example Department One |
+| `dev.faculty` | Read-only Faculty linked to DEMO-F1; created with a resource/teaching/timetable seed option |
 
 Their generated passwords are in the sibling workspace's Git-ignored `.local/development-credentials.txt`. Do not commit/share this file or `.env`. The seed never resets existing account passwords. For a repeatable disposable demo database, see [the demo path](docs/DEMO.md); do not rerun the seed against a database containing decisions you want to preserve.
 
@@ -143,26 +144,33 @@ Secure session/CSRF cookies default on outside DEBUG. There is no SQLite switch 
 
 `seed_foundation` requires DEBUG=True. Without an optional data flag, its Phase 1 behavior is unchanged: fictional organizations/calendar and optional accounts only. `--with-resources` also calls `seed_resources`, adding two faculty members, two subjects, two rooms, configurable reference data, and example department policies/faculty term overrides. `manage.py seed_resources` also works independently and ensures foundation data exists. `--with-teaching` also calls `seed_teaching`, which includes resource seeding and adds two offerings, two teaching assignments and six availability records. `manage.py seed_teaching` works independently. `--with-timetables` additionally creates the manual draft examples and the Phase 5 generation examples described below. None creates enrollment data. Repeated runs preserve edited records, account scopes and passwords. Omit `--create-users` for data only. Example load values are fictional and must be replaced with approved policy before institutional use.
 
-For a manually managed administrator, use `manage.py createsuperuser` instead. Django superusers can sign in and administer the institution without an AdminProfile. For non-superusers, create a User and valid AdminProfile via [Django admin](http://127.0.0.1:8000/admin/). System Admin profiles additionally need `is_staff=True` for admin-site access.
+For a manually managed administrator, use `manage.py createsuperuser` instead. Django superusers can sign in and administer the institution without an AdminProfile. For non-superusers, create a User and valid AdminProfile via [Django admin](http://127.0.0.1:8000/admin/). Admin profiles additionally need `is_staff=True` for admin-site access.
 
 ## Access model
 
 | Role | Scope and initial permissions |
 | --- | --- |
-| System Admin | Institution-wide foundation, resource and teaching management; workload/reference configuration in admin |
-| College Dean | View/add/edit/activate faculty, subjects and rooms owned by their college or its departments; term availability, offerings, assignments and workload monitoring; shared calendar |
-| Department Chair | View/add/edit/activate faculty, subjects and rooms owned by their department; term availability, offerings, assignments and workload monitoring; shared calendar |
-| Authorized Staff | One college OR department; dashboard plus explicit model/group grants |
+| Admin | Institution-wide accounts, permissions, colleges, terms, shared settings, records, scheduling and finalization |
+| Authorized Staff | One college OR department; prepare classes, confirm assignments, generate/review/edit drafts, finalize/publish, view and export scoped records |
+| Faculty | Own selected official teaching schedule and teaching-load summary; read-only, with PDF/Excel/CSV downloads |
 
-Staff grants are managed on the Django User's permissions/groups. Role defaults come from the authorization backend; `bootstrap_roles` also creates initial reusable permission bundles without overwriting existing custom grants. A permission or group name never expands an organizational scope. Only an explicit System Admin role or Django superuser status grants institution-wide access.
+The additive accounts migration converts existing Dean and Chair profiles to Staff, retaining profile/user IDs, organizational scope, disabled status and all user flags. It records an audit event and does not promote users to Admin. New account role choices contain only Admin (`super_admin`), Authorized Staff (`staff`) and Faculty (`faculty`). Existing custom grants/groups are preserved; grants never expand scope. `bootstrap_roles` now creates Admin, Authorized Staff and Faculty bundles.
 
-Business Authorized Staff does **not** mean Django `is_staff`. Non-system roles cannot use Django admin, even if `is_staff` or broad model permissions are mistakenly assigned. Missing/disabled profiles and inactive organizational scopes are denied. Out-of-scope object URLs return 404; denied actions return 403.
+Faculty reuses `Faculty.user`. In Django admin, edit a User's **Teaching identity** to select an existing unlinked Faculty record, then enable its Faculty profile. Linked active Faculty users without a profile may also sign in; disabled profiles cannot fall back to Faculty access. Admin/Staff users may link a Faculty record and keep their administrative role. Faculty's permission ceiling ignores ordinary model/group grants and blocks staff pages, direct URLs and exports.
+
+The workflow is **Prepare → Generate → Review/Edit → Finalize and Publish**. Generation/acceptance creates drafts only. Validate the current version, then use the separate Finalize and Publish action; the draft creator may publish it. No Dean, Chair or separate Admin approval is required. The locked publication transaction rechecks faculty/section/room conflicts across scopes, complete required meetings and teaching hours, complete faculty assignment shares, enforced workload maxima, department scheduling grids, revision/dependency signatures and official selection. Blocking findings include actionable remedies; remaining warnings require acknowledgement.
+
+Publication atomically stores the immutable snapshot, finalizer/time, workflow and audit events, official selection and dated bookings. A revision remains a draft while the previous official version and bookings stay selected. Failed replacement rolls back publication writes. Historical approval snapshots/events remain unchanged. Pending legacy review versions may be validated and finalized; old submit/return/approve endpoints are unmounted.
+
+The active faculty portal is `/my-teaching/` and `/my-teaching/load/`; it reads selected official snapshots, never the latest draft or legacy dashboard/scheduler. New publications freeze teaching-load summaries calculated by the active workload service. Historical approvals without saved summaries use frozen published assignments with current workload policy, clearly labeled in views and exports. Staff **My Scheduling Work** differs from faculty **My Teaching Schedule**.
+
+Business Authorized Staff does **not** mean Django `is_staff`. Non-system roles cannot use Django admin, even if `is_staff` or broad model permissions are mistakenly assigned. Disabled profiles, inactive organizational scopes, and accounts lacking both an enabled profile and an active Faculty link are denied. Out-of-scope object URLs return 404; denied actions return 403.
 
 Academic calendars are institution-wide reference data behind calendar permission. College/department records and all resource lists, detail lookups, submitted foreign keys, filters and dashboard counts are scoped server-side. Invalid/out-of-scope filters return errors and no results. Faculty capacity by term additionally requires calendar access.
 
-Phase 2 uses Django `view`, `add`, `change` and a separate `activate` permission for each resource. Staff receive none of these automatically. Explicit grants never widen scope; `change` alone cannot toggle active status. There are no hard-delete endpoints. College/department and global lookup/policy configuration remain restricted to system administration.
+Phase 2 uses Django `view`, `add`, `change` and a separate `activate` permission for each resource. Staff receive these resource permissions by default. Grants never widen scope; `change` alone cannot toggle active status. There are no hard-delete endpoints. College/department and global lookup/policy configuration remain restricted to system administration.
 
-Room ownership is explicit: department-owned, college-owned or institution-owned (both ownership fields blank). College is derived from the owning department when present. Chairs manage only department-owned rooms; deans also manage their college-owned rooms. Only system administrators manage institution-owned rooms. This ownership rule does not establish future shared-room booking eligibility.
+Room ownership is explicit: department-owned, college-owned or institution-owned (both ownership fields blank). College is derived from the owning department when present. Department-scoped staff manage department-owned rooms; college-scoped staff also manage college-owned rooms. Only system administrators manage institution-owned rooms. This ownership rule does not establish future shared-room booking eligibility.
 
 ## Routes
 
@@ -180,7 +188,7 @@ Room ownership is explicit: department-owned, college-owned or institution-owned
 | Each directory + `<id>/status/` | Confirmation GET and CSRF-protected status POST |
 | `/admin/` | System administration and read-only audit history |
 
-The faculty URL namespace is `faculty-management`; subject and room namespaces are `subjects` and `rooms`. All expose `list`, `add`, `detail`, `edit`, and `status` names. `/faculty/dashboard/` and `/scheduling/` remain unavailable. Resource records are managed through the application, not legacy model-admin screens.
+The faculty URL namespace is `faculty-management`; subject and room namespaces are `subjects` and `rooms`. All expose `list`, `add`, `detail`, `edit`, and `status` names. `/faculty/dashboard/` and `/scheduling/` remain unavailable. `/my-teaching/` is the active Faculty portal. Resource records are managed through the application, not legacy model-admin screens.
 
 ## Phase 2 architecture
 
@@ -290,7 +298,7 @@ Maximum enforcement resolves **faculty term override → department → college 
 
 `workloads/selectors.py` scopes records and term access; forms restrict every faculty/offering/department choice. `workloads/operations.py` checks action permissions and scope again inside transactions, locks faculty/offering rows, validates aggregate shares and resulting workload, then saves with its audit event. A failed audit rolls back the business change. Concurrent assignments cannot both bypass the same faculty's hard maximum.
 
-Deans/chairs receive teaching capabilities within their existing organizational scope. Staff require explicit model permissions, calendar access, and `workloads.view_workload` for monitoring. Permission grants never widen scope. All direct URLs, lists/counts, filters and submitted IDs are checked server-side. Assignments require the same department even for system administrators; cross-department teaching needs a separately reviewed workflow. Transfers of faculty with availability/assignments or subjects with offerings are blocked to preserve ownership/history.
+Authorized Staff receive teaching capabilities, calendar access and workload monitoring within their assigned organization scope. Permission grants never widen scope. All direct URLs, lists/counts, filters and submitted IDs are checked server-side. Assignments require the same department even for system administrators; cross-department teaching needs a separately reviewed workflow. Transfers of faculty with availability/assignments or subjects with offerings are blocked to preserve ownership/history.
 
 Audits cover availability create/update/delete, offering create/update, assignment create/update/remove and existing capacity-admin changes. They identify actor, entity, term and controlled before/after values. Notes are represented by a change indicator, not copied into audit content. Append-only protection is unchanged. Shell/ORM writes outside authorized services are not an audited application API.
 
@@ -365,7 +373,7 @@ Faculty AVAILABLE/PREFERRED remain descriptive; sparse records do not make all u
 - `timetable.py`: scoped filtering and chronological weekly presentation.
 - `datasets.py`: `scheduling_input(user, schedule_id)` supplies authorized assignment/section/hour/room requirements, faculty availability/workload, room capacities/closures, dates and existing manual entries. No solver runs, no time grid is invented, and institutional allowable hours remain explicitly unconfigured.
 
-Deans retain college scope, chairs department scope, administrators institution-wide scope, and staff need explicit capabilities. Calendar access is also required; schedule detail requires entry-view permission. Related room/faculty/section/offering choices, posted IDs, direct URLs and filters are scoped server-side. Room choices preserve Phase 2 ownership rules; this phase does not introduce cross-scope shared-room eligibility. Protected peer meetings produce a generic resource-conflict explanation without another unit's titles or IDs. Inconsistent imported entries are reported for administrator review rather than leaking their details.
+Authorized Staff retain their assigned college or department scope; Admin has institution-wide scope. Calendar access is also required; schedule detail requires entry-view permission. Related room/faculty/section/offering choices, posted IDs, direct URLs and filters are scoped server-side. Room choices preserve Phase 2 ownership rules; this phase does not introduce cross-scope shared-room eligibility. Protected peer meetings produce a generic resource-conflict explanation without another unit's titles or IDs. Inconsistent imported entries are reported for administrator review rather than leaking their details.
 
 A PostgreSQL transaction advisory lock serializes Phase 4 mutations and validation across terms. Final saves recheck conflicts inside their transaction; concurrency tests prove competing room/faculty requests cannot both save. Successful changes, removals, full validation and status changes are audited atomically with actor, term and controlled before/after values. Failed saves produce no false success event; notes content is omitted. Scheduled teaching assignments cannot be removed until their meetings are removed, and the Phase 3 page explains that dependency.
 
@@ -467,6 +475,8 @@ On the prepared local PostgreSQL development database, run:
 For verification, run `manage.py test --settings=config.test_settings --noinput`, then `manage.py check`, `manage.py makemigrations --check --dry-run`, `python -m pip check`, and `git diff --check`. Run PostgreSQL test commands sequentially because they share a test database. `--with-balancing` includes the Phase 5 examples and adds a separate `DEMO-BALANCING` term with two active same-department faculty, two unscheduled offerings, complete current shares, and effective targets/weights. It is DEBUG-only and idempotent; it never generates a recommendation or resets accepted assignments. `manage.py seed_balancing` also runs independently.
 
 Final Phase 6 verification on 2026-09-23: **376 PostgreSQL tests passed in 289.295 seconds** (332 existing and 44 Phase 6 tests). Both additive migrations applied to the prepared development database. Django system and migration-drift checks passed; `pip check` found no broken requirements. A signed-in dean generated and accepted a real `OPTIMAL` recommendation: one of two offerings moved to the second faculty member, the displayed utilization spread improved from 100 to 0 percentage points, and no timetable was generated. The repeat seed preserved the two accepted teaching assignments. Desktop at 1440px and mobile at 390px showed no horizontal page overflow; the mobile sidebar exposed balancing/history, and the temporary viewport override was reset.
+
+> Earlier phase records below describe historical approval behavior. The current [access model](#access-model) supersedes mandatory reviewer approval and retired roles.
 
 ## Phase 7 human review and official schedules
 

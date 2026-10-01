@@ -74,7 +74,7 @@ class ReportTests(TimetableFixture):
     def test_catalog_and_direct_export_permission(self):
         self.client.force_login(self.staff)
         response = self.client.get(reverse("reporting:index"))
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 200)
         self.staff.user_permissions.add(Permission.objects.get(
             content_type__app_label="academics", codename="view_academicterm",
         ))
@@ -82,8 +82,8 @@ class ReportTests(TimetableFixture):
         self.client.force_login(self.staff)
         response = self.client.get(reverse("reporting:index"))
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "Master academic schedule")
-        self.assertEqual(self.client.get(reverse("reporting:export", args=["master", "csv"])).status_code, 403)
+        self.assertContains(response, "Master academic schedule")
+        self.assertEqual(self.client.get(reverse("reporting:export", args=["master", "csv"])).status_code, 200)
         self.client.force_login(self.admin)
         self.assertContains(self.client.get(reverse("reporting:index")), "Faculty workload")
 
@@ -204,7 +204,7 @@ class ReportTests(TimetableFixture):
             self.report(self.chair, "historical", term=self.term.pk, schedule=999999)
         self.client.force_login(self.staff)
         self.assertEqual(self.client.get(reverse("reporting:export", args=["historical", "pdf"]),
-                                         {"term": self.term.pk, "schedule": self.schedule.pk}).status_code, 403)
+                                         {"term": self.term.pk, "schedule": self.schedule.pk}).status_code, 200)
 
     def test_official_export_formats_and_print(self):
         self._approved()
@@ -231,11 +231,11 @@ class ReportTests(TimetableFixture):
 
 
 class ExportAuthorizationTests(TimetableFixture):
-    def test_role_defaults_and_explicit_staff_grant(self):
+    def test_staff_default_export_access_is_audited(self):
         for user in (self.admin, self.dean, self.chair):
             with self.subTest(role=user.username):
                 self.assertTrue(user.has_perm("core.export_report"))
-        self.assertFalse(self.staff.has_perm("core.export_report"))
+        self.assertTrue(self.staff.has_perm("core.export_report"))
         self.staff.user_permissions.add(*Permission.objects.filter(
             content_type__app_label="academics", codename="view_academicterm",
         ))
@@ -252,9 +252,9 @@ class ExportAuthorizationTests(TimetableFixture):
                 response = self.client.get(url, {"term": self.term.pk})
                 self.assertEqual(response.status_code, 200)
                 self.assertIn("no-store", response["Cache-Control"])
-        self.assertNotContains(self.client.get(detail_url), "Export CSV")
-        self.assertEqual(self.client.get(export_url, {"term": self.term.pk}).status_code, 403)
-        self.assertFalse(AuditLog.objects.filter(action="report.exported").exists())
+        self.assertContains(self.client.get(detail_url), "Export CSV")
+        self.assertEqual(self.client.get(export_url, {"term": self.term.pk}).status_code, 200)
+        self.assertTrue(AuditLog.objects.filter(action="report.exported").exists())
         self.staff.user_permissions.add(Permission.objects.get(
             content_type__app_label="core", codename="export_report",
         ))

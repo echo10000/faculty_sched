@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -93,7 +94,7 @@ class PrepareScheduleView(ProtectedViewMixin, TemplateView):
             display_status_label=dict(Schedule.Status.choices).get(display_status, "Unknown"),
             can_generate=bool(editable and _can_generate(user)),
             can_check=bool(editable and user.has_perm("timetabling.validate_schedule")),
-            can_submit=bool(editable and user.has_perm("timetabling.submit_schedule") and user.has_perm("timetabling.change_schedule")),
+            can_submit=bool(editable and user.has_perm("timetabling.finalize_schedule") and user.has_perm("timetabling.change_schedule")),
             can_add_meeting=bool(editable and user.has_perm("timetabling.add_scheduleentry")))
         return context
 
@@ -127,6 +128,10 @@ class RecordList(TimetableMixin, View):
         if self.section == "closures":
             keep = {"academic_term", "room", "day_of_week"}
         form.fields = {k: v for k, v in form.fields.items() if k in keep}
+        if self.section == "schedules":
+            form.fields["version_status"] = forms.ChoiceField(required=False, label="Version status", choices=[
+                ("", "All versions"), ("editable", "Drafts and revisions"), ("under_review", "Under review"), ("approved", "Published"),
+            ], widget=forms.Select(attrs={"class": "form-select"}))
         qs = scoped(request.user, model.objects.all())
         if self.section == "schedules":
             qs = qs.select_related("family", "academic_term", "department")
@@ -142,6 +147,9 @@ class RecordList(TimetableMixin, View):
             for field in ("academic_term", "department", "room", "day_of_week"):
                 if data.get(field):
                     qs = qs.filter(**{prefix + field: data[field]})
+            if self.section == "schedules" and data.get("version_status"):
+                statuses = ("draft", "validated", "needs_revision") if data["version_status"] == "editable" else (data["version_status"],)
+                qs = qs.filter(status__in=statuses)
             if data.get("q"):
                 lookup = {"schedules": "name", "sections": "code", "requirements": "subject_offering__subject__code",
                           "meeting-requirements": "assignment__subject_offering__subject__code",
@@ -226,13 +234,34 @@ class ScheduleDetail(TimetableMixin, View):
         report = summarize(get_schedule_conflicts(
             schedule, user=request.user,
             excluded_schedule_ids=(active.schedule_id,) if active and not is_official else (),
-        ), schedule.entries.count()) if self.mode == "conflicts" else None
+        ), schedule.entries.count()) if self.mode in ("detail", "conflicts", "unscheduled") else None
+        # Presentation reads reuse the canonical validator and scoped records.
+        all_entries = scoped(request.user, entry_queryset()).filter(schedule=schedule)
+        summary = {"meetings": all_entries.count(), "scheduled_assignments": all_entries.values("assignment_id").distinct().count()}
+        unscheduled = None
+        if request.user.has_perm("workloads.view_facultysubjectassignment"):
+            assignments = scoped_records(request.user, FacultySubjectAssignment.objects.filter(
+                subject_offering__academic_term=schedule.academic_term,
+                subject_offering__department=schedule.department,
+            )).select_related("faculty", "subject_offering__subject")
+            unscheduled = assignments.exclude(pk__in=all_entries.values("assignment_id"))
+            summary["without_meetings"] = unscheduled.count()
+        requirement_findings = [item for item in report["conflicts"] if item.code in (
+            "MEETING_REQUIREMENT_MISSING", "MEETING_REQUIREMENT_COUNT", "MEETING_REQUIREMENT_DURATION", "MEETING_HOURS_WARNING",
+        )] if report else []
+        conflict_groups = []
+        if report:
+            for severity, label in (("ERROR", "Blocking errors"), ("WARNING", "Warnings"), ("INFO", "Information")):
+                findings = [item for item in report["conflicts"] if item.severity == severity]
+                if findings:
+                    conflict_groups.append({"label": label, "findings": sorted(findings, key=lambda item: item.code)})
         display_status = effective_status(schedule) if editable and schedule.status in ("draft", "validated") else schedule.status
         return render(request, "timetabling/detail.html", {**self.context(), "schedule": schedule, "status": display_status,
             "filter_form": form, "entries": entries, "week": week_columns(entries), "mode": self.mode, "report": report,
             "can_generate": editable and _can_generate(request.user), "can_view_generation_runs": _can_view_runs(request.user),
-            "can_edit_version": editable, "can_submit_action": editable and request.user.has_perm("timetabling.submit_schedule") and request.user.has_perm("timetabling.change_schedule"),
-            "is_official": is_official})
+            "can_edit_version": editable, "can_submit_action": editable and request.user.has_perm("timetabling.finalize_schedule") and request.user.has_perm("timetabling.change_schedule"),
+            "is_official": is_official, "summary": summary, "unscheduled_assignments": unscheduled,
+            "requirement_findings": requirement_findings, "conflict_groups": conflict_groups})
 
 
 class EntryEditor(TimetableMixin, View):
@@ -315,7 +344,7 @@ class ValidateView(TimetableMixin, View):
 
     def post(self, request, pk):
         report = validate_schedule(user=request.user, schedule_id=pk)
-        messages.info(request, f"Validation finished: {report['errors']} errors, {report['warnings']} warnings. Validated is not approved.")
+        messages.info(request, f"Validation finished: {report['errors']} errors, {report['warnings']} warnings. Validation does not publish a schedule.")
         return redirect("timetabling:conflicts", pk)
 
 
@@ -449,7 +478,7 @@ STATUS_EXPLANATIONS = {
     "PENDING": "The request is recorded; solving has not started.",
     "RUNNING": "The solver is working within the configured bound.",
     "PROPOSAL_READY": "A complete validated proposal is ready; no schedule meetings have changed.",
-    "ACCEPTED": "Generated meetings were written to the draft schedule; the schedule is not approved.",
+    "ACCEPTED": "Generated meetings were written to the draft schedule; the schedule is not published.",
     "DISCARDED": "The proposal was discarded and did not change the schedule.",
     "INPUT_INVALID": "Source or configuration data was not ready, so the solver did not run.",
     "INFEASIBLE": "No complete timetable was found under the captured constraints.",

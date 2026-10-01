@@ -17,7 +17,7 @@ class Command(BaseCommand):
     help = "Seed fictional Phase 1 development records only; no faculty or timetable data."
 
     def add_arguments(self, parser):
-        parser.add_argument("--with-review", action="store_true", help="Also submit the fictional manual timetable for human review (includes timetables; requires dev.chair).")
+        parser.add_argument("--with-review", action="store_true", help="Also prepare a fictional validation example (includes timetables; requires dev.chair).")
         parser.add_argument("--with-balancing", action="store_true", help="Also seed a separate fictional Phase 6 workload balancing example (includes timetables).")
         parser.add_argument("--with-timetables", action="store_true", help="Also seed fictional manual Phase 4 timetables (includes teaching/resources).")
         parser.add_argument("--with-teaching", action="store_true", help="Also seed fictional Phase 3 availability, offerings and teaching assignments (includes resources).")
@@ -42,8 +42,8 @@ class Command(BaseCommand):
         if options["create_users"]:
             for username, role, scope in [
                 ("dev.admin", AdminProfile.Role.SUPER_ADMIN, {}),
-                ("dev.dean", AdminProfile.Role.DEAN, {"college": college}),
-                ("dev.chair", AdminProfile.Role.DEPT_CHAIR, {"department": department}),
+                ("dev.dean", AdminProfile.Role.STAFF, {"college": college}),
+                ("dev.chair", AdminProfile.Role.STAFF, {"department": department}),
                 ("dev.staff", AdminProfile.Role.STAFF, {"department": department}),
             ]:
                 if get_user_model().objects.filter(username=username).exists():
@@ -54,16 +54,6 @@ class Command(BaseCommand):
                 credentials.append(f"{username}: {password}")
                 record_event("account.seed", obj=user)
         record_event("foundation.seed", details={"new_accounts": len(credentials)})
-        if credentials:
-            credential_file = settings.BASE_DIR / ".local" / "development-credentials.txt"
-
-            def save_credentials():
-                credential_file.parent.mkdir(exist_ok=True)
-                with credential_file.open("a", encoding="utf-8") as handle:
-                    handle.write("\n".join(credentials) + "\n")
-
-            transaction.on_commit(save_credentials)
-            self.stdout.write("New account passwords will be written to .local/development-credentials.txt (Git-ignored).")
         self.stdout.write(self.style.SUCCESS("Foundation seed complete. Example dates/organizations are not institutional policy. Existing records and passwords were preserved."))
         if options.get("with_review"):
             call_command("seed_review", stdout=self.stdout)
@@ -77,3 +67,27 @@ class Command(BaseCommand):
             call_command("seed_teaching", stdout=self.stdout)
         elif options.get("with_resources"):
             call_command("seed_resources", stdout=self.stdout)
+        if options["create_users"] and any(options.get(flag) for flag in (
+            "with_review", "with_balancing", "with_timetables", "with_teaching", "with_resources",
+        )):
+            from faculty.models import Faculty
+            person = Faculty.objects.filter(employee_id="DEMO-F1", user__isnull=True).first()
+            if person and not get_user_model().objects.filter(username="dev.faculty").exists():
+                password = secrets.token_urlsafe(20)
+                user = get_user_model().objects.create_user(username="dev.faculty", password=password)
+                person.user = user
+                person.save()
+                AdminProfile.objects.create(user=user, role=AdminProfile.Role.FACULTY)
+                record_event("account.seed", obj=user, details={"faculty_id": person.pk})
+                credentials.append(f"dev.faculty: {password}")
+
+        if credentials:
+            credential_file = settings.BASE_DIR / ".local" / "development-credentials.txt"
+
+            def save_credentials():
+                credential_file.parent.mkdir(exist_ok=True)
+                with credential_file.open("a", encoding="utf-8") as handle:
+                    handle.write("\n".join(credentials) + "\n")
+
+            transaction.on_commit(save_credentials)
+            self.stdout.write("New account passwords will be written to .local/development-credentials.txt (Git-ignored).")

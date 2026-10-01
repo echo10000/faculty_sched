@@ -1,7 +1,7 @@
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth import get_user_model
 
-from .permissions import profile_for, role_permissions
+from .permissions import can_sign_in, faculty_for, FACULTY_PORTAL_PERMISSIONS, profile_for, role_permissions
 from .throttle import clear_account_failures, is_blocked, record_failure
 
 
@@ -24,6 +24,8 @@ class ScopedRoleBackend(ModelBackend):
         if obj is not None or not self.user_can_authenticate(user_obj) or user_obj.is_anonymous:
             return set()
         profile = profile_for(user_obj)
-        if not user_obj.is_superuser and profile is None:
+        if not user_obj.is_superuser and profile is None and not can_sign_in(user_obj):
             return set()
+        if not user_obj.is_superuser and (profile is None or profile.role == "faculty"):
+            return FACULTY_PORTAL_PERMISSIONS if faculty_for(user_obj) else set()
         return super().get_all_permissions(user_obj, obj) | role_permissions(profile)

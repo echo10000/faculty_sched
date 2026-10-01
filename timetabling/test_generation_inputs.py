@@ -210,13 +210,13 @@ class GenerationInputTests(TimetableFixture):
     def test_permission_gate_runs_before_schedule_lookup(self):
         with self.assertRaises(PermissionDenied):
             prepare_generation_input(
-                user=self.staff,
+                user=type(self.staff).objects.create_user(username="no-generation-profile"),
                 schedule_id=999999,
                 strategy="FILL_GAPS",
                 overrides=GenerationOverrides(),
             )
 
-    def test_replace_unlocked_requires_delete_permission(self):
+    def test_staff_defaults_include_replace_unlocked_permission(self):
         permissions = []
         for qualified_name in GENERATION_PERMISSIONS:
             app_label, codename = qualified_name.split(".", 1)
@@ -229,8 +229,7 @@ class GenerationInputTests(TimetableFixture):
         self.staff.user_permissions.add(*permissions)
 
         self.assertIsNotNone(self.build(user=self.staff).solver_input)
-        with self.assertRaises(PermissionDenied):
-            self.build(user=self.staff, strategy="REPLACE_UNLOCKED")
+        self.assertIsNotNone(self.build(user=self.staff, strategy="REPLACE_UNLOCKED").solver_input)
 
     def test_missing_and_invalid_configuration_stop_before_candidates(self):
         self.configuration.delete()
@@ -846,7 +845,7 @@ class DuplicateRequirementInputTests(TransactionTestCase):
         self.user = get_user_model().objects.create_user(username="duplicate-chair")
         AdminProfile.objects.create(
             user=self.user,
-            role=AdminProfile.Role.DEPT_CHAIR,
+            role=AdminProfile.Role.STAFF,
             department=self.department,
         )
         category = EmploymentCategory.objects.create(

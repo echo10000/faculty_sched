@@ -44,7 +44,7 @@ class BalancingFoundationTests(TimetableFixture):
         self.assertTrue(self.admin.has_perm("workloads.generate_workloadrecommendation"))
         self.assertTrue(self.dean.has_perm("workloads.generate_workloadrecommendation"))
         self.assertTrue(self.chair.has_perm("workloads.generate_workloadrecommendation"))
-        self.assertFalse(self.staff.has_perm("workloads.generate_workloadrecommendation"))
+        self.assertTrue(self.staff.has_perm("workloads.generate_workloadrecommendation"))
         self.staff.user_permissions.add(Permission.objects.get(
             content_type__app_label="workloads",
             codename="generate_workloadrecommendation",

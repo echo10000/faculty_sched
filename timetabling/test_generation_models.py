@@ -169,10 +169,10 @@ class GenerationModelTests(TimetableFixture):
         self.assertEqual(run.proposed_meeting_count, 0)
         self.assertEqual(run.accepted_meeting_count, 0)
 
-    def test_dean_and_chair_generate_but_staff_needs_explicit_grant(self):
+    def test_college_and_department_staff_have_generation_by_default(self):
         self.assertTrue(self.dean.has_perm("timetabling.generate_schedule"))
         self.assertTrue(self.chair.has_perm("timetabling.generate_schedule"))
-        self.assertFalse(self.staff.has_perm("timetabling.generate_schedule"))
+        self.assertTrue(self.staff.has_perm("timetabling.generate_schedule"))
         self.staff.user_permissions.add(
             Permission.objects.get(
                 content_type__app_label="timetabling",
@@ -183,7 +183,7 @@ class GenerationModelTests(TimetableFixture):
         self.assertTrue(refreshed_staff.has_perm("timetabling.generate_schedule"))
 
     def test_bootstrap_roles_adds_generation_grant_to_existing_role(self):
-        dean_group = Group.objects.create(name="College Dean")
+        dean_group = Group.objects.create(name="Authorized Staff")
         call_command("bootstrap_roles", verbosity=0)
         self.assertTrue(
             dean_group.permissions.filter(

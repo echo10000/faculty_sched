@@ -2,13 +2,13 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.http import HttpResponseBadRequest
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.views.generic import DetailView, ListView, TemplateView
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 
 from academics.models import AcademicTerm
-from accounts.permissions import department_scoped_queryset, is_system_admin, profile_for, require_access, scoped_colleges
+from accounts.permissions import department_scoped_queryset, faculty_only, is_system_admin, profile_for, require_access, scoped_colleges
 from .dashboard_data import build_monitoring
 from .models import College, Department
 
@@ -19,6 +19,8 @@ class ProtectedViewMixin(LoginRequiredMixin):
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return self.handle_no_permission()
+        if self.permission == 'core.view_dashboard' and faculty_only(request.user):
+            return redirect('faculty-portal:schedule')
         require_access(request.user, self.permission)
         return super().dispatch(request, *args, **kwargs)
 
@@ -74,14 +76,6 @@ class DashboardView(ProtectedViewMixin, TemplateView):
             action("core.view_department", "Departments", "department-list", "Review department records.")
             if user.is_staff:
                 actions.append({"label": "Manage access and setup", "route": "admin:index", "description": "Open authorized system administration."})
-        elif role == "dean":
-            action("timetabling.review_schedule", "Schedules for review", "timetabling:review-queue", "Review submitted college schedules.")
-            action("workloads.view_workload", "Faculty workload", "workloads:monitor", "Review teaching loads in your scope.")
-            action("timetabling.view_schedule", "Official schedules", "timetabling:official-schedules", "See the current official selections.")
-        elif role == "dept_chair":
-            action("timetabling.view_schedule", "Prepare schedule", "timetabling:prepare", "Follow class setup through submission.")
-            action("workloads.view_facultysubjectassignment", "Teaching assignments", "workloads:assignments", "Review who teaches each class.")
-            action("workloads.view_workload", "Faculty workload", "workloads:monitor", "Check teaching loads before scheduling.")
         else:
             for permission, label, route, description in (
                 ("workloads.view_facultysubjectassignment", "Teaching assignments", "workloads:assignments", "Review authorized class assignments."),
@@ -93,6 +87,9 @@ class DashboardView(ProtectedViewMixin, TemplateView):
         from reporting.services import available_catalog
         if available_catalog(user):
             actions.append({"label": "Reports", "route": "reporting:index", "description": "Open authorized academic reports."})
+        from timetabling.generation_inputs import GENERATION_PERMISSIONS
+        if all(user.has_perm(permission) for permission in GENERATION_PERMISSIONS):
+            actions.append({"label": "Generate schedule", "route": "timetabling:generator", "description": "Check readiness and generate a timetable proposal."})
         context["quick_actions"] = actions
         monitoring = context["monitoring"]
         attention = []

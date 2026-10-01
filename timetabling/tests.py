@@ -188,7 +188,7 @@ class PageTests(TimetableFixture):
         from timetabling.models import Schedule
         other = Schedule.objects.create(name="Secret outside schedule", department=self.external, academic_term=self.term)
         self.client.force_login(self.staff)
-        self.assertEqual(self.client.get(self.url("schedules")).status_code, 403)
+        self.assertEqual(self.client.get(self.url("schedules")).status_code, 200)
         self.client.force_login(self.chair)
         for name in ("schedules-detail", "schedules-edit", "timetable", "conflicts", "entries-add", "validate"):
             self.assertEqual(self.client.get(self.url(name, other.pk)).status_code, 404, name)
@@ -223,7 +223,7 @@ class PageTests(TimetableFixture):
         secure.force_login(self.chair)
         self.assertEqual(secure.post(self.url("entries-add", self.schedule.pk), self.data()).status_code, 403)
         self.client.force_login(self.staff)
-        self.assertNotContains(self.client.get("/dashboard/"), "Manage schedules")
+        self.assertContains(self.client.get("/dashboard/"), "Manage schedules")
 
 
 class IntegrationTests(TimetableFixture):

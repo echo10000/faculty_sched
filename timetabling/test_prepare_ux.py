@@ -19,24 +19,16 @@ class PrepareScheduleUXTests(TimetableFixture):
         self.assertNotContains(page, self.external.name)
         self.assertContains(self.client.get(reverse("home")), "Prepare schedule")
 
-    def test_staff_sees_only_granted_steps_and_scoped_schedule(self):
+    def test_staff_default_preparation_is_scope_checked(self):
         self.client.force_login(self.staff)
-        self.assertEqual(self.client.get(reverse("timetabling:prepare")).status_code, 403)
-        home = self.client.get(reverse("home"))
-        self.assertContains(home, "dashboard access only")
-        self.assertNotContains(home, 'href="' + reverse("timetabling:prepare") + '"')
-
-        self.staff.user_permissions.add(*Permission.objects.filter(
-            content_type__app_label__in=["academics", "timetabling"],
-            codename__in=["view_academicterm", "view_schedule"],
-        ))
-        self.staff = type(self.staff).objects.get(pk=self.staff.pk)
-        self.client.force_login(self.staff)
-        page = self.client.get(reverse("timetabling:prepare"))
+        page = self.client.get(reverse('timetabling:prepare'), {'academic_term': self.term.pk, 'schedule': self.schedule.pk})
         self.assertEqual(page.status_code, 200)
-        self.assertNotContains(page, "Generate schedule")
-        self.assertNotContains(page, "Review &amp; submit")
-        self.assertEqual(self.client.get(reverse("timetabling:prepare"), {"schedule": self.schedule.pk}).status_code, 404)
+        self.assertContains(page, 'Generate schedule')
+        self.assertContains(page, 'Review &amp; finalize')
+        self.assertNotContains(page, self.external.name)
+        outside = self.make_user('outside-staff', 'staff', college=self.other_college)
+        self.client.force_login(outside)
+        self.assertEqual(self.client.get(reverse('timetabling:prepare'), {'academic_term': self.term.pk, 'schedule': self.schedule.pk}).status_code, 404)
 
     def test_admin_and_dean_dashboard_priorities(self):
         self.client.force_login(self.admin)
@@ -54,6 +46,6 @@ class PrepareScheduleUXTests(TimetableFixture):
         page = self.client.get(reverse("timetabling:schedules-detail", args=[self.schedule.pk]))
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, "Check schedule")
-        self.assertContains(page, "Review &amp; submit")
+        self.assertContains(page, "Review &amp; finalize")
         self.assertContains(page, "More schedule options")
         self.assertContains(page, "Version history")

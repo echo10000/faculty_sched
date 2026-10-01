@@ -1,7 +1,7 @@
-"""Human review and official schedule transitions.
+"""Staff finalization, historical review and official schedule transitions.
 
 The Phase 4 validator decides timetable validity. PostgreSQL official-booking
-exclusions provide the final guarantee when independent approvals race.
+exclusions provide the final guarantee when publications race.
 """
 
 from datetime import timedelta
@@ -26,6 +26,41 @@ from .signatures import dependency_signature
 
 
 EDITABLE_STATES = (Schedule.Status.DRAFT, Schedule.Status.VALIDATED, Schedule.Status.NEEDS_REVISION)
+
+
+def finalize_schedule(*, user, schedule_id, revision_token, acknowledged_warnings=(), remarks=""):
+    require_access(user, "timetabling.finalize_schedule")
+    require_access(user, "timetabling.change_schedule")
+    from .finalization_validation import publication_conflicts
+    try:
+        with transaction.atomic():
+            scheduling_lock()
+            schedule = get_schedule(user, schedule_id, lock=True)
+            _current_revision(schedule, revision_token)
+            if schedule.status not in (*EDITABLE_STATES, Schedule.Status.UNDER_REVIEW):
+                raise ValidationError("This version has already been published. Prepare a revision to replace it.")
+            validate_active_term(schedule.academic_term)
+            signature = dependency_signature(schedule)
+            if not schedule.validated_signature:
+                raise ValidationError("Validate this version before finalizing and publishing it.")
+            if signature != schedule.validated_signature:
+                raise ValidationError("The draft, scheduling inputs or official selection changed since validation. Validate again.")
+            active = _active_selection(schedule)
+            findings = publication_conflicts(schedule, user,
+                excluded_schedule_ids=(active.schedule_id,) if active else ())
+            errors = [f"{c.code}: {c.message} {c.remedy}" for c in findings if c.severity == 'ERROR']
+            if errors:
+                raise ValidationError(errors)
+            warnings = [c for c in findings if c.severity == 'WARNING']
+            _acknowledged(warnings, acknowledged_warnings)
+            if signature != dependency_signature(schedule):
+                raise ValidationError("Scheduling inputs changed during validation. Validate again.")
+            return _publish(schedule, user, signature, active, warnings, remarks=remarks, finalizing=True)
+    except IntegrityError as exc:
+        constraint = getattr(getattr(exc.__cause__, 'diag', None), 'constraint_name', '')
+        if constraint.startswith('official_'):
+            raise ValidationError('An official resource booking conflicts with this version. Validate and adjust its meetings.') from exc
+        raise
 
 
 def _current_revision(schedule, token):
@@ -254,42 +289,7 @@ def approve_schedule(*, user, schedule_id, revision_token, acknowledged_warnings
             if codes != sorted(schedule.submitted_warning_codes):
                 raise ValidationError("Timetable warnings changed after submission. Submit again.")
             _acknowledged(warnings, acknowledged_warnings)
-            payload = _snapshot_payload(schedule, warnings, user)
-            bookings = _booking_rows(schedule)
-            now = timezone.now()
-            ScheduleApprovalSnapshot.objects.create(
-                schedule=schedule, revision_token=schedule.revision_token,
-                dependency_signature=current_signature, approved_by=user,
-                approved_at=now, payload=payload,
-            )
-            schedule.status = Schedule.Status.APPROVED
-            schedule.save(update_fields=["status", "updated_at"])
-            if active:
-                active.schedule = schedule
-                active.selected_by = user
-                active.selected_at = now
-                active.save(update_fields=["schedule", "selected_by", "selected_at"])
-            else:
-                ActiveSchedule.objects.create(
-                    academic_term=schedule.academic_term, department=schedule.department,
-                    schedule=schedule, selected_by=user, selected_at=now,
-                )
-            if old_schedule_id:
-                OfficialResourceBooking.objects.filter(schedule_entry__schedule_id=old_schedule_id).delete()
-            OfficialResourceBooking.objects.bulk_create(bookings)
-            _event(schedule, "approved", user, remarks=(remarks or "").strip(), warning_codes=codes)
-            if old_schedule_id and old_schedule_id != schedule.pk:
-                _event(schedule, "replaced", user)
-                record_event("schedule.official_replaced", actor=user, obj=schedule,
-                             details={"previous_schedule_id": old_schedule_id,
-                                      "version_number": schedule.version_number})
-            record_event("schedule.approved", actor=user, obj=schedule,
-                         details={"version_number": schedule.version_number,
-                                  "revision_token": schedule.revision_token,
-                                  "booking_count": len(bookings)})
-            record_event("schedule.official_selected", actor=user, obj=schedule,
-                         details={"previous_schedule_id": old_schedule_id})
-            return schedule
+            return _publish(schedule, user, current_signature, active, warnings, remarks=remarks)
     except IntegrityError as exc:
         # PostgreSQL exclusions are deliberately the final barrier. Do not
         # reveal protected peer names or SQL constraint details to reviewers.
@@ -328,3 +328,59 @@ def revise_approved_schedule(*, user, schedule_id, revision_token):
                      details={"parent_schedule_id": source.pk,
                               "version_number": clone.version_number})
         return clone
+
+
+def _publish(schedule, user, current_signature, active, warnings, *, remarks="", finalizing=False):
+    now = timezone.now()
+    codes = _warning_codes(warnings)
+    old_schedule_id = active.schedule_id if active else None
+    payload = _snapshot_payload(schedule, warnings, user)
+    if finalizing:
+        from workloads.calculation import calculate_workload
+        from workloads.models import FacultySubjectAssignment
+        from faculty.models import Faculty
+        payload['finalization'] = {'finalized_by_id': user.pk, 'finalized_at': now.isoformat()}
+        summaries = {}
+        for person in Faculty.objects.filter(pk__in=schedule.entries.values('assignment__faculty_id')):
+            published_assignments = FacultySubjectAssignment.objects.filter(
+                faculty=person, pk__in=schedule.entries.values('assignment_id'),
+            ).select_related('subject_offering')
+            report = calculate_workload(person, schedule.academic_term,
+                assignments_override=published_assignments)
+            summaries[str(person.pk)] = {key: str(report[key]) if report[key] is not None else None
+                for key in ('lecture_units', 'laboratory_units', 'teaching_units', 'teaching_hours', 'assigned_load', 'status')}
+        payload['workload_summaries'] = summaries
+    bookings = _booking_rows(schedule)
+    ScheduleApprovalSnapshot.objects.create(
+        schedule=schedule, revision_token=schedule.revision_token,
+        dependency_signature=current_signature, approved_by=user,
+        approved_at=now, payload=payload,
+    )
+    schedule.status = Schedule.Status.APPROVED
+    schedule.save(update_fields=["status", "updated_at"])
+    if active:
+        active.schedule = schedule
+        active.selected_by = user
+        active.selected_at = now
+        active.save(update_fields=["schedule", "selected_by", "selected_at"])
+    else:
+        ActiveSchedule.objects.create(
+            academic_term=schedule.academic_term, department=schedule.department,
+            schedule=schedule, selected_by=user, selected_at=now,
+        )
+    if old_schedule_id:
+        OfficialResourceBooking.objects.filter(schedule_entry__schedule_id=old_schedule_id).delete()
+    OfficialResourceBooking.objects.bulk_create(bookings)
+    _event(schedule, "finalized" if finalizing else "approved", user, remarks=(remarks or "").strip(), warning_codes=codes)
+    if old_schedule_id and old_schedule_id != schedule.pk:
+        _event(schedule, "replaced", user)
+        record_event("schedule.official_replaced", actor=user, obj=schedule,
+                     details={"previous_schedule_id": old_schedule_id,
+                              "version_number": schedule.version_number})
+    record_event("schedule.finalized" if finalizing else "schedule.approved", actor=user, obj=schedule,
+                 details={"version_number": schedule.version_number,
+                          "revision_token": schedule.revision_token,
+                          "booking_count": len(bookings)})
+    record_event("schedule.official_selected", actor=user, obj=schedule,
+                 details={"previous_schedule_id": old_schedule_id})
+    return schedule

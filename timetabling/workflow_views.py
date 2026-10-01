@@ -1,4 +1,4 @@
-"""Scoped human-review pages. Workflow services own every state transition."""
+"""Scoped staff review and publication. Services own every state transition."""
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -10,35 +10,28 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from accounts.permissions import department_scoped_queryset, require_access
-from .conflicts import get_schedule_conflicts
 from .models import (
     ActiveSchedule, Schedule, ScheduleApprovalSnapshot, ScheduleEntry,
     ScheduleWorkflowEvent,
 )
 from .queries import authorized, entry_queryset, get_schedule, scoped
 from .workflow import (
-    approve_schedule, return_schedule, revise_approved_schedule, submit_schedule,
+    finalize_schedule, revise_approved_schedule,
 )
 
 
 def _visible_schedules(user):
     authorized(user, Schedule)
     return scoped(user, Schedule.objects.select_related(
-        "academic_term", "department", "family", "submitted_by",
+        "academic_term", "department", "family", "submitted_by", "created_by",
     ))
 
 
 def _actions(user, schedule):
-    editable = schedule.status in ("draft", "validated", "needs_revision")
     return {
-        "can_submit": (editable and user.has_perm("timetabling.submit_schedule")
-                       and user.has_perm("timetabling.change_schedule")),
-        "can_return": (schedule.status == "under_review"
-                       and user.has_perm("timetabling.review_schedule")
-                       and schedule.submitted_by_id != user.pk),
-        "can_approve": (schedule.status == "under_review"
-                        and user.has_perm("timetabling.approve_schedule")
-                        and schedule.submitted_by_id != user.pk),
+        "can_finalize": (schedule.status in ('draft', 'validated', 'needs_revision', 'under_review')
+                         and user.has_perm('timetabling.finalize_schedule')
+                         and user.has_perm('timetabling.change_schedule')),
         "can_revise": (schedule.status == "approved"
                        and user.has_perm("timetabling.revise_schedule")
                        and user.has_perm("timetabling.change_schedule")),
@@ -47,25 +40,26 @@ def _actions(user, schedule):
 
 @login_required
 def review_queue(request):
-    require_access(request.user, "timetabling.review_schedule")
-    schedules = _visible_schedules(request.user).filter(status="under_review").order_by(
+    require_access(request.user, "timetabling.finalize_schedule")
+    schedules = _visible_schedules(request.user).filter(status__in=("draft", "validated", "needs_revision", "under_review")).order_by(
         "submitted_at", "pk",
     )
     page = Paginator(schedules, 20).get_page(request.GET.get("page"))
     return render(request, "timetabling/workflow_list.html", {
-        "title": "Schedules for review", "page_obj": page, "kind": "review",
+        "title": "Schedules to finalize", "page_obj": page, "kind": "review",
     })
 
 
 @login_required
 def my_submissions(request):
-    require_access(request.user, "timetabling.submit_schedule")
+    require_access(request.user, "timetabling.finalize_schedule")
     schedules = _visible_schedules(request.user).filter(
-        Q(submitted_by=request.user) | Q(created_by=request.user),
+        Q(submitted_by=request.user) | Q(created_by=request.user)
+        | Q(approval_snapshot__approved_by=request.user),
     ).distinct().order_by("-submitted_at", "-pk")
     page = Paginator(schedules, 20).get_page(request.GET.get("page"))
     return render(request, "timetabling/workflow_list.html", {
-        "title": "My schedules", "page_obj": page, "kind": "mine",
+        "title": "My Scheduling Work", "page_obj": page, "kind": "mine",
     })
 
 
@@ -77,6 +71,7 @@ def official_schedules(request):
         request.user,
         ActiveSchedule.objects.select_related(
             "schedule__family", "academic_term", "department", "schedule__submitted_by",
+            "schedule__approval_snapshot__approved_by",
         ),
     ).order_by("-academic_term__start_date", "department__name")
     page = Paginator(selections, 20).get_page(request.GET.get("page"))
@@ -115,8 +110,9 @@ def schedule_review(request, pk):
     entries = scoped(request.user, entry_queryset()).filter(schedule=schedule).order_by(
         "day_of_week", "start_time", "pk",
     )
-    conflicts = get_schedule_conflicts(
-        schedule, user=request.user,
+    from .finalization_validation import publication_conflicts
+    conflicts = publication_conflicts(
+        schedule, request.user,
         excluded_schedule_ids=(active.schedule_id,) if active and active.schedule_id != schedule.pk else (),
     )
     warning_codes = sorted({item.code for item in conflicts if item.severity == "WARNING"})
@@ -141,9 +137,7 @@ def transition(request, pk, action):
     # This lookup yields 404 before any workflow response for an outside ID.
     get_schedule(request.user, pk)
     operations = {
-        "submit": submit_schedule,
-        "return": return_schedule,
-        "approve": approve_schedule,
+        "finalize": finalize_schedule,
         "revise": revise_approved_schedule,
     }
     operation = operations[action]
@@ -151,12 +145,9 @@ def transition(request, pk, action):
         "user": request.user, "schedule_id": pk,
         "revision_token": request.POST.get("revision_token", ""),
     }
-    if action in ("submit", "approve"):
-        kwargs["acknowledged_warnings"] = request.POST.getlist("acknowledged_warnings")
-        if action == "approve":
-            kwargs["remarks"] = request.POST.get("remarks", "").strip()
-    elif action == "return":
-        kwargs["remarks"] = request.POST.get("remarks", "").strip()
+    if action == 'finalize':
+        kwargs['acknowledged_warnings'] = request.POST.getlist('acknowledged_warnings')
+        kwargs['remarks'] = request.POST.get('remarks', '').strip()
     try:
         updated = operation(**kwargs)
     except ValidationError as error:
@@ -165,9 +156,7 @@ def transition(request, pk, action):
             "back_url": reverse("timetabling:schedule-review", args=[pk]),
         }, status=409)
     messages.success(request, {
-        "submit": "Schedule submitted for human review.",
-        "return": "Schedule returned for revision.",
-        "approve": "Schedule approved and selected as official.",
+        "finalize": "Schedule finalized, published and selected as official.",
         "revise": "Editable schedule version created.",
     }[action])
     return redirect("timetabling:schedule-review", updated.pk)

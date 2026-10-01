@@ -90,6 +90,24 @@ class ResourceListView(ResourceMixin, ListView):
         query = self.request.GET.copy()
         query.pop("page", None)
         context.update(filter_form=self.filter_form, page_query=query.urlencode(), kind=self.kind)
+        if self.kind == "faculty" and "academic_term" in self.filter_form.fields and self.filter_form.is_valid():
+            from workloads.selectors import accessible_terms, scoped_records
+            from workloads.calculation import calculate_workloads
+            from workloads.models import FacultyAvailability
+            term = self.filter_form.cleaned_data.get("academic_term") or accessible_terms(self.request.user, active=True).first()
+            context["workload_term"] = term
+            if term:
+                people = list(context["object_list"])
+                reports = {row["faculty"].pk: row for row in calculate_workloads(people, term)}
+                recorded = None
+                if self.request.user.has_perm("workloads.view_facultyavailability"):
+                    recorded = set(scoped_records(self.request.user, FacultyAvailability.objects.filter(
+                        academic_term=term, faculty_id__in=[person.pk for person in people],
+                    )).values_list("faculty_id", flat=True))
+                for person in people:
+                    person.workload = reports.get(person.pk)
+                    person.availability_recorded = person.pk in recorded if recorded is not None else None
+                context["object_list"] = people
         return context
 
 
@@ -107,6 +125,13 @@ class ResourceDetailView(ResourceMixin, View):
             fields.append(("Total units", obj.total_units))
         context.update(object=obj, details=fields, kind=self.kind)
         if self.kind == "faculty" and request.user.has_perm("academics.view_academicterm"):
+            from workloads.selectors import accessible_terms
+            raw_term = request.GET.get("academic_term")
+            if raw_term:
+                try:
+                    context["term"] = get_object_or_404(accessible_terms(request.user), pk=int(raw_term))
+                except ValueError:
+                    return HttpResponseBadRequest("Select a valid academic term.")
             context["show_capacities"] = True
             capacities = []
             for term in AcademicTerm.objects.filter(is_active=True).select_related("academic_year", "semester"):
@@ -115,6 +140,20 @@ class ResourceDetailView(ResourceMixin, View):
                 except ValidationError as error:
                     capacities.append({"term": term, "error": "; ".join(error.messages)})
             context["capacities"] = capacities
+        if self.kind == "faculty":
+            from reporting.services import available_catalog
+            context["faculty_schedule_report"] = any(item["key"] == "faculty-schedule" for item in available_catalog(request.user))
+            tab = request.GET.get("tab", "overview")
+            if tab not in ("overview", "qualifications"):
+                return HttpResponseBadRequest("Choose a valid faculty tab.")
+            context["faculty_tab"] = tab
+            if tab == "qualifications":
+                from accounts.permissions import require_access
+                require_access(request.user, "faculty.view_facultyqualification")
+                require_access(request.user, "academics.view_subject")
+                context["qualifications"] = obj.qualifications.filter(
+                    subject__in=scope_resources(request.user, Subject.objects.all())
+                ).select_related("subject")
         return render(request, "resources/detail.html", context)
 
 

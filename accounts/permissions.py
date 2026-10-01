@@ -46,14 +46,52 @@ TIMETABLE_PERMISSIONS |= {
 
 REPORT_PERMISSIONS = {"core.export_report"}
 
-# Human workflow grants are deliberately separate from timetable editing. In
-# particular, a chair's ability to submit a version never grants approval.
+# Retained grants support historical service callers. New role defaults use
+# finalization and do not require the retired separate-reviewer workflow.
 SCHEDULE_EDITOR_PERMISSIONS = {
     "timetabling.submit_schedule",
     "timetabling.revise_schedule",
 }
 SCHEDULE_REVIEWER_PERMISSIONS = {"timetabling.review_schedule"}
 SCHEDULE_APPROVER_PERMISSIONS = {"timetabling.approve_schedule"}
+SCHEDULE_FINALIZER_PERMISSIONS = {"timetabling.finalize_schedule"}
+FACULTY_PORTAL_PERMISSIONS = {"faculty.view_own_teaching"}
+STAFF_PERMISSIONS = (READ_PERMISSIONS | RESOURCE_PERMISSIONS | TEACHING_PERMISSIONS
+                    | TIMETABLE_PERMISSIONS | BALANCING_PERMISSIONS | REPORT_PERMISSIONS
+                    | {"timetabling.revise_schedule"} | SCHEDULE_FINALIZER_PERMISSIONS)
+
+
+def faculty_for(user):
+    """The existing Faculty.user link is independent of an administrative role."""
+    if not user.is_authenticated or not user.is_active:
+        return None
+    if AdminProfile.objects.filter(user=user, is_enabled=False).exists():
+        return None
+    from faculty.models import Faculty
+    return Faculty.objects.select_related("home_department__college").filter(
+        user=user, is_active=True, home_department__is_active=True,
+        home_department__college__is_active=True,
+    ).first()
+
+
+def faculty_only(user):
+    profile = profile_for(user)
+    return not is_system_admin(user) and bool(
+        (profile and profile.role == AdminProfile.Role.FACULTY)
+        or (not profile and faculty_for(user))
+    )
+
+
+def can_sign_in(user):
+    if not user.is_active:
+        return False
+    if user.is_superuser:
+        return True
+    profile = profile_for(user)
+    if profile:
+        return profile.role != AdminProfile.Role.FACULTY or faculty_for(user) is not None
+    # A disabled or inactive organizational profile never falls back to faculty.
+    return not AdminProfile.objects.filter(user=user).exists() and faculty_for(user) is not None
 
 
 def profile_for(user):
@@ -83,20 +121,17 @@ def role_permissions(profile):
     if profile.role == AdminProfile.Role.SUPER_ADMIN:
         from django.contrib.auth.models import Permission
         return {f"{app}.{code}" for app, code in Permission.objects.values_list("content_type__app_label", "codename")}
-    if profile.role in (AdminProfile.Role.DEAN, AdminProfile.Role.DEPT_CHAIR):
-        permissions = (READ_PERMISSIONS | RESOURCE_PERMISSIONS | TEACHING_PERMISSIONS
-                       | TIMETABLE_PERMISSIONS | BALANCING_PERMISSIONS | REPORT_PERMISSIONS
-                       | SCHEDULE_EDITOR_PERMISSIONS | SCHEDULE_REVIEWER_PERMISSIONS)
-        if profile.role == AdminProfile.Role.DEAN:
-            permissions |= SCHEDULE_APPROVER_PERMISSIONS
-        return permissions
-    return {"core.view_dashboard"}
+    if profile.role == AdminProfile.Role.STAFF:
+        return STAFF_PERMISSIONS
+    if profile.role == AdminProfile.Role.FACULTY:
+        return FACULTY_PORTAL_PERMISSIONS
+    return set()
 
 
 def require_access(user, permission):
     if not user.is_authenticated or not user.is_active:
         raise PermissionDenied("Sign in with an active account.")
-    if not user.is_superuser and profile_for(user) is None:
+    if not can_sign_in(user):
         raise PermissionDenied("An enabled organizational profile is required. Contact your system administrator.")
     if not user.has_perm(permission):
         raise PermissionDenied("Your account has not been granted this permission.")
@@ -106,7 +141,7 @@ def scoped_colleges(user, queryset):
     if is_system_admin(user):
         return queryset
     profile = profile_for(user)
-    if not profile:
+    if not profile or profile.role == AdminProfile.Role.FACULTY:
         raise PermissionDenied("An enabled administrator profile is required.")
     college_id = profile.college_id or profile.department.college_id
     return queryset.filter(pk=college_id)
@@ -116,7 +151,7 @@ def department_scoped_queryset(user, queryset, department_field="department"):
     if is_system_admin(user):
         return queryset
     profile = profile_for(user)
-    if not profile:
+    if not profile or profile.role == AdminProfile.Role.FACULTY:
         raise PermissionDenied("An enabled administrator profile is required.")
     if profile.department_id:
         return queryset.filter(**{department_field: profile.department_id})

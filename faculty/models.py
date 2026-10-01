@@ -72,7 +72,8 @@ class Faculty(TrackedModel):
 
     class Meta:
         ordering = ["last_name", "first_name"]
-        permissions = [("activate_faculty", "Can activate or deactivate faculty")]
+        permissions = [("activate_faculty", "Can activate or deactivate faculty"),
+                       ("view_own_teaching", "Can view and download own published teaching records")]
         constraints = [
             models.UniqueConstraint(Lower("employee_id"), name="faculty_employee_id_case_unique"),
             models.CheckConstraint(condition=models.Q(recommended_load__isnull=True) | models.Q(recommended_load__gte=0), name="faculty_recommended_nonnegative"),

@@ -148,88 +148,65 @@ class AssignmentValidationTests(TestCase):
         AdminProfile.objects.create(
             user=user,
             role=role,
-            college=self.department.college if role == AdminProfile.Role.DEAN else None,
-            department=None if role in (AdminProfile.Role.DEAN, AdminProfile.Role.SUPER_ADMIN) else self.department,
+            college=self.department.college if role == AdminProfile.Role.STAFF else None,
+            department=None if role in (AdminProfile.Role.STAFF, AdminProfile.Role.SUPER_ADMIN) else self.department,
         )
         return user
 
+    @override_settings(ROOT_URLCONF="config.urls")
     def test_draft_assignments_submit_for_approval(self):
         assignment = self.make_assignment()
-        user = self.make_admin_user("department-admin", AdminProfile.Role.STAFF)
+        user = self.make_admin_user('retired-flow-user', AdminProfile.Role.STAFF)
         self.client.force_login(user)
-        response = self.client.post("/scheduling/assignments/submit/", {
-            "term_id": self.term.id,
-            "block_id": self.block_one.id,
-        })
-        self.assertEqual(response.status_code, 302)
-        assignment.refresh_from_db()
-        self.assertEqual(assignment.status, Assignment.Status.PENDING_APPROVAL)
-
-    def test_pending_assignments_are_approved_by_dean(self):
-        assignment = self.make_assignment()
-        Assignment.objects.filter(pk=assignment.pk).update(status=Assignment.Status.PENDING_APPROVAL)
-        dean = self.make_admin_user("dean", AdminProfile.Role.DEAN)
-        self.client.force_login(dean)
-        self.client.post("/scheduling/assignments/approve/", {
-            "term_id": self.term.id,
-            "block_id": self.block_one.id,
-        })
-        assignment.refresh_from_db()
-        self.assertEqual(assignment.status, Assignment.Status.APPROVED)
-        self.assertEqual(assignment.approved_by, dean)
-        self.assertIsNotNone(assignment.approved_at)
-
-    def test_non_dean_cannot_approve_assignments(self):
-        assignment = self.make_assignment()
-        Assignment.objects.filter(pk=assignment.pk).update(status=Assignment.Status.PENDING_APPROVAL)
-        user = self.make_admin_user("not-dean", AdminProfile.Role.STAFF)
-        self.client.force_login(user)
-        response = self.client.post("/scheduling/assignments/approve/", {
-            "term_id": self.term.id,
-            "block_id": self.block_one.id,
-        })
-        self.assertEqual(response.status_code, 403)
-        assignment.refresh_from_db()
-        self.assertEqual(assignment.status, Assignment.Status.PENDING_APPROVAL)
-
-    def test_non_dean_cannot_unlock_an_approved_assignment(self):
-        assignment = self.make_assignment()
-        dean = self.make_admin_user("approval-dean", AdminProfile.Role.DEAN)
-        Assignment.objects.filter(pk=assignment.pk).update(
-            status=Assignment.Status.APPROVED,
-            approved_by=dean,
-        )
-        user = self.make_admin_user("not-unlock-dean", AdminProfile.Role.STAFF)
-        self.client.force_login(user)
-        response = self.client.post(
-            f"/scheduling/assignments/{assignment.id}/unlock/",
-            {"reason": "Unauthorized change."},
-        )
-        self.assertEqual(response.status_code, 403)
-        assignment.refresh_from_db()
-        self.assertEqual(assignment.status, Assignment.Status.APPROVED)
-        self.assertFalse(assignment.status_logs.exists())
-
-    def test_dean_unlock_returns_assignment_to_draft_and_logs_reason(self):
-        assignment = self.make_assignment()
-        dean = self.make_admin_user("unlock-dean", AdminProfile.Role.DEAN)
-        Assignment.objects.filter(pk=assignment.pk).update(
-            status=Assignment.Status.APPROVED,
-            approved_by=dean,
-        )
-        self.client.force_login(dean)
-        response = self.client.post(
-            f"/scheduling/assignments/{assignment.id}/unlock/",
-            {"reason": "Correct the assigned room."},
-        )
-        self.assertEqual(response.status_code, 302)
+        response = self.client.post(f'/scheduling/assignments/submit/', {'term_id': self.term.pk, 'block_id': self.block_one.pk})
+        self.assertEqual(response.status_code, 404)
         assignment.refresh_from_db()
         self.assertEqual(assignment.status, Assignment.Status.DRAFT)
-        log = assignment.status_logs.get()
-        self.assertEqual(log.changed_by, dean)
-        self.assertEqual(log.old_status, Assignment.Status.APPROVED)
-        self.assertEqual(log.new_status, Assignment.Status.DRAFT)
-        self.assertEqual(log.reason, "Correct the assigned room.")
+        self.assertFalse(assignment.status_logs.exists())
+
+    @override_settings(ROOT_URLCONF="config.urls")
+    def test_pending_assignments_are_approved_by_dean(self):
+        assignment = self.make_assignment()
+        user = self.make_admin_user('retired-flow-user', AdminProfile.Role.STAFF)
+        self.client.force_login(user)
+        response = self.client.post(f'/scheduling/assignments/approve/', {'term_id': self.term.pk, 'block_id': self.block_one.pk})
+        self.assertEqual(response.status_code, 404)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, Assignment.Status.DRAFT)
+        self.assertFalse(assignment.status_logs.exists())
+
+    @override_settings(ROOT_URLCONF="config.urls")
+    def test_non_dean_cannot_approve_assignments(self):
+        assignment = self.make_assignment()
+        user = self.make_admin_user('retired-flow-user', AdminProfile.Role.STAFF)
+        self.client.force_login(user)
+        response = self.client.post(f'/scheduling/assignments/approve/', {'term_id': self.term.pk, 'block_id': self.block_one.pk})
+        self.assertEqual(response.status_code, 404)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, Assignment.Status.DRAFT)
+        self.assertFalse(assignment.status_logs.exists())
+
+    @override_settings(ROOT_URLCONF="config.urls")
+    def test_non_dean_cannot_unlock_an_approved_assignment(self):
+        assignment = self.make_assignment()
+        user = self.make_admin_user('retired-flow-user', AdminProfile.Role.STAFF)
+        self.client.force_login(user)
+        response = self.client.post(f'/scheduling/assignments/{assignment.pk}/unlock/', {'term_id': self.term.pk, 'block_id': self.block_one.pk})
+        self.assertEqual(response.status_code, 404)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, Assignment.Status.DRAFT)
+        self.assertFalse(assignment.status_logs.exists())
+
+    @override_settings(ROOT_URLCONF="config.urls")
+    def test_dean_unlock_returns_assignment_to_draft_and_logs_reason(self):
+        assignment = self.make_assignment()
+        user = self.make_admin_user('retired-flow-user', AdminProfile.Role.STAFF)
+        self.client.force_login(user)
+        response = self.client.post(f'/scheduling/assignments/{assignment.pk}/unlock/', {'term_id': self.term.pk, 'block_id': self.block_one.pk})
+        self.assertEqual(response.status_code, 404)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, Assignment.Status.DRAFT)
+        self.assertFalse(assignment.status_logs.exists())
 
 
 @override_settings(ROOT_URLCONF="config.legacy_test_urls")

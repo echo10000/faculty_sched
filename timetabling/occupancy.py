@@ -19,6 +19,8 @@ def authoritative_occupancy(
         # Alternative versions of one logical schedule may overlap. Existing
         # independent workspaces retain the Phase 4 peer-validation behavior.
         .filter(Q(schedule_id=schedule.pk) | ~Q(schedule__family_id=schedule.family_id))
+        # Retired published versions remain historical records, not bookings.
+        .exclude(Q(schedule__status='approved') & Q(schedule__active_selections__isnull=True))
         .exclude(pk__in=tuple(excluded_entry_ids))
         .exclude(schedule_id__in=tuple(excluded_schedule_ids))
         .order_by("day_of_week", "start_time", "pk")

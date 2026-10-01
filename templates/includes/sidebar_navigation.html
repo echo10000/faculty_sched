@@ -1,0 +1,10 @@
+{% load static %}
+      <nav aria-label="Main navigation" class="sidebar-nav">
+      {% for group in navigation_groups %}
+      <details class="nav-group" data-nav-group {% if group.active or group.label == 'Workspace' %}open{% endif %}>
+        <summary class="nav-group-toggle" title="{{ group.label }}"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="{% static 'icons/campusload.svg' %}#{{ group.icon }}"></use></svg><span class="nav-group-label">{{ group.label }}</span><span class="nav-chevron" aria-hidden="true">⌄</span></summary>
+        <div class="nav-group-links">{% for link in group.links %}<a class="nav-link {% if link.active %}active{% endif %}" {% if link.active %}aria-current="page"{% endif %} href="{% url link.route %}" title="{{ link.label }}"><svg class="nav-link-icon" aria-hidden="true" focusable="false"><use href="{% static 'icons/campusload.svg' %}#{{ link.icon }}"></use></svg><span class="nav-link-label">{{ link.label }}</span></a>{% endfor %}</div>
+      </details>
+      {% endfor %}
+      {% if can_administer %}<a class="nav-link admin-link" href="{% url 'admin:index' %}" title="System administration"><svg class="nav-link-icon" aria-hidden="true" focusable="false"><use href="{% static 'icons/campusload.svg' %}#settings"></use></svg><span class="nav-link-label">System administration <span aria-hidden="true">↗</span></span></a>{% endif %}
+      </nav>

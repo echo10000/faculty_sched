@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 
-from .permissions import profile_for
+from .permissions import can_sign_in
 
 
 class SignInForm(AuthenticationForm):
@@ -10,5 +10,5 @@ class SignInForm(AuthenticationForm):
 
     def confirm_login_allowed(self, user):
         super().confirm_login_allowed(user)
-        if not user.is_superuser and profile_for(user) is None:
+        if not can_sign_in(user):
             raise self.get_invalid_login_error()

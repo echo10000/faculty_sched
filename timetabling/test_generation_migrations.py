@@ -131,6 +131,7 @@ class SchedulingDependencyTriggerTests(TransactionTestCase):
         "timetabling_offeringrequirement",
         "timetabling_roomunavailability",
         "timetabling_schedule",
+        "timetabling_activeschedule",
         "timetabling_scheduleentry",
         "timetabling_schedulingconfiguration",
         "timetabling_assignmentmeetingrequirement",

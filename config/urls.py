@@ -14,6 +14,7 @@ urlpatterns = [
     path("departments/<int:pk>/", views.DepartmentDetailView.as_view(), name="department-detail"),
     path("academic-calendar/", views.CalendarView.as_view(), name="academic-calendar"),
     path("faculty/", include("faculty.management_urls")),
+    path("my-teaching/", include("faculty.portal_urls")),
     path("subjects/", include("resources.subject_urls")),
     path("rooms/", include("resources.room_urls")),
     path("workloads/", include("workloads.urls")),

@@ -96,10 +96,10 @@ class WorkflowTests(TimetableFixture):
             self.approve(user=self.chair)
         with self.assertRaises(PermissionDenied):
             self.approve(user=self.staff)
-        outsider = self.make_user("outside-reviewer", "dean", college=self.other_college)
-        with self.assertRaises(Http404):
+        outsider = self.make_user("outside-reviewer", "staff", college=self.other_college)
+        with self.assertRaises(PermissionDenied):
             self.approve(user=outsider)
-        with self.assertRaises(Http404):
+        with self.assertRaises(PermissionDenied):
             self.submit(user=outsider)
         self.assertFalse(ScheduleApprovalSnapshot.objects.exists())
 

@@ -7,10 +7,9 @@ from django.utils import timezone
 
 class AdminProfile(models.Model):
     class Role(models.TextChoices):
-        SUPER_ADMIN = "super_admin", "System Admin"
-        DEAN = "dean", "College Dean"
-        DEPT_CHAIR = "dept_chair", "Department Chair"
+        SUPER_ADMIN = "super_admin", "Admin"
         STAFF = "staff", "Authorized Staff"
+        FACULTY = "faculty", "Faculty"
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="admin_profile")
     role = models.CharField(max_length=20, choices=Role.choices)
@@ -22,12 +21,11 @@ class AdminProfile(models.Model):
 
     class Meta:
         constraints = [
-            models.CheckConstraint(condition=Q(role__in=["super_admin", "dean", "dept_chair", "staff"]), name="profile_known_role"),
+            models.CheckConstraint(condition=Q(role__in=["super_admin", "staff", "faculty"]), name="profile_known_role"),
             models.CheckConstraint(
                 condition=Q(is_enabled=False)
                 | Q(role="super_admin", college__isnull=True, department__isnull=True)
-                | Q(role="dean", college__isnull=False, department__isnull=True)
-                | Q(role="dept_chair", college__isnull=True, department__isnull=False)
+                | Q(role="faculty", college__isnull=True, department__isnull=True)
                 | (Q(role="staff") & (Q(college__isnull=False, department__isnull=True) | Q(college__isnull=True, department__isnull=False))),
                 name="profile_valid_organizational_scope",
             )
@@ -38,10 +36,12 @@ class AdminProfile(models.Model):
         if self.is_enabled:
             if self.role == self.Role.SUPER_ADMIN and (self.college_id or self.department_id):
                 raise ValidationError("System administrators must have institution-wide scope.")
-            if self.role == self.Role.DEAN and (not self.college_id or self.department_id):
-                raise ValidationError("A dean requires one college and no department.")
-            if self.role == self.Role.DEPT_CHAIR and (not self.department_id or self.college_id):
-                raise ValidationError("A chair requires one department; its college is derived.")
+            if self.role == self.Role.FACULTY:
+                if self.college_id or self.department_id:
+                    raise ValidationError("Faculty access comes from the linked Faculty record.")
+                from faculty.models import Faculty
+                if not Faculty.objects.filter(user_id=self.user_id).exists():
+                    raise ValidationError("Link this account to a Faculty record before enabling its Faculty profile.")
             if self.role == self.Role.STAFF and bool(self.college_id) == bool(self.department_id):
                 raise ValidationError("Staff require either a college or a department scope.")
 
