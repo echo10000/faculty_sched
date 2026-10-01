@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block title %}{% if editing %}Edit{% else %}Add{% endif %} {{ singular }}{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">{{ title|upper }}</p><h1>{% if editing %}Edit{% else %}Add{% endif %} {{ singular }}</h1><p class="text-secondary">Required fields are marked with an asterisk.</p></div><a class="btn btn-outline-secondary" href="{{ list_url }}">Back to {{ title|lower }}</a></div>
+<section class="surface"><form method="post" novalidate>{% csrf_token %}<div class="row g-3">{% include 'resources/fields.html' %}</div><div class="d-flex gap-2 mt-4"><button class="btn btn-primary" type="submit">Save {{ singular }}</button><a class="btn btn-outline-secondary" href="{{ list_url }}">Cancel</a></div></form></section>
+{% endblock %}

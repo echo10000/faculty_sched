@@ -162,7 +162,8 @@ def prepare_scheduling_inputs(term: "Term") -> SchedulingInputs:
                     subject_id=subject.id,
                     subject_code=subject.code,
                     subject_title=subject.title,
-                    units=str(subject.units),
+                    # Preserve legacy decimal validation when master totals have trailing zeros.
+                    units=format(subject.units.normalize(), "f"),
                     faculty_ids=faculty_ids,
                     room_ids=room_ids,
                     time_slot_ids=time_slot_ids,

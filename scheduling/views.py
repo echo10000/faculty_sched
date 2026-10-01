@@ -319,7 +319,7 @@ class CommitAutoScheduleSuggestionsView(LoginRequiredMixin, TemplateView):
                     room=room,
                     term=term,
                     time_slot=time_slot,
-                    units_credited=subject.units,
+                    units_credited=subject.units.normalize(),
                     created_by=request.user,
                 )
                 created_count += 1
@@ -341,8 +341,8 @@ class SubmitForApprovalView(LoginRequiredMixin, TemplateView):
     def post(self, request, *args, **kwargs):
         require_workflow_role(
             request.user,
-            AdminProfile.Role.DEPARTMENT_ADMIN,
-            AdminProfile.Role.DEPT_CHAIR,
+            AdminProfile.Role.STAFF,
+            "dept_chair",
         )
         term = get_object_or_404(Term, pk=request.POST.get("term_id"))
         block = get_scoped_block(request.user, term, request.POST.get("block_id"))
@@ -379,7 +379,7 @@ class SubmitForApprovalView(LoginRequiredMixin, TemplateView):
 
 class ApproveAssignmentsView(LoginRequiredMixin, TemplateView):
     def post(self, request, *args, **kwargs):
-        require_workflow_role(request.user, AdminProfile.Role.DEAN)
+        require_workflow_role(request.user, "dean")
         term = get_object_or_404(Term, pk=request.POST.get("term_id"))
         block = get_scoped_block(request.user, term, request.POST.get("block_id"))
         updated = Assignment.objects.filter(
@@ -397,7 +397,7 @@ class ApproveAssignmentsView(LoginRequiredMixin, TemplateView):
 
 class UnlockAssignmentView(LoginRequiredMixin, TemplateView):
     def post(self, request, assignment_id, *args, **kwargs):
-        require_workflow_role(request.user, AdminProfile.Role.DEAN)
+        require_workflow_role(request.user, "dean")
         assignment = get_object_or_404(Assignment, pk=assignment_id)
         reason = request.POST.get("reason", "").strip()
         if not reason:

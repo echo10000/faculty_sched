@@ -1,0 +1,37 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CampusLoad{% endblock %} · Faculty Workload & Academic Scheduling</title>
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=7">
+  <link rel="stylesheet" href="{% static 'css/refinement.css' %}?v=1">
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+<a class="visually-hidden-focusable skip-link" href="#main-content">Skip to content</a>
+{% block layout %}
+<div class="app-layout">
+  <aside class="offcanvas-lg offcanvas-start sidebar" tabindex="-1" id="sidebar" aria-labelledby="sidebar-title">
+    <div class="offcanvas-header"><h2 class="h5" id="sidebar-title">CampusLoad</h2><button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close navigation"></button></div>
+    <div class="offcanvas-body d-flex flex-column">
+      <a class="brand" href="{% url 'home' %}" aria-label="CampusLoad dashboard" title="CampusLoad · NORSU Bayawan–Santa Catalina Campus">{% include 'core/_norsu_seal.html' with seal_class='sidebar-seal' %}<span class="brand-copy">CampusLoad<small>Negros Oriental State University<br>Bayawan–Santa Catalina Campus</small></span></a>
+      {% include "includes/sidebar_navigation.html" %}
+      <div class="sidebar-footer mt-auto"><span class="scope-dot" aria-hidden="true"></span><span class="sidebar-footer-text">{{ access_scope }}<small>Authorized workspace</small></span></div>
+    </div>
+  </aside>
+  <div class="main-column">
+    {% include "includes/topbar.html" %}
+    <main id="main-content" class="content" tabindex="-1">
+      {% if messages %}{% for message in messages %}<div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'warning' %}alert-warning{% elif message.tags == 'error' %}alert-danger{% else %}alert-info{% endif %}" role="status">{{ message }}</div>{% endfor %}{% endif %}
+      {% include "includes/breadcrumbs.html" %}
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="page-footer">CampusLoad <span>· Negros Oriental State University · Bayawan–Santa Catalina Campus</span></footer>
+  </div>
+</div>
+{% endblock %}
+<script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'js/app.js' %}?v=1" defer></script>
+</body></html>

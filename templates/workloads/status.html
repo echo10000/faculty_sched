@@ -1,0 +1,1 @@
+<span class="badge status-badge status-{{ status|lower }}">{% if status == 'WITHIN_LOAD' %}Within load{% elif status == 'AT_CAPACITY' %}At capacity{% elif status == 'UNCONFIGURED' %}Unconfigured{% elif status == 'OVERLOAD' %}Overload{% elif status == 'UNDERLOAD' %}Underload{% else %}{{ status }}{% endif %}</span>

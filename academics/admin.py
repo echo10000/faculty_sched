@@ -1,6 +1,26 @@
 from django.contrib import admin
 
 from .models import Curriculum, CurriculumSubject, IrregularEnrollment, Student, Subject
+from .models import AcademicYear, AcademicTerm, Semester
+from core.admin_mixins import AuditedAdmin
+
+
+@admin.register(AcademicYear)
+class AcademicYearAdmin(AuditedAdmin):
+    list_display = ("label", "start_date", "end_date", "is_active")
+    search_fields = ("label",)
+
+
+@admin.register(Semester)
+class SemesterAdmin(AuditedAdmin):
+    list_display = ("code", "name", "is_active")
+
+
+@admin.register(AcademicTerm)
+class AcademicTermAdmin(AuditedAdmin):
+    list_display = ("code", "academic_year", "semester", "start_date", "end_date", "is_active")
+    list_filter = ("academic_year", "semester", "is_active")
+    list_select_related = ("academic_year", "semester")
 
 
 class CurriculumSubjectInline(admin.TabularInline):

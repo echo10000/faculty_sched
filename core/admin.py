@@ -1,17 +1,18 @@
 from django.contrib import admin
 
-from .models import College, Department, Program
+from .models import College, Department, Program, SystemSetting
+from .admin_mixins import AuditedAdmin
 
 
 @admin.register(College)
-class CollegeAdmin(admin.ModelAdmin):
-    list_display = ("code", "name", "created_at", "updated_at")
+class CollegeAdmin(AuditedAdmin):
+    list_display = ("code", "name", "is_active", "created_at")
     search_fields = ("code", "name")
 
 
 @admin.register(Department)
-class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ("code", "name", "college")
+class DepartmentAdmin(AuditedAdmin):
+    list_display = ("code", "name", "college", "is_active")
     list_filter = ("college",)
     search_fields = ("code", "name", "college__code")
 
@@ -25,3 +26,8 @@ class ProgramAdmin(admin.ModelAdmin):
     @admin.display(ordering="department__college", description="College")
     def college(self, obj):
         return obj.department.college
+
+
+@admin.register(SystemSetting)
+class SystemSettingAdmin(AuditedAdmin):
+    list_display = ("key", "value", "updated_at")

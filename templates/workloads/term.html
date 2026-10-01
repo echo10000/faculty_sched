@@ -1,0 +1,1 @@
+{% if term %}<div class="alert alert-light border mb-4"><strong>Academic term:</strong> {{ term }}{% if not term.is_active %} <span class="badge text-bg-secondary">Inactive term</span>{% endif %}</div>{% else %}<div class="alert alert-warning">No academic term is configured. Ask a system administrator to configure the calendar.</div>{% endif %}

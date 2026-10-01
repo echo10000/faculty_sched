@@ -1,0 +1,3 @@
+{% extends 'base.html' %}
+{% block title %}Remove teaching record{% endblock %}
+{% block content %}<h1>Remove teaching record</h1>{% include 'workloads/term.html' %}<section class="surface">{% if removal_error %}<div class="alert alert-danger">{{ removal_error }}</div>{% endif %}<p>Remove <strong>{{ object }}</strong> from this term?</p><p>The audit history will retain the record's teaching details. This action removes the current record.</p><form method="post">{% csrf_token %}<button class="btn btn-danger" type="submit">Confirm removal</button> <a class="btn btn-outline-secondary" href="{{ list_url }}">Cancel</a></form></section>{% endblock %}
