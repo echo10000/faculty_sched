@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views import View
 
@@ -150,6 +151,7 @@ class SectionAssignmentsView(TeachingMixin, View):
                 "assigned_load": str(report["assigned_load"]) if report["assigned_load"] is not None else None,
                 "maximum_load": str(report["policy"]["maximum_load"]) if report["policy"]["maximum_load"] is not None else None,
                 "status": report["status"].replace("_", " ").title(), "warnings": report["warnings"],
+                "summary_html": render_to_string("workloads/_load_summary.html", {"report": report, "compact": True}, request=request),
             }
             return JsonResponse({"preview": payload, "errors": form.errors.get_json_data()})
         if obj and intent == "save":

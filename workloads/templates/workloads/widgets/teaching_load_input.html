@@ -1,0 +1,8 @@
+<div data-load-control>
+  {% include 'django/forms/widgets/number.html' %}
+  <div data-load-helper hidden>
+    <label for="{{ widget.attrs.id }}_slider" class="form-text d-block">{{ widget.load_label }} slider (optional helper)</label>
+    <input type="range" class="form-range" id="{{ widget.attrs.id }}_slider" min="0" max="30" step="0.01" value="0" aria-describedby="{{ widget.attrs.id }}_slider_help" data-load-slider>
+    <p class="form-text" id="{{ widget.attrs.id }}_slider_help">Use the exact input above for precise values. Clear it to inherit; 0 sets zero. The helper range expands for higher exact values. <output data-load-value for="{{ widget.attrs.id }} {{ widget.attrs.id }}_slider"></output></p>
+  </div>
+</div>

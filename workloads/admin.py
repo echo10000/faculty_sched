@@ -1,11 +1,18 @@
 from django.contrib import admin
 from core.admin_mixins import AuditedAdmin
 from .models import FacultyTermCapacity, WorkloadPolicy
+from .widgets import TeachingLoadInput
 
 
 class CapacityAdmin(AuditedAdmin):
     readonly_fields = ("created_at", "updated_at", "created_by")
     list_filter = ("academic_term",)
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name in ("recommended_load", "maximum_load"):
+            kwargs["widget"] = TeachingLoadInput(
+                "Recommended teaching target" if db_field.name == "recommended_load" else "Configured maximum load")
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
 
     def has_delete_permission(self, request, obj=None):
         return False

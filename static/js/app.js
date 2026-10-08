@@ -85,7 +85,16 @@
         const errors = Object.values(result.errors).flat().map(error => error.message);
         const report = result.preview;
         output.classList.toggle('text-danger', errors.length > 0);
-        output.textContent = errors.length ? errors.join(' ') : report ?
+        if (errors.length) output.textContent = errors.join(' ');
+        else if (report?.summary_html) {
+          // This fragment comes from our autoescaped Django summary template.
+          // Never interpolate form values or raw error messages into HTML.
+          output.innerHTML = report.summary_html;
+          const notice = document.createElement('p');
+          notice.className = 'text-secondary mt-2';
+          notice.textContent = 'Preview only; nothing saved. Saving rechecks the latest limits.';
+          output.append(notice);
+        } else output.textContent = report ?
           `After assignment: ${formatLoad(report.assigned_load)} / ${formatLoad(report.maximum_load)} workload units · ${report.status}. ${report.warnings.join(' ')} Preview only; nothing saved.` :
           'Select a valid instructor and teaching share.';
       } catch (error) {

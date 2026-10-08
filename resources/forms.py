@@ -7,6 +7,7 @@ from core.models import College, Department
 from faculty.models import AcademicRank, EmploymentCategory, Faculty
 from scheduling.models import Room
 from .models import Building, RoomType
+from workloads.widgets import TeachingLoadInput
 
 
 class StyledFormMixin:
@@ -51,7 +52,10 @@ class FacultyForm(ScopedModelForm):
     class Meta:
         model = Faculty
         fields = ["employee_id", "first_name", "middle_name", "last_name", "suffix", "email", "contact_number", "college", "home_department", "employment_category", "academic_rank", "recommended_load", "maximum_load", "notes"]
-        help_texts = {"recommended_load": "Teaching load units. Blank inherits a term policy; zero means zero.", "maximum_load": "Teaching load units. Blank inherits a term policy."}
+        help_texts = {"recommended_load": "Optional baseline in weighted workload units. Blank inherits a term policy; zero means zero. A faculty-term override takes precedence.", "maximum_load": "Optional baseline in weighted workload units. Blank inherits a term policy. A faculty-term override takes precedence."}
+        widgets = {"recommended_load": TeachingLoadInput("Recommended teaching target"),
+                   "maximum_load": TeachingLoadInput("Configured maximum load")}
+        labels = {"recommended_load": "Recommended teaching target", "maximum_load": "Configured maximum load"}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -60,6 +64,13 @@ class FacultyForm(ScopedModelForm):
             # Exclude these from ModelForm writes, including forged POST values.
             self.fields.pop("recommended_load")
             self.fields.pop("maximum_load")
+
+    def clean(self):
+        cleaned = super().clean()
+        recommended, maximum = cleaned.get("recommended_load"), cleaned.get("maximum_load")
+        if recommended is not None and maximum is not None and recommended > maximum:
+            self.add_error("recommended_load", "Recommended teaching target cannot exceed the configured maximum load.")
+        return cleaned
 
 
 class SubjectForm(ScopedModelForm):

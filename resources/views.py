@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
@@ -230,15 +232,52 @@ class ResourceDetailView(ResourceMixin, View):
 class ResourceFormView(ResourceMixin, View):
     action = "add"
 
+    def workload_context(self, pk):
+        if self.kind != "faculty" or not pk or self.request.GET.get("workload") != "1":
+            return {}
+        from accounts.permissions import require_access
+        from workloads.calculation import calculate_workload
+        from workloads.selectors import accessible_terms
+        from workloads.views import term_url
+        from django.http import Http404
+        require_access(self.request.user, "workloads.view_workload")
+        faculty = get_object_or_404(self.queryset().select_related("designation"), pk=pk)
+        terms = accessible_terms(self.request.user)
+        raw = self.request.GET.get("academic_term")
+        if raw is not None:
+            try:
+                term = get_object_or_404(terms, pk=int(raw))
+            except (ValueError, TypeError):
+                raise Http404("Invalid workload term")
+        else:
+            term = accessible_terms(self.request.user, active=True).first() or terms.first()
+        schedule = None
+        if self.request.GET.get("schedule"):
+            from timetabling.queries import get_schedule
+            try:
+                schedule = get_schedule(self.request.user, int(self.request.GET["schedule"]))
+            except (ValueError, TypeError):
+                raise Http404("Invalid schedule")
+            if schedule.academic_term_id != getattr(term, "pk", None):
+                raise Http404("Schedule does not belong to the selected term")
+        return_url = term_url("workloads:faculty", term, pk=pk)
+        if schedule:
+            return_url += "&" + urlencode({"schedule": schedule.pk})
+        return {"workload_configuration": True, "term": term, "schedule": schedule,
+                "report": calculate_workload(faculty, term) if term else None,
+                "workload_return_url": return_url, "list_url": return_url}
+
     def get(self, request, pk=None):
+        self.load_context = self.workload_context(pk)
         instance = get_object_or_404(self.queryset(), pk=pk) if pk else None
         form = self.spec["form"](instance=instance, user=request.user)
         return self.render_form(form, pk)
 
     def render_form(self, form, pk):
-        return render(self.request, "resources/form.html", {**self.base_context(), "form": form, "editing": bool(pk)})
+        return render(self.request, "resources/form.html", {**self.base_context(), **self.load_context, "form": form, "editing": bool(pk)})
 
     def post(self, request, pk=None):
+        self.load_context = self.workload_context(pk)
         try:
             obj, form = save_resource(user=request.user, form_class=self.spec["form"], data=request.POST, pk=pk)
         except (ValidationError, IntegrityError) as error:
@@ -250,6 +289,8 @@ class ResourceFormView(ResourceMixin, View):
             return self.render_form(form, pk)
         if obj:
             messages.success(request, "Record updated." if pk else "Record created.")
+            if self.load_context:
+                return redirect(self.load_context["workload_return_url"])
             # A write grant need not include a read grant.
             return redirect(f"{self.spec['namespace']}:detail", pk=obj.pk) if request.user.has_perm(permission_for(self.model, "view")) else redirect("home")
         return self.render_form(form, pk)

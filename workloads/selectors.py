@@ -16,7 +16,7 @@ def scoped_records(user, queryset):
 
 
 def scoped_faculty(user):
-    return department_scoped_queryset(user, Faculty.objects.select_related("home_department__college", "employment_category", "academic_rank"), "home_department")
+    return department_scoped_queryset(user, Faculty.objects.select_related("home_department__college", "employment_category", "academic_rank", "designation"), "home_department")
 
 
 def accessible_terms(user, *, active=False):

@@ -12,12 +12,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views import View
 
-from accounts.permissions import require_access
+from accounts.permissions import is_system_admin, require_access
 from core.views import ProtectedViewMixin
 from resources.services import permission_for
 from .calculation import calculate_workload, calculate_workloads
 from .forms import AssignmentForm, AvailabilityForm, OfferingForm, WorkloadFilterForm
-from .models import FacultyAvailability, FacultySubjectAssignment, SubjectOffering
+from .models import FacultyAvailability, FacultySubjectAssignment, FacultyTermCapacity, SubjectOffering
 from .operations import remove_term_record, save_term_record, scoped_object
 from .selectors import accessible_terms, scoped_faculty, scoped_records
 from resources.browsing import academic_group_label
@@ -310,4 +310,15 @@ class FacultyWorkloadView(TeachingMixin, View):
         if report:
             for assignment in report["assignments"]:
                 assignment.share_percent = assignment.share * 100
-        return render(request, "workloads/faculty.html", {**self.context(), "faculty": faculty, "report": report, "filter_form": form, "availability": availability})
+        configuration = {}
+        if self.term and request.user.is_staff and is_system_admin(request.user):
+            override = FacultyTermCapacity.objects.filter(faculty=faculty, academic_term=self.term).first()
+            action = "change" if override else "add"
+            if request.user.has_perm(f"workloads.{action}_facultytermcapacity"):
+                configuration["capacity_admin_url"] = (
+                    reverse("admin:workloads_facultytermcapacity_change", args=[override.pk]) if override else
+                    reverse("admin:workloads_facultytermcapacity_add") + "?" + urlencode({"faculty": faculty.pk, "academic_term": self.term.pk}))
+            if request.user.has_perm("workloads.view_workloadpolicy"):
+                configuration["policy_admin_url"] = reverse("admin:workloads_workloadpolicy_changelist") + "?" + urlencode({"academic_term__id__exact": self.term.pk})
+        return render(request, "workloads/faculty.html", {**self.context(), "faculty": faculty, "report": report, "filter_form": form, "availability": availability,
+            **configuration, "can_configure_baseline": is_system_admin(request.user) and request.user.has_perm("faculty.change_faculty")})

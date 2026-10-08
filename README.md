@@ -296,6 +296,14 @@ Phase 2 `resolve_capacity` keeps its existing contract and per-field precedence:
 
 Maximum enforcement resolves **faculty term override → department → college → institution → warning-only default**. Blank inherits, False warns, True enforces. System administrators configure it through audited workload policy/capacity admin. A configured maximum alone does not make overload forbidden. Hard mode requires an explicit maximum and usable weights; otherwise the assignment is rejected with a configuration error. Warning mode permits over-target/over-maximum assignments with visible warnings. Invalid inherited recommended/maximum combinations cannot silently become permissive saves.
 
+### Interactive teaching-load interface (Phase 3A)
+
+Faculty workload summaries, the workload directory and assignment previews distinguish academic teaching units, weekly contact hours and weighted teaching load. Targets, maximums, remaining capacity, enforcement and per-limit policy sources use the existing calculator. Live section previews reuse the same escaped Django summary as regular form previews; previewing does not save an assignment.
+
+System admins can open **Configure faculty baseline** from a teaching summary. The existing faculty form has synchronized keyboard-accessible sliders and exact decimal inputs; the exact fields remain usable without JavaScript. Baselines apply across terms, blank inherits and zero is explicit. Term overrides and workload policies use the same controls in their existing audited administration forms. Administration links open a new tab; refresh the teaching summary after saving there. Baseline saves and cancellation retain the selected term and validated scheduling-guide context.
+
+Designation names and recorded `units_released` are shown for reference. The active calculator does not subtract these releases. Institutional confirmation is still needed on whether a designation release should affect the recommended target, maximum, both or neither, and how its units relate to weighted load. No designation formula, enforcement rule, solver, publication rule or schema changes are introduced here.
+
 ### Security, services and audit
 
 `workloads/selectors.py` scopes records and term access; forms restrict every faculty/offering/department choice. `workloads/operations.py` checks action permissions and scope again inside transactions, locks faculty/offering rows, validates aggregate shares and resulting workload, then saves with its audit event. A failed audit rolls back the business change. Concurrent assignments cannot both bypass the same faculty's hard maximum.
