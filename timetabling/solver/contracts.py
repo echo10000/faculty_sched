@@ -44,6 +44,9 @@ class SchedulingPolicy:
     random_seed: int
     worker_count: int
     weights: ObjectiveWeights
+    lunch_start_minute: int | None = None
+    lunch_end_minute: int | None = None
+    faculty_rest_minutes: int = 0
 
     @property
     def slot_count(self) -> int:
@@ -80,6 +83,8 @@ class FixedMeeting:
     end_slot: int
     meeting_type: str | None
     counts_for_distribution: bool
+    actual_start_microsecond: int | None = None
+    actual_end_microsecond: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +180,7 @@ class PenaltyBreakdown:
     section_gap: int = 0
     meeting_distribution: int = 0
     room_fit: int = 0
+    faculty_rest: int = 0
 
 
 @dataclass(frozen=True, slots=True)

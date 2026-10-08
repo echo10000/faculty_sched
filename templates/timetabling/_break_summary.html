@@ -1,0 +1,10 @@
+{% load workspace %}
+{% if configuration %}
+<section class="surface surface-secondary mb-4" aria-label="Saved lunch and rest settings">
+  {% if current_stage %}<h3 class="h5">Saved lunch and faculty rest settings</h3>{% else %}<h2 class="h5">Saved lunch and faculty rest settings</h2>{% endif %}
+  <p><strong>Lunch · hard rule:</strong> {% if configuration.lunch_break_enabled %}{{ configuration.lunch_start|time:'H:i' }}–{{ configuration.lunch_end|time:'H:i' }} every day{% else %}Disabled{% endif %}<br>
+    <strong>Faculty rest · soft preference:</strong> {{ configuration.get_faculty_rest_minutes_display }}</p>
+  <p class="small">{% if configuration.faculty_rest_minutes %}Short consecutive faculty gaps are minimized before existing weighted preferences, including compactness. Shortfalls are reported; a preferred gap is not guaranteed.{% else %}No minimum-rest preference is applied. Compactness weights retain their existing meaning.{% endif %} These are saved settings for this department and term; generating a proposal does not change them.</p>
+  {% if perms.timetabling.change_schedulingconfiguration %}<a class="btn btn-outline-secondary btn-sm" href="{% workspace_url 'timetabling:configurations-edit' configuration.pk %}">Configure lunch and rest</a>{% endif %}
+</section>
+{% else %}<p class="small text-secondary">An authorized configuration manager can set lunch and rest preferences in Generation settings.</p>{% endif %}

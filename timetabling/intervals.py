@@ -5,6 +5,11 @@ from decimal import Decimal
 DAYS = [(1, "Monday"), (2, "Tuesday"), (3, "Wednesday"), (4, "Thursday"), (5, "Friday"), (6, "Saturday"), (7, "Sunday")]
 
 
+def time_microseconds(value):
+    """Exact clock boundary, including off-grid seconds and microseconds."""
+    return (value.hour * 3600 + value.minute * 60 + value.second) * 1000000 + value.microsecond
+
+
 def overlaps(start, end, other_start, other_end):
     return start < other_end and other_start < end
 

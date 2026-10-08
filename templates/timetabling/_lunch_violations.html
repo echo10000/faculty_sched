@@ -1,0 +1,14 @@
+{% load workspace %}
+{% if section == 'configurations' and editing %}
+<section class="surface mb-4" aria-labelledby="lunch-existing-title"><h2 id="lunch-existing-title" class="h5">Existing meetings overlapping lunch</h2>
+  <p class="small text-secondary">This read-only check uses the currently saved lunch interval. Save changes to check a new interval. Published records are identified against the current rule; their snapshots and publication status are preserved.</p>
+  {% if saved_lunch_violations != None %}
+    {% if saved_lunch_violations.count %}
+    <p role="status">{{ saved_lunch_violations.count }} visible meeting{{ saved_lunch_violations.count|pluralize }} overlap{{ saved_lunch_violations.count|pluralize:'s,' }} the saved lunch interval. Review the first {{ saved_lunch_violations.entries|length }} below, then revalidate affected schedules.</p>
+    <div class="table-responsive" tabindex="0" role="region" aria-label="Lunch overlaps"><table class="table align-middle resource-table"><thead><tr><th scope="col">Schedule / version</th><th scope="col">Class</th><th scope="col">Day / time</th><th scope="col">Review</th></tr></thead><tbody>
+    {% for entry in saved_lunch_violations.entries %}<tr><td>{{ entry.schedule.name }} · v{{ entry.schedule.version_number }}<small class="d-block">{{ entry.schedule.get_status_display }}</small></td><td>{{ entry.assignment.subject_offering.subject }}</td><td>{{ entry.get_day_of_week_display }} {{ entry.start_time|time:'H:i' }}–{{ entry.end_time|time:'H:i' }}</td><td>{% if perms.timetabling.view_schedule %}<a href="{% workspace_url 'timetabling:conflicts' entry.schedule_id %}">Review conflicts</a>{% else %}Ask an authorized scheduler to review this meeting.{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% else %}<p class="mb-0">No meetings in your authorized scope overlap a currently enabled lunch interval.</p>{% endif %}
+  {% else %}<p class="mb-0">Your account cannot inspect meetings. Ask an authorized scheduler to review existing lunch overlaps after saving the rule.</p>{% endif %}
+</section>
+{% endif %}

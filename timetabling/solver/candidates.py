@@ -7,6 +7,7 @@ from collections.abc import Callable
 from operator import attrgetter
 
 from ..room_rules import room_fit_failures
+from ..break_rules import policy_lunch_overlaps
 
 from .contracts import (
     CandidateBuildResult,
@@ -94,6 +95,8 @@ def _placement_is_hard_invalid(
     fixed_meetings: tuple[FixedMeeting, ...],
 ) -> bool:
     end_slot = start_slot + demand.duration_slots
+    if policy_lunch_overlaps(policy, start_slot, end_slot):
+        return True
     if (
         day_of_week not in policy.allowed_weekdays
         or demand.duration_slots <= 0

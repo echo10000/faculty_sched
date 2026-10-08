@@ -200,6 +200,7 @@ class ObjectiveSolverTests(SolverInputFactory, SimpleTestCase):
                 "section_gap": 1,
                 "meeting_distribution": 1,
                 "room_fit": 11,
+                "faculty_rest": 0,
             },
         )
         self.assertEqual(result.objective_value, 142)
@@ -349,6 +350,7 @@ class ObjectiveSolverTests(SolverInputFactory, SimpleTestCase):
                 "section_gap": 1,
                 "meeting_distribution": 1,
                 "room_fit": 11,
+                "faculty_rest": 0,
             },
         )
         self.assertEqual(result.objective_value, 0)
@@ -442,6 +444,7 @@ class ObjectiveSolverTests(SolverInputFactory, SimpleTestCase):
                 "section_gap": solver.value(totals.section_gap),
                 "meeting_distribution": solver.value(totals.meeting_distribution),
                 "room_fit": solver.value(totals.room_fit),
+                "faculty_rest": solver.value(totals.faculty_rest),
             },
         )
 

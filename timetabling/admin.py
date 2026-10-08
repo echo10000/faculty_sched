@@ -57,6 +57,8 @@ class SchedulingConfigurationAdmin(IdentityLockedAdmin):
         "latest_end",
         "slot_increment_minutes",
         "solver_time_limit_seconds",
+        "lunch_break_enabled",
+        "faculty_rest_minutes",
     )
     list_filter = ("academic_term", "department__college", "department")
     search_fields = ("academic_term__code", "department__code", "department__name")

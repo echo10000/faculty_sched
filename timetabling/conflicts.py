@@ -15,6 +15,13 @@ from .models import (
 )
 from .occupancy import authoritative_occupancy
 from .queries import entry_queryset, scoped
+from .models import SchedulingConfiguration
+from .break_rules import lunch_overlaps
+
+
+def _break_configuration(schedule):
+    return SchedulingConfiguration.objects.filter(
+        academic_term_id=schedule.academic_term_id, department_id=schedule.department_id).first()
 
 
 @dataclass(frozen=True)
@@ -46,7 +53,7 @@ def _visible_entry_ids(user):
     )
 
 
-def _entry_rule_conflicts(entry, *, schedule, peers, visible_entry_ids):
+def _entry_rule_conflicts(entry, *, schedule, peers, visible_entry_ids, configuration):
     detected = []
 
     def add(
@@ -90,6 +97,12 @@ def _entry_rule_conflicts(entry, *, schedule, peers, visible_entry_ids):
         return detected
     if entry.meeting_type not in ("lecture", "laboratory"):
         add("INVALID_MEETING_TYPE", "ERROR", "Choose lecture or laboratory.")
+    if configuration and configuration.lunch_break_enabled and lunch_overlaps(
+            entry.start_time, entry.end_time, configuration.lunch_start, configuration.lunch_end):
+        add("LUNCH_BREAK_OVERLAP", "ERROR",
+            f"This meeting overlaps the configured daily no-class interval "
+            f"{configuration.lunch_start:%H:%M}–{configuration.lunch_end:%H:%M} for this department and term.",
+            "Move the meeting outside lunch, or ask an authorized configuration manager to review the interval. Existing meetings are not moved automatically.")
 
     assignment = FacultySubjectAssignment.objects.select_related(
         "faculty__home_department__college",
@@ -320,6 +333,27 @@ def _entry_rule_conflicts(entry, *, schedule, peers, visible_entry_ids):
                 f"{other.start_time:%H:%M}–{other.end_time:%H:%M}.",
                 other=other,
             )
+    if configuration and configuration.faculty_rest_minutes:
+        neighbors = [other for other in peers if other is not entry
+            and not (entry.pk is not None and other.pk == entry.pk)
+            and other.day_of_week == entry.day_of_week and other.start_time and other.end_time
+            and other.start_time < other.end_time
+            and other.assignment.faculty_id == faculty.pk
+            and terms_share_weekday(term, other.schedule.academic_term, entry.day_of_week)]
+        before = [other for other in neighbors if other.end_time <= entry.start_time]
+        after = [other for other in neighbors if other.start_time >= entry.end_time]
+        pairs = []
+        if before:
+            other = max(before, key=lambda item: item.end_time)
+            pairs.append((other, duration_minutes(other.end_time, entry.start_time)))
+        if after:
+            other = min(after, key=lambda item: item.start_time)
+            pairs.append((other, duration_minutes(entry.end_time, other.start_time)))
+        for other, gap in pairs:
+            if gap < configuration.faculty_rest_minutes:
+                add("FACULTY_REST_PREFERENCE", "WARNING",
+                    f"A same-day consecutive faculty class gap is shorter than the preferred {configuration.faculty_rest_minutes} minutes, including classes in other sections.",
+                    "Review the faculty timetable and adjust spacing where possible. This preference is soft; it does not block saving a meeting.", other=other)
     return detected
 
 
@@ -337,6 +371,7 @@ def detect_entry_conflicts(entry, *, user=None, peers=None):
             schedule=entry.schedule,
             peers=tuple(peers),
             visible_entry_ids=_visible_entry_ids(user),
+            configuration=_break_configuration(entry.schedule),
         )
     ]
 
@@ -505,6 +540,7 @@ def validate_candidate_schedule(
 
     result = []
     seen = set()
+    configuration = _break_configuration(schedule)
     for entry in candidates:
         identity = _entry_identity(entry, candidate_indexes)
         if (
@@ -530,6 +566,7 @@ def validate_candidate_schedule(
             schedule=schedule,
             peers=peers,
             visible_entry_ids=visible_entry_ids,
+            configuration=configuration,
         ):
             conflict = detected.conflict
             if detected.other is None:

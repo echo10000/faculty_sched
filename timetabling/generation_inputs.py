@@ -23,7 +23,7 @@ from workloads.models import (
 from workloads.selectors import scoped_records
 
 from .conflicts import validate_candidate_schedule
-from .intervals import duration_minutes, terms_share_weekday
+from .intervals import duration_minutes, terms_share_weekday, time_microseconds
 from .models import (
     AssignmentMeetingRequirement,
     ClassSection,
@@ -245,6 +245,10 @@ def _configuration_snapshot(configuration: SchedulingConfiguration) -> dict:
         "section_gap_weight": configuration.section_gap_weight,
         "meeting_distribution_weight": configuration.meeting_distribution_weight,
         "room_fit_weight": configuration.room_fit_weight,
+        "lunch_break_enabled": configuration.lunch_break_enabled,
+        "lunch_start": configuration.lunch_start.strftime("%H:%M") if configuration.lunch_start else None,
+        "lunch_end": configuration.lunch_end.strftime("%H:%M") if configuration.lunch_end else None,
+        "faculty_rest_minutes": configuration.faculty_rest_minutes,
     }
 
 
@@ -270,6 +274,9 @@ def _policy_for(configuration, term) -> SchedulingPolicy:
             meeting_distribution=configuration.meeting_distribution_weight,
             room_fit=configuration.room_fit_weight,
         ),
+        lunch_start_minute=_minute(configuration.lunch_start) if configuration.lunch_break_enabled else None,
+        lunch_end_minute=_minute(configuration.lunch_end) if configuration.lunch_break_enabled else None,
+        faculty_rest_minutes=configuration.faculty_rest_minutes,
     )
 
 
@@ -482,6 +489,8 @@ def _peer_fixed_meeting(entry, policy) -> FixedMeeting:
         ),
         meeting_type=None,
         counts_for_distribution=False,
+        actual_start_microsecond=time_microseconds(entry.start_time),
+        actual_end_microsecond=time_microseconds(entry.end_time),
     )
 
 

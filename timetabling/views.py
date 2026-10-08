@@ -37,6 +37,7 @@ from .conflicts import get_schedule_conflicts, summarize
 from .timetable import filtered_entries, week_columns
 from .presentation import meeting_filters, present_conflicts
 from .presentation import navigation_filters
+from .presentation import lunch_violations
 from .workspace import guided_form_class, stage_links, stage_number
 from .preparation import task_actions, readiness_findings, preparation_counts
 from .room_eligibility import can_preview_rooms
@@ -126,6 +127,8 @@ class PrepareScheduleView(ProtectedViewMixin, TemplateView):
             can_add_meeting=bool(editable and user.has_perm("timetabling.add_scheduleentry")))
         if schedule:
             context["scheduling_workspace"] = {"schedule": schedule, "stage": stage}
+            context["break_configuration"] = scoped(user, SchedulingConfiguration.objects.filter(
+                academic_term_id=schedule.academic_term_id, department_id=schedule.department_id)).first() if stage in (4, 5) and user.has_perm("timetabling.view_schedulingconfiguration") else None
             context["preparation_counts"] = preparation_counts(user, schedule) if stage == 2 else {}
             context["can_generate_section"] = context["can_generate"] and all(user.has_perm(item) for item in (
                 "timetabling.view_classsection", "workloads.view_subjectoffering", "academics.view_subject"))
@@ -305,7 +308,8 @@ class RecordForm(TimetableMixin, View):
         elif isinstance(obj, AssignmentMeetingRequirement):
             room_preview_offering = obj.assignment.subject_offering_id
         return render(request, "timetabling/form.html", {**self.context(), "form": form, "editing": bool(pk),
-            "term": term, "room_preview_offering": room_preview_offering})
+            "term": term, "room_preview_offering": room_preview_offering,
+            "saved_lunch_violations": lunch_violations(request.user, obj) if isinstance(obj, SchedulingConfiguration) else None})
 
     def post(self, request, pk=None):
         original = self.get_original(request, pk)
@@ -320,8 +324,12 @@ class RecordForm(TimetableMixin, View):
             obj = None
         if obj:
             messages.success(request, "Record saved. Revalidate affected schedules after changing scheduling requirements or availability.")
+            if isinstance(obj, SchedulingConfiguration) and obj.lunch_break_enabled and set(form.changed_data) & {"lunch_break_enabled", "lunch_start", "lunch_end"}:
+                messages.warning(request, "Existing meetings were not moved or deleted. Reopen these generation settings to review lunch overlaps, then validate affected schedules before generation or publication.")
             return redirect("timetabling:schedules-detail", obj.pk) if self.section == "schedules" else redirect(f"timetabling:{self.section}")
-        return render(request, "timetabling/form.html", {**self.context(), "form": form, "editing": bool(pk)})
+        saved = self.get_original(request, pk) if pk and self.section == "configurations" else None
+        return render(request, "timetabling/form.html", {**self.context(), "form": form, "editing": bool(pk),
+            "saved_lunch_violations": lunch_violations(request.user, saved) if saved else None})
 
 
 class ScheduleDetail(TimetableMixin, View):
@@ -667,6 +675,8 @@ class SectionGeneratorView(ProtectedViewMixin, View):
                         "status": "Not scheduled" if not meetings else
                                   "Scheduled" if expected and len(meetings) == expected else "Partly scheduled"})
         return {"form": form, "selected_section": section, "selected_schedule": schedule,
+                "configuration": scoped(request.user, SchedulingConfiguration.objects.filter(
+                    academic_term_id=section.academic_term_id, department_id=section.department_id)).first() if section else None,
                 "subject_rows": rows, "term": section.academic_term if section else None,
                 "can_generate_section": bool(section and schedule and rows),
                 "can_create_schedule": request.user.has_perm("timetabling.add_schedule")}
@@ -788,11 +798,17 @@ def _configuration_rows(snapshot):
         ("solver_time_limit_seconds", "Time limit (seconds)"),
         ("random_seed", "Random seed"), ("worker_count", "Workers"),
         ("faculty_preference_weight", "Faculty preference weight"),
-        ("faculty_gap_weight", "Faculty gap weight"),
+        ("faculty_gap_weight", "Faculty compactness weight"),
         ("section_gap_weight", "Section gap weight"),
         ("meeting_distribution_weight", "Meeting distribution weight"),
         ("room_fit_weight", "Room fit weight"),
     )]
+    rows += [("Daily lunch break", "Not recorded (legacy run)" if "lunch_break_enabled" not in snapshot else
+        f"Enabled: {snapshot.get('lunch_start')}–{snapshot.get('lunch_end')} (hard rule)" if snapshot.get("lunch_break_enabled") else "Disabled"),
+        ("Faculty rest preference", "Not recorded (legacy run)" if "faculty_rest_minutes" not in snapshot else
+         f"Prefer {snapshot['faculty_rest_minutes']} minutes (soft)" if snapshot.get("faculty_rest_minutes") else "No minimum preference"),
+        ("Optimization priority", "Short rest gaps first; existing weighted preferences second"
+         if snapshot.get("faculty_rest_minutes") else "Existing weighted preferences")]
     return [(label, ", ".join(str(item) for item in value) if type(value) is list
              else value) for label, value in rows]
 
@@ -834,7 +850,7 @@ class GenerationRunDetail(LoginRequiredMixin, View):
         penalty_rows = [(label, penalties.get(key, 0)) for key, label in (
             ("faculty_preference", "Faculty preference"), ("faculty_gap", "Faculty gaps"),
             ("section_gap", "Section gaps"), ("meeting_distribution", "Meeting distribution"),
-            ("room_fit", "Room fit"))]
+            ("room_fit", "Room fit"), ("faculty_rest", "Short consecutive faculty gaps (count)"))]
         source_rows = [(label, summary.get(key, 0)) for key, label in (
             ("current_entry_count", "Current meetings"), ("retained_entry_count", "Retained meetings"),
             ("replace_entry_count", "Replaceable meetings"), ("peer_occupancy_count", "Protected peer occupancy"),
@@ -855,6 +871,8 @@ class GenerationRunDetail(LoginRequiredMixin, View):
             "objective_available": run.objective_value is not None,
             "bound_available": run.best_bound is not None,
             "runtime_available": run.runtime_seconds is not None,
+            "rest_preference_minutes": snapshot.get("faculty_rest_minutes", 0) if snapshot.get("faculty_rest_minutes") in (30, 60) else 0,
+            "rest_shortfalls": penalties.get("faculty_rest", 0) if type(penalties.get("faculty_rest", 0)) is int else None,
             "can_finalize": run.status == "PROPOSAL_READY" and _can_generate(request.user, run.strategy),
             "can_view_generation_runs": _can_view_runs(request.user),
         })

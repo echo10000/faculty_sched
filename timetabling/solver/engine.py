@@ -6,6 +6,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 
 from ortools.sat.python import cp_model
+from ..break_rules import policy_lunch_overlaps
+from .rest import faculty_rest_events, recent_end_keys, faculty_rest_penalty, fixed_boundaries, MINUTE_MICROSECONDS
 
 from .contracts import (
     CandidatePlacement,
@@ -42,6 +44,8 @@ class _ObjectiveBounds:
     meeting_distribution: int
     room_fit: int
     weighted_upper: int
+    faculty_rest: int
+    rest_priority: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +55,7 @@ class _ObjectiveVariables:
     section_gap: cp_model.IntVar
     meeting_distribution: cp_model.IntVar
     room_fit: cp_model.IntVar
+    faculty_rest: cp_model.IntVar | int
 
 
 def _require_nonnegative_int64(value: int, label: str) -> None:
@@ -139,7 +144,14 @@ def _objective_bounds(data: SolverInput) -> _ObjectiveBounds:
         getattr(weights, field) * component_bounds[field]
         for field in _OBJECTIVE_FIELDS
     )
-    return _ObjectiveBounds(**component_bounds, weighted_upper=weighted_upper)
+    if data.policy.faculty_rest_minutes not in (0, 30, 60):
+        raise ValueError("Faculty rest preference must be 0, 30 or 60 minutes")
+    rest_bound = len(data.demands) + len(data.fixed_meetings) if data.policy.faculty_rest_minutes else 0
+    priority = weighted_upper + 1 if rest_bound else 0
+    if rest_bound and rest_bound * priority + weighted_upper > cp_model.INT_MAX:
+        raise ValueError("Rest priority and secondary weights exceed CP-SAT's integer domain; reduce weights")
+    return _ObjectiveBounds(**component_bounds, faculty_rest=rest_bound, rest_priority=priority,
+        weighted_upper=rest_bound * priority + weighted_upper)
 
 
 def _fixed_slot_sets(
@@ -205,6 +217,15 @@ def _build_hard_model(
         model.new_bool_var(f"p_{index}")
         for index, _candidate in enumerate(data.candidates)
     )
+    for variable, candidate in zip(variables, data.candidates, strict=True):
+        if policy_lunch_overlaps(data.policy, candidate.start_slot, candidate.end_slot):
+            model.add(variable == 0)
+    for fixed in data.fixed_meetings:
+        if fixed.counts_for_distribution and data.policy.lunch_start_minute is not None:
+            start, end = fixed_boundaries(data.policy, fixed)
+            if (start < data.policy.lunch_end_minute * MINUTE_MICROSECONDS
+                    and end > data.policy.lunch_start_minute * MINUTE_MICROSECONDS):
+                model.add(False)
     candidate_indexes_by_demand: dict[tuple[int, int], list[int]] = defaultdict(list)
     for index, candidate in enumerate(data.candidates):
         candidate_indexes_by_demand[candidate.demand_key].append(index)
@@ -393,12 +414,14 @@ def _build_model(
         bounds.room_fit,
         "room_fit_total",
     )
+    rest = _add_faculty_rest_total(model, variables, data, bounds.faculty_rest)
     totals = _ObjectiveVariables(
         faculty_preference=preference,
         faculty_gap=faculty_gap,
         section_gap=section_gap,
         meeting_distribution=distribution,
         room_fit=room_fit,
+        faculty_rest=rest,
     )
     weights = data.policy.weights
     model.minimize(
@@ -407,8 +430,41 @@ def _build_model(
         + weights.section_gap * totals.section_gap
         + weights.meeting_distribution * totals.meeting_distribution
         + weights.room_fit * totals.room_fit
+        + bounds.rest_priority * totals.faculty_rest
     )
     return model, variables, totals
+
+
+def _add_faculty_rest_total(model, variables, data, upper_bound):
+    if not data.policy.faculty_rest_minutes:
+        return 0
+    starts, ends, fixed_starts, fixed_ends = faculty_rest_events(data)
+    end_flags = {}
+    for index, key in enumerate(sorted(ends.keys() | fixed_ends)):
+        if key in fixed_ends:
+            end_flags[key] = 1
+        else:
+            flag = model.new_bool_var(f"rest_end_{index}")
+            model.add(flag == sum((variables[i] for i in ends[key]), 0))
+            end_flags[key] = flag
+    violations = []
+    for index, (key, nearby) in enumerate(recent_end_keys(
+            starts.keys() | fixed_starts.keys(), end_flags, data.policy.faculty_rest_minutes)):
+        if not nearby:
+            continue
+        start_count = fixed_starts[key] + sum((variables[i] for i in starts.get(key, ())), 0)
+        if any(key in fixed_ends for key in nearby):
+            violations.append(start_count)
+            continue
+        recent = model.new_bool_var(f"rest_recent_end_{index}")
+        model.add_max_equality(recent, [end_flags[item] for item in nearby])
+        violation = model.new_int_var(0, max(1, fixed_starts[key]), f"rest_short_gap_{index}")
+        model.add(violation == start_count).only_enforce_if(recent)
+        model.add(violation == 0).only_enforce_if(recent.Not())
+        violations.append(violation)
+    total = model.new_int_var(0, upper_bound, "faculty_rest_total")
+    model.add(total == sum(violations, 0))
+    return total
 
 
 def _status_name(status: cp_model.CpSolverStatus) -> str:
@@ -491,6 +547,7 @@ def _penalty_breakdown(
             max(0, count - 1) for count in distribution_counts.values()
         ),
         room_fit=sum(candidate.room_fit_penalty for candidate in selected),
+        faculty_rest=faculty_rest_penalty(data, selected),
     )
 
 
@@ -499,7 +556,8 @@ def _weighted_objective(data: SolverInput, penalties: PenaltyBreakdown) -> int:
     return sum(
         getattr(weights, field) * getattr(penalties, field)
         for field in _OBJECTIVE_FIELDS
-    )
+    ) + (_objective_bounds(data).rest_priority * penalties.faculty_rest
+         if data.policy.faculty_rest_minutes else 0)
 
 
 def _statistics(
@@ -537,6 +595,12 @@ def solve(data: SolverInput) -> SolverResult:
         objective_value = _weighted_objective(data, penalties)
         best_bound = float(solver.best_objective_bound)
         issues = ()
+        if penalties.faculty_rest:
+            from .contracts import ReadinessIssue
+            issues = (ReadinessIssue("FACULTY_REST_PREFERENCE", "WARNING",
+                f"{penalties.faculty_rest} consecutive faculty class gap(s) are shorter than the preferred "
+                f"{data.policy.faculty_rest_minutes} minutes. This is a soft preference. Retained or other-section "
+                "meetings and solver time limits can prevent every preference from being met."),)
     else:
         from .diagnostics import diagnose_unsolved
 

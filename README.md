@@ -82,6 +82,18 @@ The preview shares room-type resolution, active type/building checks and hard ro
 
 Verified on **2026-10-08**: **617 PostgreSQL tests passed** (599 existing and 18 new room-eligibility regressions) in 606.837 seconds. Django system, migration-drift and Git whitespace checks passed. Browser verification at 1440px desktop and 390px mobile covered Stage 4 comparison, saved requirement links, room forms, scoped returns, keyboard table scrolling and console errors; no horizontal page overflow or console errors were found. Suitability remains separate from timetable availability, and Phase 3A teaching-load behavior remains covered by the full suite.
 
+## Phase 3C lunch and faculty rest
+
+Stages 4 and 5 show saved lunch/rest settings and link to the existing scoped configuration editor. Migration `timetabling.0009_scheduling_break_preferences` adds four fields with safe defaults: lunch disabled, nullable start/end times, and no minimum faculty-rest preference. Database checks require an ordered interval when lunch is enabled and restrict rest choices to 0, 30 or 60 minutes. Existing configurations, compactness weights and published snapshots are preserved. Administrators must choose the authorized interval; 12:00–13:00 is only an example.
+
+Enabled lunch is a daily hard no-class interval for the configured department and term. Candidate generation, retained-meeting checks, manual edits, proposal acceptance and final publication use the same half-open overlap rule: ending exactly at lunch start or starting exactly at lunch end is allowed. Off-grid whole-minute lunch bounds are supported. The configuration editor identifies existing overlaps in the viewer's authorized scope without moving or deleting meetings.
+
+Faculty rest is a separate soft preference measured between actual consecutive class boundaries for the same faculty member and day, including other sections. The solver minimizes the number of gaps below the chosen 30/60-minute preference before applying existing weighted objectives. `faculty_gap_weight` still minimizes total daily idle slots; its meaning has not changed. Fixed meetings, other sections, restricted placements and solver time limits can leave reported shortfalls. Rest warnings do not block manual saving or proposal acceptance; the existing publication warning-acknowledgement workflow remains in effect. No minimum gap is guaranteed.
+
+The added configuration dependency fields conservatively require existing validated drafts to be revalidated and pre-upgrade pending proposals to be regenerated. Official snapshots remain immutable. Faculty assignments, workload calculations, room requirements and publication permissions are unchanged. The Phase 3B component-specific room requirement limitation remains as documented above.
+
+Verified on **2026-10-08**: **652 PostgreSQL tests passed** (617 existing and 35 new regressions) in 487.472 seconds, including safe migration defaults, lunch boundaries and infeasibility, locked/other-section meetings, exact rest spacing, proposal acceptance and publication checks. Desktop (1440px) and mobile (390px) browser checks used a separate fictional database and covered disabled defaults, validation recovery, enabling lunch, existing-overlap feedback, boundary-safe manual editing, scoped Stage 4/5 navigation, generation and rest-shortfall reporting.
+
 ## Fresh installation
 
 Python 3.14.6 / Django 5.2.17 were used for final verification. Requirements include Django, psycopg2-binary, python-decouple, `ortools==9.15.6755`, ReportLab and openpyxl; Linux installs the pinned Gunicorn dependency. PostgreSQL is required; SQLite does not support the current migrations/exclusions.

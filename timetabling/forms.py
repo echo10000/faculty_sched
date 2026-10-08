@@ -188,13 +188,35 @@ class SchedulingConfigurationForm(ScopedForm):
     class Meta:
         model = SchedulingConfiguration
         fields = ["academic_term", "department", "allowed_weekdays", "earliest_start",
-                  "latest_end", "slot_increment_minutes", "solver_time_limit_seconds",
+                  "latest_end", "slot_increment_minutes", "lunch_break_enabled", "lunch_start", "lunch_end",
+                  "faculty_rest_minutes", "solver_time_limit_seconds",
                   "random_seed", "worker_count", *SchedulingConfiguration.WEIGHT_FIELDS]
         widgets = {name: forms.TimeInput(format="%H:%M", attrs={"type": "time"})
-                   for name in ("earliest_start", "latest_end")}
+                   for name in ("earliest_start", "latest_end", "lunch_start", "lunch_end")}
+        labels = {"lunch_break_enabled": "Enable daily lunch break", "lunch_start": "Lunch starts",
+                  "lunch_end": "Lunch ends", "faculty_rest_minutes": "Preferred time between faculty classes",
+                  "faculty_gap_weight": "Faculty compactness weight"}
+        help_texts = {
+            "lunch_break_enabled": "Hard rule when enabled: no meetings may overlap this interval on any day in this department and term. Existing meetings stay in place and are flagged for review.",
+            "lunch_start": "Required when lunch is enabled. Choose the authorized start time; 12:00 is only an example, not institutional policy.",
+            "lunch_end": "Required when lunch is enabled. Meetings may end exactly at lunch start or begin exactly at lunch end. Off-grid lunch times are supported.",
+            "faculty_rest_minutes": "Soft preference between the actual end of one faculty class and the next start on the same day, including other sections. Short gaps are minimized first; existing weighted preferences, including compactness, come second. It is not guaranteed.",
+            "faculty_gap_weight": "Existing gap setting: minimizes total daily idle slots and favors compact schedules. It does not provide a minimum rest period. When a rest preference is enabled, this weight is secondary.",
+        }
 
     def __init__(self, *args, user, term=None, **kwargs):
         super().__init__(*args, user=user, term=term, **kwargs)
+        if self.is_bound:
+            # Older clients have none of the new controls. Preserve saved policy;
+            # the current form submits start/end fields even when lunch is off.
+            self.data = self.data.copy()
+            if "faculty_rest_minutes" not in self.data:
+                self.data["faculty_rest_minutes"] = self.instance.faculty_rest_minutes
+            if not any(name in self.data for name in ("lunch_break_enabled", "lunch_start", "lunch_end")):
+                self.data["lunch_break_enabled"] = self.instance.lunch_break_enabled
+                for name in ("lunch_start", "lunch_end"):
+                    value = getattr(self.instance, name)
+                    self.data[name] = value.strftime("%H:%M") if value else ""
         if self.instance.pk:
             self.fields["academic_term"].disabled = True
             self.fields["department"].disabled = True
@@ -207,7 +229,8 @@ class GenerationRequestForm(StyledFormMixin, forms.Form):
     strategy = forms.ChoiceField(choices=ScheduleGenerationRun.Strategy.choices)
     solver_time_limit_seconds = forms.IntegerField(required=False, min_value=1, max_value=300)
     faculty_preference_weight = forms.IntegerField(required=False, min_value=0)
-    faculty_gap_weight = forms.IntegerField(required=False, min_value=0)
+    faculty_gap_weight = forms.IntegerField(required=False, min_value=0, label="Faculty compactness weight",
+        help_text="Minimizes total idle slots; distinct from the saved minimum-rest preference. Rest takes priority when enabled.")
     section_gap_weight = forms.IntegerField(required=False, min_value=0)
     meeting_distribution_weight = forms.IntegerField(required=False, min_value=0)
     room_fit_weight = forms.IntegerField(required=False, min_value=0)

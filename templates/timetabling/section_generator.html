@@ -3,6 +3,7 @@
 {% block title %}Generate by section{% endblock %}
 {% block content %}
 <div class="page-heading"><div><p class="eyebrow">ACADEMIC SCHEDULING</p><h1>Generate by section</h1><p>Select a department, year level and section. Review its subjects, then generate their timetable.</p></div></div>
+{% include 'timetabling/_break_summary.html' %}
 <form method="get" class="surface mb-4">{% include 'timetabling/_guide_fields.html' %}
   <div class="row g-3">{% for field in form %}{% if field.name != 'strategy' %}{% if field.is_hidden %}{{ field }}{% if field.errors %}<div class="col-12 alert alert-danger">{{ field.label }}: {{ field.errors }}</div>{% endif %}{% else %}<div class="col-12 col-md-6"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="text-secondary">(required)</span>{% endif %}</label>{% if scheduling_workspace and field.name == 'academic_term' or scheduling_workspace and field.name == 'department' or scheduling_workspace and field.name == 'schedule' %}{% include 'timetabling/_context_field.html' %}{% else %}{{ field }}{% endif %}{% for error in field.errors %}<div class="text-danger small" role="alert">{{ error }}</div>{% endfor %}</div>{% endif %}{% endif %}{% endfor %}</div>
   {% if form.non_field_errors %}<div class="alert alert-danger mt-3">{{ form.non_field_errors }}</div>{% endif %}

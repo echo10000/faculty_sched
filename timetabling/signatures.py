@@ -62,6 +62,10 @@ DEPENDENCY_FIELD_SPECS = (
             "section_gap_weight",
             "meeting_distribution_weight",
             "room_fit_weight",
+            "lunch_break_enabled",
+            "lunch_start",
+            "lunch_end",
+            "faculty_rest_minutes",
         ),
     ),
     (

@@ -7,6 +7,20 @@ from .forms import TimetableFilter
 from .queries import entry_queryset, scoped
 
 
+def lunch_violations(user, configuration):
+    """Visible existing overlaps only; no mutations or protected counts are exposed."""
+    if not user.has_perm("timetabling.view_scheduleentry"):
+        return None
+    if not configuration or not configuration.lunch_break_enabled:
+        return {"count": 0, "entries": []}
+    entries = scoped(user, entry_queryset()).filter(
+        schedule__academic_term_id=configuration.academic_term_id,
+        schedule__department_id=configuration.department_id,
+        start_time__lt=configuration.lunch_end, end_time__gt=configuration.lunch_start,
+    ).order_by("schedule__name", "day_of_week", "start_time", "pk")
+    return {"count": entries.count(), "entries": list(entries[:10])}
+
+
 def meeting_filters(form):
     if not form.is_valid():
         return {}
