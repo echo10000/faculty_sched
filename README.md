@@ -35,6 +35,8 @@ The supported roles are Admin, Authorized Staff, and read-only Faculty. Staff pr
 
 Term-specific teaching assignments, manual timetable creation/conflict checks, and automated timetable proposals are available. No paid AI API is needed.
 
+The **Prepare schedule** workspace guides staff through seven stages: select a term, department and version; prepare classes and teaching assignments; review teaching units; configure availability, rooms and meeting needs; generate a department or section timetable; review proposals, conflicts and unscheduled meetings; then validate, finalize and publish. Task pages retain the selected version and provide a return link and Back/Continue navigation. Missing-input findings come from the existing generation checks, with links to the affected forms. Stages are navigation guidance, not completion certificates. Save task changes before continuing; use **Change term, department or version** to select a different context. Accepting a proposal fills the draft; publication still requires the existing explicit validation and finalization actions.
+
 ## Run this prepared workspace
 
 This checkout uses an isolated loopback-only PostgreSQL database on port **55432**. Its `.env` is Git-ignored. On this prepared machine, the existing virtual environment and database helper live in the sibling `CAPSTONE SYSTEM\faculty_sched` workspace; a new clone should follow [Fresh installation](#fresh-installation) instead.

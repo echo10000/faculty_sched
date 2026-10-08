@@ -1,9 +1,10 @@
+{% load workspace %}
 {% for conflict in conflicts %}
 <div class="alert conflict-finding {% if conflict.severity == 'ERROR' %}alert-danger{% elif conflict.severity == 'WARNING' %}alert-warning{% else %}alert-info{% endif %}">
   <strong>{% if conflict.severity == 'ERROR' %}Blocking error{% elif conflict.severity == 'WARNING' %}Warning{% else %}Information{% endif %}</strong>
   <p class="mb-1">{{ conflict.message }}</p>
   <p class="small mb-0">{{ conflict.remedy }}</p>
-  {% if conflict.meetings %}<ul class="conflict-meetings list-unstyled mb-0 mt-3">{% for meeting in conflict.meetings %}<li><span>{{ meeting.label }}</span><a href="{{ meeting.url }}">{{ meeting.action }}</a></li>{% endfor %}</ul>{% endif %}
+  {% if conflict.meetings %}<ul class="conflict-meetings list-unstyled mb-0 mt-3">{% for meeting in conflict.meetings %}<li><span>{{ meeting.label }}</span><a href="{% guided_link meeting.url %}">{{ meeting.action }}</a></li>{% endfor %}</ul>{% endif %}
   <details class="small mt-2"><summary>Validation code</summary><code>{{ conflict.code }}</code></details>
 </div>
 {% endfor %}

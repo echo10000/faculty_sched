@@ -103,6 +103,32 @@
 })();
 
 (() => {
+  document.querySelectorAll('[data-generation-submit]').forEach(form => {
+    form.addEventListener('submit', event => {
+      const button = event.submitter;
+      if (!button) return;
+      button.dataset.generationLabel = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Generating proposal…';
+      form.setAttribute('aria-busy', 'true');
+    });
+  });
+  window.addEventListener('pageshow', () => {
+    document.querySelectorAll('[data-generation-submit] [data-generation-label]').forEach(button => {
+      button.disabled = false;
+      button.textContent = button.dataset.generationLabel;
+      button.form.removeAttribute('aria-busy');
+    });
+  });
+  document.querySelectorAll('[data-prepare-context]').forEach(form => {
+    const schedule = form.elements.namedItem('schedule');
+    ['academic_term', 'department'].forEach(name => {
+      form.elements.namedItem(name).addEventListener('change', () => {
+        schedule.value = '';
+        form.requestSubmit();
+      });
+    });
+  });
   document.querySelectorAll('[data-schedule-context]').forEach(input => {
     const term = input.form.querySelector('[name="academic_term"]');
     if (term) term.addEventListener('change', () => {

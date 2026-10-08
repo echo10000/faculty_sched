@@ -14,7 +14,9 @@ class PrepareScheduleUXTests(TimetableFixture):
         self.assertContains(page, "Prepare academic schedule")
         self.assertContains(page, reverse("workloads:assignments"))
         self.assertContains(page, reverse("timetabling:generator"))
-        self.assertContains(page, reverse("timetabling:validate", args=[self.schedule.pk]))
+        final_stage = self.client.get(reverse("timetabling:prepare"), {
+            "academic_term": self.term.pk, "schedule": self.schedule.pk, "stage": 7})
+        self.assertContains(final_stage, reverse("timetabling:validate", args=[self.schedule.pk]))
         self.assertContains(page, self.department.name)
         self.assertNotContains(page, self.external.name)
         self.assertContains(self.client.get(reverse("home")), "Prepare schedule")

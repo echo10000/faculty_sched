@@ -1,13 +1,14 @@
 {% extends 'base.html' %}
+{% load workspace %}
 {% block title %}Generate by section{% endblock %}
 {% block content %}
 <div class="page-heading"><div><p class="eyebrow">ACADEMIC SCHEDULING</p><h1>Generate by section</h1><p>Select a department, year level and section. Review its subjects, then generate their timetable.</p></div></div>
-<form method="get" class="surface mb-4">
-  <div class="row g-3">{% for field in form %}{% if field.name != 'strategy' %}{% if field.is_hidden %}{{ field }}{% if field.errors %}<div class="col-12 alert alert-danger">{{ field.label }}: {{ field.errors }}</div>{% endif %}{% else %}<div class="col-12 col-md-6"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="text-secondary">(required)</span>{% endif %}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small" role="alert">{{ error }}</div>{% endfor %}</div>{% endif %}{% endif %}{% endfor %}</div>
+<form method="get" class="surface mb-4">{% include 'timetabling/_guide_fields.html' %}
+  <div class="row g-3">{% for field in form %}{% if field.name != 'strategy' %}{% if field.is_hidden %}{{ field }}{% if field.errors %}<div class="col-12 alert alert-danger">{{ field.label }}: {{ field.errors }}</div>{% endif %}{% else %}<div class="col-12 col-md-6"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="text-secondary">(required)</span>{% endif %}</label>{% if scheduling_workspace and field.name == 'academic_term' or scheduling_workspace and field.name == 'department' or scheduling_workspace and field.name == 'schedule' %}{% include 'timetabling/_context_field.html' %}{% else %}{{ field }}{% endif %}{% for error in field.errors %}<div class="text-danger small" role="alert">{{ error }}</div>{% endfor %}</div>{% endif %}{% endif %}{% endfor %}</div>
   {% if form.non_field_errors %}<div class="alert alert-danger mt-3">{{ form.non_field_errors }}</div>{% endif %}
   {% for error in form.strategy.errors %}<div class="alert alert-danger mt-3" role="alert">Generation mode: {{ error }}</div>{% endfor %}
   <p class="small text-secondary mt-3">{% if current_term_only %}Choose the department and year, then load sections for the current term.{% else %}Choose the term, department and year, then load sections.{% endif %} Select a section and show its subjects. Draft schedule is optional until you generate.</p>
-  <div class="d-flex gap-2 flex-wrap"><button class="btn btn-outline-primary">Load sections / show subjects</button><a class="btn btn-outline-secondary" href="{% url 'timetabling:section-generator' %}">Reset</a></div>
+  <div class="d-flex gap-2 flex-wrap"><button class="btn btn-outline-primary">Load sections / show subjects</button><a class="btn btn-outline-secondary" href="{% workspace_url 'timetabling:section-generator' %}">Reset</a></div>
 </form>
 {% if selected_section %}
 <section class="surface mb-4">
@@ -18,11 +19,11 @@
 </section>
 {% if can_generate_section %}
 <section class="surface"><h2 class="h5">Generate {{ selected_section.code }}</h2><p>Only this section's subjects will be generated. Existing meetings for other sections stay in the department draft and are checked for faculty, room and section conflicts.</p>
-<form method="post">{% csrf_token %}<input type="hidden" name="academic_term" value="{{ selected_section.academic_term_id }}"><input type="hidden" name="department" value="{{ selected_section.department_id }}"><input type="hidden" name="year_level" value="{{ selected_section.year_level }}"><input type="hidden" name="section" value="{{ selected_section.pk }}"><input type="hidden" name="schedule" value="{{ selected_schedule.pk }}">
+<form method="post" data-generation-submit>{% csrf_token %}<input type="hidden" name="academic_term" value="{{ selected_section.academic_term_id }}"><input type="hidden" name="department" value="{{ selected_section.department_id }}"><input type="hidden" name="year_level" value="{{ selected_section.year_level }}"><input type="hidden" name="section" value="{{ selected_section.pk }}"><input type="hidden" name="schedule" value="{{ selected_schedule.pk }}">
 <div class="mb-3"><label class="form-label" for="{{ form.strategy.id_for_label }}">{{ form.strategy.label }}</label>{{ form.strategy }}{% for error in form.strategy.errors %}<div class="text-danger small" role="alert">{{ error }}</div>{% endfor %}</div>
 <p class="small text-secondary">Draft: {{ selected_schedule.name }} · v{{ selected_schedule.version_number }}. Fill gaps keeps existing meetings. Replace unlocked meetings replaces only this section's unlocked meetings after you accept the proposal.</p>
 <button class="btn btn-primary">Generate schedule for {{ selected_section.code }}</button>
 </form><p class="small text-secondary mt-3 mb-0">Review the proposal and accept it to fill the subject list. Publication is a separate action and still requires the complete department schedule.</p></section>
-{% elif not selected_schedule %}<div class="alert alert-info">Select an editable draft and show subjects again.{% if can_create_schedule %} <a href="{% url 'timetabling:schedules-add' %}?academic_term={{ selected_section.academic_term_id }}&amp;department={{ selected_section.department_id }}">Create a schedule</a> if none exists.{% endif %}</div>{% endif %}
+{% elif not selected_schedule %}<div class="alert alert-info">Select an editable draft and show subjects again.{% if can_create_schedule %} <a href="{% workspace_url 'timetabling:schedules-add' academic_term=selected_section.academic_term_id department=selected_section.department_id %}">Create a schedule</a> if none exists.{% endif %}</div>{% endif %}
 {% else %}<div class="alert alert-info">Select a year and section to see its configured subjects. Subjects appear before any meetings are generated.</div>{% endif %}
 {% endblock %}

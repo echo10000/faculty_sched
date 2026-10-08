@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Q
-from django.http import HttpResponseBadRequest
+from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views import View
@@ -236,7 +236,18 @@ class TeachingFormView(TeachingMixin, View):
                 initial["faculty"] = get_object_or_404(scoped_faculty(request.user), pk=int(request.GET["faculty"])).pk
             except ValueError:
                 return HttpResponseBadRequest("Invalid faculty.")
+        from timetabling.workspace import guided_form_class
+        form_class = guided_form_class(request, form_class)
         form = form_class(user=request.user, term=self.term, instance=obj, initial=initial)
+        if not obj and getattr(request, "scheduling_workspace", None):
+            for name in ("department", "subject_offering"):
+                raw = request.GET.get(name)
+                field = form.fields.get(name)
+                if raw and field and hasattr(field, "queryset"):
+                    try:
+                        form.initial[name] = get_object_or_404(field.queryset, pk=int(raw)).pk
+                    except ValueError:
+                        raise Http404("Invalid form context")
         return render(request, "workloads/form.html", {**self.form_context(form), "form": form, "editing": bool(pk)})
 
     def post(self, request, pk=None):
@@ -244,6 +255,8 @@ class TeachingFormView(TeachingMixin, View):
             return HttpResponseBadRequest("Configure an academic term first.")
         model, form_class, _ = SPECS[self.section]
         preview = self.section == "assignments" and request.POST.get("intent") == "preview"
+        from timetabling.workspace import guided_form_class
+        form_class = guided_form_class(request, form_class)
         try:
             obj, form, report = save_term_record(user=request.user, form_class=form_class, data=request.POST, term=self.term, pk=pk, preview=preview)
         except (ValidationError, IntegrityError) as error:

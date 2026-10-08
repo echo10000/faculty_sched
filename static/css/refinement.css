@@ -1,4 +1,13 @@
 /* Institutional identity and workspace compositions. Shared tokens and controls: app.css. */
+.schedule-process { display:grid; grid-template-columns:minmax(220px, 290px) minmax(0, 1fr); gap:24px; align-items:start; }
+.schedule-stage-list { list-style:none; margin:0; padding:0; display:grid; gap:4px; }
+.schedule-stage-list a { display:flex; align-items:center; gap:12px; padding:12px; border:1px solid transparent; border-radius:var(--radius-control); color:var(--navy); text-decoration:none; }
+.schedule-stage-list a:hover { background:var(--bs-light); }
+.schedule-stage-list a[aria-current="step"] { background:var(--teal-soft); border-color:var(--teal); font-weight:600; }
+.schedule-stage-number { display:grid; place-items:center; width:28px; height:28px; flex:0 0 28px; border:1px solid var(--bs-border-color); border-radius:50%; font-size:.85rem; }
+.schedule-stage-list a[aria-current="step"] .schedule-stage-number { background:var(--navy); color:#fff; border-color:var(--navy); }
+.schedule-stage-content { min-width:0; }
+@media (max-width:767px) { .schedule-process { grid-template-columns:1fr; gap:16px; } .schedule-stage-list { grid-template-columns:repeat(2,minmax(0,1fr)); } .schedule-stage-list a { padding:10px 6px; gap:8px; font-size:.85rem; height:100%; } .schedule-stage-list small { font-size:.75rem; } .scheduling-guide .btn { white-space:normal; text-align:left; } }
 .norsu-seal { width:48px; height:48px; object-fit:contain; border-radius:50%; flex:none; }
 .sidebar .brand { align-items:flex-start; gap:10px; font-size:1.07rem; line-height:1.2; }
 .sidebar .sidebar-seal { width:43px; height:43px; }

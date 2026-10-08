@@ -37,6 +37,8 @@ from .conflicts import get_schedule_conflicts, summarize
 from .timetable import filtered_entries, week_columns
 from .presentation import meeting_filters, present_conflicts
 from .presentation import navigation_filters
+from .workspace import guided_form_class, stage_links, stage_number
+from .preparation import task_actions, readiness_findings, preparation_counts
 
 SPECS = {
     "schedules": (Schedule, ScheduleForm, "Manage schedules"),
@@ -58,7 +60,7 @@ SECTION_HELP = {
 
 
 class PrepareScheduleView(ProtectedViewMixin, TemplateView):
-    """A permission-filtered guide to existing scheduling screens."""
+    """A guided workspace over existing scoped scheduling operations."""
 
     permission = "timetabling.view_schedule"
     template_name = "timetabling/prepare.html"
@@ -80,7 +82,19 @@ class PrepareScheduleView(ProtectedViewMixin, TemplateView):
                 raise Http404("Invalid term")
         else:
             term = accessible_terms(user, active=True).first() or terms.first()
+        from accounts.permissions import department_scoped_queryset
+        from core.models import Department
+        departments = department_scoped_queryset(user, Department.objects.select_related("college"), "pk")
+        raw_department = self.request.GET.get("department")
+        department = None
+        if raw_department:
+            try:
+                department = get_object_or_404(departments, pk=int(raw_department))
+            except ValueError:
+                raise Http404("Invalid department")
         schedules = scoped(user, Schedule.objects.filter(academic_term=term).select_related("department", "academic_term")) if term else Schedule.objects.none()
+        if department:
+            schedules = schedules.filter(department=department)
         raw_schedule = self.request.GET.get("schedule")
         if raw_schedule:
             try:
@@ -89,15 +103,31 @@ class PrepareScheduleView(ProtectedViewMixin, TemplateView):
                 raise Http404("Invalid schedule")
         else:
             schedule = schedules.order_by("-updated_at", "-pk").first()
+        department = department or (schedule.department if schedule else departments.first() if departments.count() == 1 else None)
+        if department:
+            schedules = schedules.filter(department=department)
+        stages = stage_links(term, department, schedule)
+        stage = stage_number(self.request.GET.get("stage"))
         editable = schedule and schedule.status in ("draft", "validated", "needs_revision")
         display_status = effective_status(schedule) if schedule and schedule.status in ("draft", "validated") else schedule.status if schedule else None
         context.update(terms=terms, term=term, schedules=schedules.order_by("department__name", "name"), schedule=schedule,
+            departments=departments, department=department, stages=stages, current_stage=stages[stage - 1],
+            previous_stage=stages[stage - 2] if stage > 1 else None,
+            next_stage=stages[stage] if stage < 7 else None,
+            task_actions=task_actions(user, term, department, schedule, stage),
+            readiness_findings=readiness_findings(user, schedule) if editable and stage in (3, 4, 5) else None,
             editable=editable, display_status=display_status,
             display_status_label=dict(Schedule.Status.choices).get(display_status, "Unknown"),
             can_generate=bool(editable and _can_generate(user)),
             can_check=bool(editable and user.has_perm("timetabling.validate_schedule")),
             can_submit=bool(editable and user.has_perm("timetabling.finalize_schedule") and user.has_perm("timetabling.change_schedule")),
             can_add_meeting=bool(editable and user.has_perm("timetabling.add_scheduleentry")))
+        if schedule:
+            context["scheduling_workspace"] = {"schedule": schedule, "stage": stage}
+            context["preparation_counts"] = preparation_counts(user, schedule) if stage == 2 else {}
+            context["can_generate_section"] = context["can_generate"] and all(user.has_perm(item) for item in (
+                "timetabling.view_classsection", "workloads.view_subjectoffering", "academics.view_subject"))
+            context["recent_proposals"] = generation_run_queryset(user).filter(schedule=schedule).order_by("-pk")[:5] if _can_view_runs(user) and stage == 6 else []
         return context
 
 
@@ -248,13 +278,24 @@ class RecordForm(TimetableMixin, View):
 
     def get(self, request, pk=None):
         obj = self.get_original(request, pk)
-        form = SPECS[self.section][1](user=request.user, instance=obj, term=self.selected_term(request, obj))
+        form = guided_form_class(request, SPECS[self.section][1])(user=request.user, instance=obj, term=self.selected_term(request, obj))
+        if not obj:
+            for name in ("department", "subject_offering", "assignment"):
+                raw = request.GET.get(name)
+                field = form.fields.get(name)
+                if raw and field and hasattr(field, "queryset"):
+                    try:
+                        form.initial[name] = get_object_or_404(field.queryset, pk=int(raw)).pk
+                    except ValueError:
+                        raise Http404("Invalid form context")
+            if "meeting_type" in form.fields and request.GET.get("meeting_type") in ("lecture", "laboratory"):
+                form.initial["meeting_type"] = request.GET["meeting_type"]
         return render(request, "timetabling/form.html", {**self.context(), "form": form, "editing": bool(pk)})
 
     def post(self, request, pk=None):
         original = self.get_original(request, pk)
         term = self.selected_term(request, original)
-        form_class = SPECS[self.section][1]
+        form_class = guided_form_class(request, SPECS[self.section][1])
         try:
             obj, form = save_record(user=request.user, form_class=form_class, data=request.POST, pk=pk, term=term)
         except (ValidationError, IntegrityError) as error:
@@ -644,9 +685,15 @@ class GenerationRunList(ProtectedViewMixin, View):
 
     def get(self, request):
         runs = generation_run_queryset(request.user).order_by("-requested_at", "-pk")
+        workspace = getattr(request, "scheduling_workspace", None)
+        if workspace:
+            runs = runs.filter(schedule=workspace["schedule"])
         page = Paginator(runs, 20).get_page(request.GET.get("page"))
+        query = request.GET.copy()
+        query.pop("page", None)
         return render(request, "timetabling/generation_run_list.html", {
             "page_obj": page, "can_generate": _can_generate(request.user),
+            "page_query": query.urlencode(),
         })
 
 

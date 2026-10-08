@@ -2,7 +2,7 @@
 {% load workspace %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
-<div class="page-heading"><div><p class="eyebrow">{% if section == 'offerings' %}ACADEMIC SETUP{% else %}FACULTY &amp; WORKLOAD{% endif %}</p><h1>{{ title }}</h1><p class="text-secondary mb-1">{{ description }}</p><p class="small text-secondary mb-0">{{ faculty_context|default:access_scope }}</p></div>{% if can_add and term %}<a class="btn btn-primary" href="{{ add_url }}">{{ add_label }}</a>{% endif %}</div>
+<div class="page-heading"><div><p class="eyebrow">{% if section == 'offerings' %}ACADEMIC SETUP{% else %}FACULTY &amp; WORKLOAD{% endif %}</p><h1>{{ title }}</h1><p class="text-secondary mb-1">{{ description }}</p><p class="small text-secondary mb-0">{{ faculty_context|default:access_scope }}</p></div>{% if can_add and term %}<a class="btn btn-primary" href="{% guided_link add_url %}">{{ add_label }}</a>{% endif %}</div>
 {% if faculty_context %}{% include 'includes/faculty_navigation.html' with person=faculty_context %}{% endif %}
 {% if section == 'offerings' %}{% include 'includes/academic_browse_navigation.html' %}<p class="small text-secondary">These are the subjects running this term. Use program, year and section to find a group's classes. A class without a section stays visible until its scheduling requirement is configured.</p>{% endif %}
 {% include 'workloads/term.html' %}
@@ -15,12 +15,12 @@
 {% if perms.workloads.view_workload %}<li><a href="{% workspace_url 'workloads:monitor' %}">Faculty workload</a>: check their assigned teaching load before generating a timetable.</li>{% endif %}
 </ol><p class="small mb-0">Availability describes times. Teaching assignments determine workload. Generating and accepting a timetable adds the actual class meetings.</p>
 </div></details>{% endif %}
-<section class="surface filter-bar mb-4" aria-label="Filters"><form method="get">
+<section class="surface filter-bar mb-4" aria-label="Filters"><form method="get">{% include 'timetabling/_guide_fields.html' %}
 {% if attention_only %}<input type="hidden" name="attention" value="1">{% endif %}
 {% if schedule %}<input type="hidden" name="schedule" value="{{ schedule.pk }}" data-schedule-context data-term="{{ term.pk }}">{% endif %}
 <div class="row g-3">{% include 'includes/filter_fields.html' with fields=primary_filters %}</div>
 {% if secondary_filters %}<details class="mt-3" {% if more_filters_open %}open{% endif %}><summary>More filters</summary><div class="row g-3 mt-1">{% include 'includes/filter_fields.html' with fields=secondary_filters %}</div></details>{% endif %}
-<div class="filter-actions"><button class="btn btn-outline-primary" type="submit">Apply filters</button><a class="btn btn-outline-secondary" href="{{ reset_url }}">Clear filters</a></div>
+<div class="filter-actions"><button class="btn btn-outline-primary" type="submit">Apply filters</button><a class="btn btn-outline-secondary" href="{% guided_link reset_url %}">Clear filters</a></div>
 </form></section>
 {% if section == 'availability' %}<p class="small text-secondary">Available = recorded teaching availability. Unavailable = times the generator must avoid. Preferred = requested times, not a guaranteed class time. Unrecorded times have no availability information.</p>{% elif section == 'assignments' %}<p class="small text-secondary">Teaching share shows how much of a class belongs to this instructor. 100% means the whole class; shared teaching must total 100%.</p>{% elif section == 'monitor' %}<p class="small text-secondary">Weekly teaching hours come from assigned classes. Workload uses the configured unit weights and limits; it is separate from timetable hours. Open a faculty member for the calculation and full details.</p>{% endif %}
 <section class="surface"><p class="text-secondary">{{ page_obj.paginator.count }} {% if availability_overview %}faculty member{{ page_obj.paginator.count|pluralize }} with recorded times{% else %}record{{ page_obj.paginator.count|pluralize }} in this selection{% endif %}</p>

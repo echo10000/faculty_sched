@@ -24,6 +24,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware", "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware", "django.contrib.messages.middleware.MessageMiddleware",
     "academics.calendar.AcademicCalendarMiddleware",
+    "timetabling.workspace.SchedulingWorkspaceMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 ROOT_URLCONF = "config.urls"
@@ -33,6 +34,7 @@ TEMPLATES = [{
     "OPTIONS": {"context_processors": [
         "django.template.context_processors.request", "django.contrib.auth.context_processors.auth",
         "django.contrib.messages.context_processors.messages", "core.context_processors.navigation",
+        "timetabling.workspace.workspace_navigation",
     ]},
 }]
 WSGI_APPLICATION = "config.wsgi.application"
