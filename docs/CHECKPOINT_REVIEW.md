@@ -2,6 +2,8 @@
 
 Date: 8 October 2026
 
+This report records the original checkpoint. Subsequent fixes on a separate branch are documented in the follow-up section below.
+
 Repository: echo10000/faculty_sched
 Original branch: codex/phase-10
 Original HEAD: c6bdb0191f6f229f174263217d544a4c887737c0
@@ -195,3 +197,16 @@ Safe to preserve as a review checkpoint. The project is not ready to begin a bro
 - This new report: `docs/CHECKPOINT_REVIEW.md`
 - Expected commit scope: 105 files (70 modified tracked + 34 previously untracked project files + this review report).
 - Original application/source/test/documentation files remain byte-for-byte unchanged in the working directory.
+
+## Follow-up regression fixes (8 October 2026)
+
+Branch: `codex/checkpoint-regression-fixes`, based on checkpoint commit `e88d944`. The checkpoint branch remains unchanged.
+
+- Official schedule selections now use `timetabling.queries.scoped`, which supports `ActiveSchedule` through the existing calendar constraint and organizational scope. Blank or omitted term filters cannot widen staff access; calendar gaps yield no staff selections. Administrators retain historical access. No calendar rules or form behavior were changed.
+- The protected-assignment deletion test now checks the improved explanation of meeting-requirement and timetable dependencies. It also verifies that the assignment and meeting remain and no deletion audit event is committed. An additional test covers meeting requirements without timetable entries. The deletion implementation and message remain unchanged.
+- Navigation tests now verify staff primary links for section assignments and timetable generation, and follow the labeled secondary recommendation/history links under the native `More assignment tools` disclosure. They check administrator links and deny read-only Faculty access to these staff routes. No navigation templates or permission rules were changed.
+- Calendar regressions cover valid, blank, omitted, historical and invalid term parameters; calendar gaps; department and college boundaries; direct detail/review/history access; administrator history; and disabled-calendar behavior. Fixtures use the real validation and publication services.
+- Verification: reproduced the calendar bypass and the two outdated assertions before fixing them; 50 focused PostgreSQL tests passed in 43.773 seconds; the full PostgreSQL suite passed all 571 tests in 636.357 seconds with zero failures/errors. Default and test-settings Django checks passed. Migration drift check found no changes; Git whitespace checks passed.
+- Tests used unique disposable PostgreSQL databases, which were removed afterward. No development-data migrations or seeding were performed. Solver, workload calculations, migrations, academic rules and publication semantics remain unchanged.
+
+The three confirmed follow-up issues above are resolved on the fix branch. The workflow/navigation redesign has not started. The checkpoint's broader browser visual QA remains a separate pending activity; these fixes were verified through rendered-page and permission regression tests without frontend changes.

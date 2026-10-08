@@ -1,12 +1,16 @@
 """Scoped, reviewable workload recommendation interface."""
 
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import Client
 from django.urls import reverse
 
 from academics.models import AcademicTerm
+from accounts.models import AdminProfile
+from resources.test_frontend_design import Markup
 from .models import WorkloadRecommendationRun
 from .tests import TeachingFixture
 
@@ -131,13 +135,55 @@ class BalancingPageTests(TeachingFixture):
         self.assertContains(detail, "Workload recommendation history")
 
     def test_navigation_permissions(self):
-        page = self.client.get(self.url("balancing"))
-        self.assertContains(page, "Balance faculty workload")
-        self.assertContains(page, "Workload recommendation history")
-        self.client.force_login(self.staff)
+        for user in (self.staff, self.chair, self.college_staff):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                page = self.client.get(reverse("home"), {"academic_term": self.term.pk})
+                self.assertEqual(page.status_code, 200)
+                routes = {link["route"] for link in page.context["navigation_links"]}
+                self.assertIn("workloads:section-assignments", routes)
+                self.assertIn("timetabling:generator", routes)
+                self.assertIn("timetabling:section-generator", routes)
+                self.assertNotIn("workloads:balancing", routes)
+                self.assertNotIn("workloads:balancing-runs", routes)
+                markup = Markup(page.content.decode())
+                self.assertTrue(any(tag == "nav" and attrs.get("aria-label") == "Main navigation"
+                                    for tag, attrs in markup.elements))
+                workspace_link = next(attrs for tag, attrs in markup.elements if tag == "a"
+                                      and urlsplit(attrs.get("href", "")).path == self.url("section-assignments"))
+                self.assertEqual(workspace_link["aria-label"], "Teaching assignments")
+                workspace = self.client.get(workspace_link["href"])
+                self.assertContains(workspace, "<summary>More assignment tools</summary>", html=True)
+                links = Markup(workspace.content.decode()).elements
+                for route, label, heading in (
+                    ("balancing", "Workload recommendations", "Balance faculty workload"),
+                    ("balancing-runs", "Recommendation history", "Workload recommendation history"),
+                ):
+                    href = next(attrs["href"] for tag, attrs in links if tag == "a"
+                                and urlsplit(attrs.get("href", "")).path == self.url(route))
+                    self.assertContains(workspace, f'<a class="btn btn-outline-secondary btn-sm" href="{href}">{label}</a>', html=True)
+                    self.assertContains(self.client.get(href), f"<h1>{heading}</h1>", html=True)
+
+        self.client.force_login(self.admin)
         page = self.client.get(reverse("home"))
-        self.assertContains(page, "Balance faculty workload")
-        self.assertContains(page, "Workload recommendation history")
+        routes = {link["route"] for link in page.context["navigation_links"]}
+        self.assertIn("workloads:balancing", routes)
+        self.assertIn("workloads:balancing-runs", routes)
+
+    def test_faculty_cannot_access_staff_assignment_generation_or_recommendations(self):
+        user = get_user_model().objects.create_user(username="navigation-faculty", password="test-only-password")
+        self.faculty.user = user
+        self.faculty.save()
+        AdminProfile.objects.create(user=user, role=AdminProfile.Role.FACULTY)
+        self.client.force_login(user)
+        page = self.client.get(reverse("faculty-portal:schedule"))
+        self.assertEqual(page.status_code, 200)
+        routes = {link["route"] for link in page.context["navigation_links"]}
+        for route in ("workloads:section-assignments", "timetabling:generator",
+                      "timetabling:section-generator", "workloads:balancing", "workloads:balancing-runs"):
+            with self.subTest(route=route):
+                self.assertNotIn(route, routes)
+                self.assertEqual(self.client.get(reverse(route)).status_code, 403)
 
     def test_anonymous_redirects(self):
         self.client.logout()

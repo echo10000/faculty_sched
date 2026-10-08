@@ -9,7 +9,7 @@ from django.http import HttpResponseNotAllowed
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from accounts.permissions import department_scoped_queryset, require_access
+from accounts.permissions import require_access
 from .models import (
     ActiveSchedule, Schedule, ScheduleApprovalSnapshot, ScheduleEntry,
     ScheduleWorkflowEvent,
@@ -85,7 +85,7 @@ def my_submissions(request):
 def official_schedules(request):
     require_access(request.user, "timetabling.view_schedule")
     require_access(request.user, "academics.view_academicterm")
-    selections = department_scoped_queryset(
+    selections = scoped(
         request.user,
         ActiveSchedule.objects.select_related(
             "schedule__family", "academic_term", "department", "schedule__submitted_by",
