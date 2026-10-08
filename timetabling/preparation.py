@@ -40,6 +40,8 @@ TASKS = {
     3: (("workloads:monitor", "Review faculty teaching units", "workloads.view_workload"),
         ("timetabling:requirements", "Class scheduling requirements", "timetabling.view_offeringrequirement")),
     4: (("timetabling:meeting-requirements", "Review meeting requirements", "timetabling.view_assignmentmeetingrequirement"),
+        ("timetabling:room-eligibility", "Compare rooms for a class", "scheduling.view_room"),
+        ("timetabling:requirements", "Review class room requirements", "timetabling.view_offeringrequirement"),
         ("workloads:availability", "Faculty availability", "workloads.view_facultyavailability"),
         ("rooms:list", "Review rooms", "scheduling.view_room"),
         ("timetabling:closures", "Blocked room times", "timetabling.view_roomunavailability"),
@@ -59,6 +61,10 @@ def task_actions(user, term, department, schedule, stage):
     for route, label, permission in TASKS.get(stage, ()):
         if not user.has_perm(permission):
             continue
+        if route == "timetabling:room-eligibility":
+            from .room_eligibility import can_preview_rooms
+            if not can_preview_rooms(user):
+                continue
         if route == "workloads:section-assignments" and not all(user.has_perm(item) for item in (
                 "timetabling.view_classsection", "timetabling.view_offeringrequirement",
                 "workloads.view_subjectoffering", "academics.view_subject", "workloads.view_workload")):

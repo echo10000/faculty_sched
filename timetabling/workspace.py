@@ -60,10 +60,12 @@ def destination_stage(route, fallback):
     if namespace == "rooms":
         return 4
     if namespace == "timetabling":
+        if name == "room-eligibility":
+            return 4
         if name.startswith("sections"):
             return 2
         if name.startswith("requirements"):
-            return 3
+            return 4 if fallback == 4 else 3
         if name.startswith(("meeting-requirements", "configurations", "closures")):
             return 4
     if route in ("timetabling:generator", "timetabling:section-generator"):
@@ -99,7 +101,7 @@ def guided_url(url, workspace):
     if destination_schedule and destination_schedule != schedule.pk:
         return url
     from core.templatetags.workspace import TERM_ROUTES, DEPARTMENT_ROUTES, TEACHING_RECORD_ROUTES
-    if match.view_name in TERM_ROUTES | TEACHING_RECORD_ROUTES or match.namespace in ("timetabling", "workloads"):
+    if match.view_name in TERM_ROUTES | TEACHING_RECORD_ROUTES or match.namespace in ("timetabling", "workloads", "rooms"):
         query.setdefault("academic_term", schedule.academic_term_id)
     if match.view_name in DEPARTMENT_ROUTES or match.namespace == "timetabling":
         query.setdefault("department", schedule.department_id)

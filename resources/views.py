@@ -183,6 +183,14 @@ class ResourceDetailView(ResourceMixin, View):
             fields.append(("College", department.college))
         if self.kind == "rooms":
             fields.append(("College", obj.college or "Institution-owned"))
+            fields = [("Room specialization / type" if label == "Category" else "Seating capacity" if label == "Capacity" else label, value) for label, value in fields]
+            from timetabling.room_rules import room_resource_failures
+            failures = room_resource_failures(obj)
+            if not obj.is_active:
+                failures.append("Room is inactive")
+            if (obj.owner_department_id and (not obj.owner_department.is_active or not obj.owner_department.college.is_active)) or (obj.owner_college_id and not obj.owner_college.is_active):
+                failures.append("Owning department or college is inactive")
+            context["room_configuration_failures"] = failures
         if self.kind == "subjects":
             fields.append(("Total units", obj.total_units))
         context.update(object=obj, details=fields, kind=self.kind)

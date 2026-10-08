@@ -72,6 +72,16 @@ Pop-Location
 
 The Windows helper uses PostgreSQL 17.6 packaged by [Zonky](https://github.com/zonkyio/embedded-postgres-binaries) from Maven Central with SHA-256 verification. It is an optional isolated development helper, not a production database installer. It creates a separate cluster/database and never deletes or reinitializes an existing cluster. `--configure-env` explicitly backs up and updates `.env`; ordinary `start` leaves `.env` unchanged.
 
+## Phase 3B room requirements
+
+Stage 4 now includes **Compare rooms for a class** and class room requirements. The read-only preview compares saved class requirements against existing rooms in the viewer's authorized scope, explains mandatory type/capacity failures and preferred-type/capacity warnings, and preserves the guided term, department and schedule. Room management explains verified specialization categories and active resource checks. No subject-to-room mappings or equipment assumptions are introduced.
+
+The preview shares room-type resolution, active type/building checks and hard room-fit checks with generation. It does not choose a time, reserve a room, run the solver, or change a schedule. Occupancy and blocked times remain enforced by existing generation and meeting conflict checks. Preferred type remains subject to the configured room-fit weight; optional capacity remains a warning. Catalog fallback remains mandatory when no offering-level type overrides it.
+
+**Structural limitation requiring approval:** one `OfferingRequirement.room_type` applies to all lecture and laboratory meetings. A mandatory laboratory type also restricts lectures. Each room has one category, with exact matching and no equipment inventory or category hierarchy. The smallest separate-component enhancement would add nullable type/mandatory overrides to `AssignmentMeetingRequirement`, inherit the offering/catalog requirement when absent, and update generation inputs, conflict validation, dependency signatures and forms together. That requires a migration and an approved semantic change; Phase 3B introduces neither.
+
+Verified on **2026-10-08**: **617 PostgreSQL tests passed** (599 existing and 18 new room-eligibility regressions) in 606.837 seconds. Django system, migration-drift and Git whitespace checks passed. Browser verification at 1440px desktop and 390px mobile covered Stage 4 comparison, saved requirement links, room forms, scoped returns, keyboard table scrolling and console errors; no horizontal page overflow or console errors were found. Suitability remains separate from timetable availability, and Phase 3A teaching-load behavior remains covered by the full suite.
+
 ## Fresh installation
 
 Python 3.14.6 / Django 5.2.17 were used for final verification. Requirements include Django, psycopg2-binary, python-decouple, `ortools==9.15.6755`, ReportLab and openpyxl; Linux installs the pinned Gunicorn dependency. PostgreSQL is required; SQLite does not support the current migrations/exclusions.

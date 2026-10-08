@@ -39,6 +39,8 @@ from .presentation import meeting_filters, present_conflicts
 from .presentation import navigation_filters
 from .workspace import guided_form_class, stage_links, stage_number
 from .preparation import task_actions, readiness_findings, preparation_counts
+from .room_eligibility import can_preview_rooms
+from .room_rules import resolve_room_requirement
 
 SPECS = {
     "schedules": (Schedule, ScheduleForm, "Manage schedules"),
@@ -145,6 +147,7 @@ class TimetableMixin(ProtectedViewMixin):
         model, _, title = SPECS[self.section]
         item_name = SECTION_HELP[self.section][1].removeprefix("Add ").removeprefix("Create ")
         return {"title": title, "section": self.section, "list_url": reverse(f"timetabling:{self.section}"),
+            "can_preview_rooms": can_preview_rooms(self.request.user),
             "description": SECTION_HELP[self.section][0], "add_label": SECTION_HELP[self.section][1],
             "empty_message": SECTION_HELP[self.section][2],
             "save_label": "Save " + item_name.lower(), "edit_label": "Edit " + item_name.lower(),
@@ -218,6 +221,10 @@ class RecordList(TimetableMixin, View):
         official_ids = set(ActiveSchedule.objects.filter(
             schedule_id__in=[obj.pk for obj in page if isinstance(obj, Schedule)],
         ).values_list("schedule_id", flat=True)) if self.section == "schedules" else set()
+        active_room_types = {}
+        if self.section == "requirements":
+            from resources.models import RoomType
+            active_room_types = {item.code: item for item in RoomType.objects.filter(is_active=True)}
         for obj in page:
             owner = getattr(obj, "department", None) or getattr(obj, "college", None)
             obj.owner_label = owner.name if owner else "Institution"
@@ -242,7 +249,8 @@ class RecordList(TimetableMixin, View):
                         obj.browse_detail += f" · {obj.assignment.faculty}"
                         obj.browse_summary = f"{obj.get_meeting_type_display()}: {obj.meetings_per_week} × {obj.duration_minutes} min/week"
                     else:
-                        obj.browse_summary = f"{obj.room_type.name} ({'required' if obj.room_type_mandatory else 'preferred'})" if obj.room_type else "No room type specified"
+                        need = resolve_room_requirement(offering, obj, active_room_types)
+                        obj.browse_summary = f"{need.name} ({'required' if need.mandatory else 'preferred'})" if need.code else "No room specialization required"
                         if obj.capacity_is_hard:
                             obj.browse_summary += " · Capacity must fit the section"
             if isinstance(obj, Schedule):
@@ -278,7 +286,8 @@ class RecordForm(TimetableMixin, View):
 
     def get(self, request, pk=None):
         obj = self.get_original(request, pk)
-        form = guided_form_class(request, SPECS[self.section][1])(user=request.user, instance=obj, term=self.selected_term(request, obj))
+        term = self.selected_term(request, obj)
+        form = guided_form_class(request, SPECS[self.section][1])(user=request.user, instance=obj, term=term)
         if not obj:
             for name in ("department", "subject_offering", "assignment"):
                 raw = request.GET.get(name)
@@ -290,7 +299,13 @@ class RecordForm(TimetableMixin, View):
                         raise Http404("Invalid form context")
             if "meeting_type" in form.fields and request.GET.get("meeting_type") in ("lecture", "laboratory"):
                 form.initial["meeting_type"] = request.GET["meeting_type"]
-        return render(request, "timetabling/form.html", {**self.context(), "form": form, "editing": bool(pk)})
+        room_preview_offering = None
+        if isinstance(obj, OfferingRequirement):
+            room_preview_offering = obj.subject_offering_id
+        elif isinstance(obj, AssignmentMeetingRequirement):
+            room_preview_offering = obj.assignment.subject_offering_id
+        return render(request, "timetabling/form.html", {**self.context(), "form": form, "editing": bool(pk),
+            "term": term, "room_preview_offering": room_preview_offering})
 
     def post(self, request, pk=None):
         original = self.get_original(request, pk)

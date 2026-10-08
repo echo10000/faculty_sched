@@ -6,6 +6,8 @@ import time
 from collections.abc import Callable
 from operator import attrgetter
 
+from ..room_rules import room_fit_failures
+
 from .contracts import (
     CandidateBuildResult,
     CandidateCounts,
@@ -99,15 +101,11 @@ def _placement_is_hard_invalid(
         or end_slot > policy.slot_count
     ):
         return True
-    if (
-        demand.room_type_mandatory
-        and room.room_type_id != demand.required_room_type_id
-    ):
-        return True
-    if (
-        demand.capacity_is_hard
-        and demand.expected_size is not None
-        and room.capacity < demand.expected_size
+    if room_fit_failures(
+        room_type_id=room.room_type_id, capacity=room.capacity,
+        required_room_type_id=demand.required_room_type_id,
+        room_type_mandatory=demand.room_type_mandatory,
+        expected_size=demand.expected_size, capacity_is_hard=demand.capacity_is_hard,
     ):
         return True
     if _blocked_by_resource(

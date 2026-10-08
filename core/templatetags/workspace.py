@@ -15,6 +15,7 @@ TERM_ROUTES = {
     "timetabling:prepare", "timetabling:generator", "timetabling:section-generator", "timetabling:schedules",
     "timetabling:schedules-add", "timetabling:sections", "timetabling:requirements",
     "timetabling:meeting-requirements", "timetabling:configurations", "timetabling:closures",
+    "timetabling:room-eligibility",
     "faculty-management:detail",
     "timetabling:review-queue", "timetabling:official-schedules", "timetabling:my-schedules",
 }
@@ -26,6 +27,7 @@ DEPARTMENT_ROUTES = {
     "workloads:availability", "workloads:balancing", "timetabling:schedules",
     "timetabling:sections", "timetabling:requirements", "timetabling:meeting-requirements",
     "timetabling:configurations", "timetabling:closures", "faculty-management:list",
+    "timetabling:room-eligibility",
     "timetabling:review-queue", "timetabling:official-schedules", "timetabling:my-schedules",
 }
 MEETING_ROUTES = {

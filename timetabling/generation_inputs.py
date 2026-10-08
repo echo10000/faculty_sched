@@ -36,6 +36,7 @@ from .occupancy import authoritative_occupancy
 from .queries import authorized, entry_queryset, get_schedule, scoped
 from .signatures import dependency_signature
 from .solver.candidates import build_candidates
+from .room_rules import resolve_room_requirement, room_resource_failures, room_fit_failures
 from .solver.contracts import (
     CandidateLimits,
     FixedMeeting,
@@ -680,9 +681,7 @@ def prepare_generation_input(
     )
     eligible_rooms = []
     for room in candidate_rooms:
-        if (room.category_id and not room.category.is_active) or (
-            room.building_id and not room.building.is_active
-        ):
+        if room_resource_failures(room):
             issues.add(
                 "INACTIVE_RESOURCE",
                 "ERROR",
@@ -968,23 +967,11 @@ def prepare_generation_input(
             or offering_requirement is None
         ):
             continue
-        explicit_room_type = (
-            offering_requirement.room_type
-            if offering_requirement.room_type_id
-            else None
-        )
-        required_code = (
-            explicit_room_type.code
-            if explicit_room_type is not None
-            else offering.subject.required_room_type
-        )
-        if explicit_room_type is not None:
-            required_room_type_id = explicit_room_type.pk
-            room_type_mandatory = offering_requirement.room_type_mandatory
-        else:
-            resolved = active_room_types.get(required_code)
-            required_room_type_id = resolved.pk if resolved else None
-            room_type_mandatory = bool(required_code)
+        room_requirement = resolve_room_requirement(offering, offering_requirement, active_room_types)
+        required_code = room_requirement.code
+        required_room_type_id = room_requirement.type_id
+        room_type_mandatory = room_requirement.mandatory
+        if not offering_requirement.room_type_id:
             if required_code in inactive_room_type_codes:
                 issues.add(
                     "INACTIVE_RESOURCE",
@@ -1033,17 +1020,12 @@ def prepare_generation_input(
     )
     for demand in demands:
         feasible = any(
-            (
-                not demand.room_type_mandatory
-                or (
-                    demand.required_room_type_id is not None
-                    and room.room_type_id == demand.required_room_type_id
-                )
-            )
-            and (
-                not demand.capacity_is_hard
-                or demand.expected_size is None
-                or room.capacity >= demand.expected_size
+            (not demand.room_type_mandatory or demand.required_room_type_id is not None)
+            and not room_fit_failures(
+                room_type_id=room.room_type_id, capacity=room.capacity,
+                required_room_type_id=demand.required_room_type_id,
+                room_type_mandatory=demand.room_type_mandatory,
+                expected_size=demand.expected_size, capacity_is_hard=demand.capacity_is_hard,
             )
             for room in room_options
         )

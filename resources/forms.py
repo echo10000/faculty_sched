@@ -89,6 +89,13 @@ class RoomForm(ScopedModelForm):
     class Meta:
         model = Room
         fields = ["code", "name", "building", "category", "capacity", "college", "owner_department"]
+        labels = {"category": "Room specialization / type", "capacity": "Seating capacity", "owner_department": "Owning department (optional)"}
+        help_texts = {
+            "category": "Choose the configured category that reflects verified room equipment. A name alone does not establish suitability.",
+            "capacity": "Recorded number of seats. Scheduling excludes undersized rooms only when mandatory capacity is configured for the class.",
+            "building": "Optional. Rooms in an inactive building cannot be used by the generator.",
+            "owner_department": "Optional. Existing ownership and user scope determine which schedulers can use this room.",
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -142,7 +149,7 @@ class ResourceFilterForm(StyledFormMixin, forms.Form):
                 choices=[*YEAR_CHOICES, ("unplaced", "Year not assigned")], label="Year level")
             self.fields["department"].label = "Program / department"
         if kind == "rooms":
-            self.fields["category"] = forms.ModelChoiceField(queryset=RoomType.objects.all(), required=False, label="Room type")
+            self.fields["category"] = forms.ModelChoiceField(queryset=RoomType.objects.all(), required=False, label="Room specialization / type")
             self.fields["building"] = forms.ModelChoiceField(queryset=Building.objects.all(), required=False)
         from academics.calendar import use_current_term_field
         use_current_term_field(self, user)

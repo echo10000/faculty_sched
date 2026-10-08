@@ -7,6 +7,7 @@
 {% include 'workloads/term.html' %}
 <section class="surface surface-secondary mb-4"><h2 class="h5">Saved teaching load</h2>{% if report %}{% include 'workloads/_load_summary.html' %}{% endif %}<p class="small mt-3 mb-0"><strong>Faculty baseline applies across terms.</strong> Faculty-term overrides take precedence. These totals reflect saved values; save the form to recalculate with the updated configuration.</p></section>
 {% endif %}
+{% if singular == 'room' %}{% include 'resources/_room_help.html' %}{% endif %}
 <section class="surface form-surface"><form method="post" novalidate>{% csrf_token %}<div class="row g-3">{% include 'resources/fields.html' with resource_form=True %}</div><div class="form-actions"><button class="btn btn-primary" type="submit">Save {{ singular }}</button><a class="btn btn-outline-secondary" href="{% guided_link list_url %}">Cancel</a></div></form></section>
 {% endblock %}
 {% block extra_js %}{{ form.media }}{% endblock %}

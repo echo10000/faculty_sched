@@ -110,6 +110,15 @@ class RequirementForm(ScopedForm):
     class Meta:
         model = OfferingRequirement
         fields = ["subject_offering", "section", "room_type", "room_type_mandatory", "capacity_is_hard"]
+        labels = {"room_type": "Room specialization / type (optional)",
+                  "room_type_mandatory": "Require this specialization (mandatory)",
+                  "capacity_is_hard": "Require enough seats (mandatory capacity)"}
+        help_texts = {
+            "room_type": "Applies to both lecture and laboratory meetings. Blank inherits the subject catalog's mandatory type, if configured; otherwise any type is allowed.",
+            "room_type_mandatory": "Checked: other types are excluded. Unchecked with a type selected: preferred, and other rooms remain eligible. Room-fit weight controls its influence on generation.",
+            "capacity_is_hard": "Checked: rooms must seat the section's expected student count. Unchecked: too few seats produces a warning. A missing class size cannot be checked.",
+            "section": "The section supplies the expected class size for capacity checks.",
+        }
 
     def __init__(self, *args, user, term=None, **kwargs):
         super().__init__(*args, user=user, term=term, **kwargs)
@@ -288,4 +297,36 @@ class TimetableFilter(StyledFormMixin, forms.Form):
                 self.fields["department"].label_from_instance = lambda department: department.name
             narrow_section_choices(self.fields["section"], self.data if self.is_bound else self.initial)
         use_current_term_field(self, user)
+        self.style_fields()
+
+
+class RoomEligibilityForm(TimetableFilter):
+    subject_offering = forms.ModelChoiceField(queryset=None, required=False, label="Class to compare")
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, user=user, **kwargs)
+        self.fields = {name: self.fields[name] for name in
+                       ("academic_term", "department", "subject_offering")}
+        self.fields["academic_term"].label = "Academic term"
+        self.fields["department"].label = "Program / department"
+        terms = self.fields["academic_term"].queryset
+        if self.is_bound and not self.data.get("academic_term") and "academic_term" not in self.data:
+            self.data = self.data.copy()
+            term = accessible_terms(user, active=True).first() or terms.first()
+            self.data["academic_term"] = term.pk if term else ""
+        choices = scoped_records(user, SubjectOffering.objects.filter(is_active=True,
+            subject__is_active=True, department__is_active=True, department__college__is_active=True,
+            academic_term__is_active=True, academic_term__academic_year__is_active=True,
+            academic_term__semester__is_active=True)).select_related("subject", "academic_term", "department")
+        for name in ("academic_term", "department"):
+            raw = self.data.get(name)
+            if raw:
+                try:
+                    choices = choices.filter(**{name + "_id": int(raw)})
+                except (ValueError, TypeError):
+                    choices = choices.none()
+        self.fields["subject_offering"].queryset = choices.order_by("subject__code", "code", "pk")
+        self.fields["subject_offering"].label_from_instance = lambda obj: f"{obj.subject.code} · {obj.subject.title} · {obj.code} · {obj.department.name}"
+        self.fields["subject_offering"].empty_label = "Select a class"
+        self.fields["subject_offering"].help_text = "After changing term or department, select a class in that context and compare again."
         self.style_fields()
