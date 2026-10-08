@@ -6,6 +6,7 @@ from resources.forms import ResourceFilterForm, StyledFormMixin
 from .calculation import STATUSES
 from .models import FacultyAvailability, FacultySubjectAssignment, SubjectOffering
 from .selectors import accessible_terms, scoped_faculty, scoped_records
+from academics.calendar import use_current_term_field
 
 
 class TermForm(StyledFormMixin, forms.ModelForm):
@@ -17,6 +18,7 @@ class TermForm(StyledFormMixin, forms.ModelForm):
         if "academic_term" in self.fields:
             self.fields["academic_term"].queryset = accessible_terms(user, active=True).filter(pk=term.pk)
             self.initial["academic_term"] = term.pk
+        use_current_term_field(self, user)
         self.style_fields()
 
     def clean(self):
@@ -31,6 +33,7 @@ class AvailabilityForm(TermForm):
         model = FacultyAvailability
         fields = ["faculty", "academic_term", "day_of_week", "start_time", "end_time", "availability_type", "notes"]
         widgets = {"start_time": forms.TimeInput(format="%H:%M", attrs={"type": "time"}), "end_time": forms.TimeInput(format="%H:%M", attrs={"type": "time"})}
+        help_texts = {"availability_type": "Available: can teach. Unavailable: generator must avoid. Preferred: requested times, without a guarantee."}
 
 
 class OfferingForm(TermForm):
@@ -67,10 +70,21 @@ class AssignmentForm(TermForm):
     class Meta:
         model = FacultySubjectAssignment
         fields = ["faculty", "academic_term", "subject_offering", "share", "notes"]
+        labels = {"subject_offering": "Class to teach", "share": "Teaching share"}
+        help_texts = {"share": "Enter 1 for the whole class (100%), or 0.5 for half (50%). Shared teaching must total 1 (100%)."}
 
-    def __init__(self, *args, user, term, **kwargs):
+    def __init__(self, *args, user, term, offering=None, **kwargs):
         super().__init__(*args, user=user, term=term, **kwargs)
         self.fields["subject_offering"].queryset = scoped_records(user, SubjectOffering.objects.filter(academic_term=term, is_active=True, subject__is_active=True, department__is_active=True, department__college__is_active=True)).select_related("subject", "academic_term")
+        value = (self.data if self.is_bound else self.initial).get("subject_offering") or self.instance.subject_offering_id
+        if offering is None:
+            try:
+                offering = self.fields["subject_offering"].queryset.filter(pk=value).first() if value else None
+            except (ValueError, TypeError):
+                offering = None
+        if offering:
+            self.fields["faculty"].queryset = self.fields["faculty"].queryset.filter(home_department_id=offering.department_id)
+        self.fields["faculty"].empty_label = "Choose an instructor"
 
 
 class WorkloadFilterForm(ResourceFilterForm):
@@ -83,6 +97,8 @@ class WorkloadFilterForm(ResourceFilterForm):
     def __init__(self, *args, user, section, **kwargs):
         super().__init__(*args, user=user, kind="faculty", **kwargs)
         self.fields["academic_term"].queryset = accessible_terms(user)
+        self.fields["academic_term"].label = "Academic term"
+        self.fields["q"].label = "Find faculty or class" if section == "assignments" else "Search"
         self.fields["faculty"].queryset = scoped_faculty(user)
         self.fields.pop("status")
         if section != "availability":
@@ -94,4 +110,15 @@ class WorkloadFilterForm(ResourceFilterForm):
             self.fields.pop("academic_rank")
         if section == "offerings":
             self.fields.pop("faculty")
+            from timetabling.models import ClassSection
+            from timetabling.queries import scoped
+            from resources.browsing import YEAR_CHOICES, narrow_section_choices
+            self.fields["department"].label = "Program / department"
+            from accounts.permissions import is_system_admin
+            if not is_system_admin(user):
+                self.fields["department"].label_from_instance = lambda department: department.name
+            self.fields["year_level"] = forms.ChoiceField(required=False, choices=YEAR_CHOICES, label="Year level")
+            self.fields["section"] = forms.ModelChoiceField(required=False, queryset=scoped(user, ClassSection.objects.all()))
+            narrow_section_choices(self.fields["section"], self.data if self.is_bound else self.initial)
+        use_current_term_field(self, user)
         self.style_fields()

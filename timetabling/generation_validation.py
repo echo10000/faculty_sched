@@ -150,6 +150,9 @@ def _resolve_generation_contract(*, run, prepared, proposal_rows, user) -> _Reso
         for key in ("retained_entry_ids", "replace_entry_ids", "eligible_room_ids")
     ) or not _valid_manifest(summary.get("remaining_demands")) or summary.get("remaining_demands") != fresh_summary.get("remaining_demands"):
         conflicts.append(_conflict("PROPOSAL_DEMAND"))
+    if (type(summary) is dict and summary.get("generation_section_id") !=
+            fresh_summary.get("generation_section_id")):
+        conflicts.append(_conflict("PROPOSAL_DEMAND"))
     if run.strategy == ScheduleGenerationRun.Strategy.FILL_GAPS and prepared.replace_entry_ids:
         conflicts.append(_conflict("PROPOSAL_DEMAND"))
     manifest = tuple(tuple(item) for item in fresh_summary.get("remaining_demands", []))

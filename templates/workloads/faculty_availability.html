@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% load workspace %}
+{% block title %}Available times · {{ faculty_context }}{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">FACULTY &amp; WORKLOAD</p><h1>{{ faculty_context }}</h1><p class="text-secondary">Available teaching times for this term. Update these only when they change.</p></div><a class="btn btn-outline-secondary" href="{% workspace_url 'faculty-management:list' %}">Back to faculty</a></div>
+{% include 'includes/faculty_navigation.html' with person=faculty_context %}
+<section class="surface"><div class="d-flex justify-content-between flex-wrap gap-3 mb-3"><h2 class="h5">Weekly availability</h2>{% if can_add %}<a class="btn btn-primary" href="{{ add_url }}">Add time</a>{% endif %}</div><p class="small text-secondary">Available = can teach. Unavailable = the generator must avoid. Preferred = requested times. A day without records has no availability information.</p>
+{% if filter_form.errors %}<div class="alert alert-danger" role="alert">The selected filters are invalid. <a href="{{ reset_url }}">Reset the selection</a>.</div>{% endif %}
+<div class="table-responsive" tabindex="0" role="region" aria-label="Weekly faculty availability"><table class="table align-middle"><thead><tr><th scope="col">Day</th><th scope="col">Teaching times</th></tr></thead><tbody>
+{% for day in weekly_days %}<tr><th scope="row">{{ day.label }}</th><td>{% for entry in day.entries %}<div class="d-flex flex-wrap gap-2 align-items-center mb-2"><strong>{{ entry.start_time|time:'H:i' }}–{{ entry.end_time|time:'H:i' }}</strong><span>{{ entry.get_availability_type_display }}</span>{% if can_change %}<a class="small" href="{% workspace_url 'workloads:availability-edit' entry.pk faculty=entry.faculty_id %}">Edit time</a>{% endif %}{% if can_delete %}<a class="small text-danger" href="{% workspace_url 'workloads:availability-delete' entry.pk faculty=entry.faculty_id %}">Remove time</a>{% endif %}</div>{% empty %}<span class="text-secondary">No times recorded</span>{% endfor %}</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}

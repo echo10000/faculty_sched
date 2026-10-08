@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.urls import reverse
 
-from accounts.permissions import can_sign_in, faculty_for, is_system_admin, profile_for
+from accounts.permissions import can_sign_in, faculty_for, faculty_only, is_system_admin, profile_for
 from timetabling.generation_inputs import GENERATION_PERMISSIONS
 from .models import SystemSetting
 
@@ -20,6 +20,7 @@ def navigation(request):
         ("academics.view_subject", "Subjects", "subjects:list"),
         ("workloads.view_subjectoffering", "Classes offered", "workloads:offerings"),
         ("workloads.view_facultysubjectassignment", "Teaching assignments", "workloads:assignments"),
+        ("workloads.view_facultysubjectassignment", "Teaching assignments", "workloads:section-assignments"),
         ("scheduling.view_room", "Rooms", "rooms:list"),
         ("timetabling.view_schedule", "Manage schedules", "timetabling:schedules"),
         ("timetabling.view_classsection", "Class sections", "timetabling:sections"),
@@ -32,6 +33,10 @@ def navigation(request):
         ("academics.view_academicterm", "Academic calendar", "academic-calendar"),
     ]:
         if permission in granted:
+            if route == "workloads:section-assignments" and not all(item in granted for item in (
+                    "timetabling.view_classsection", "timetabling.view_offeringrequirement",
+                    "workloads.view_subjectoffering", "academics.view_subject", "workloads.view_workload")):
+                continue
             if permission.startswith(("workloads.", "timetabling.")) and "academics.view_academicterm" not in granted:
                 continue
             match = request.resolver_match
@@ -39,11 +44,15 @@ def navigation(request):
             if match and match.namespace == "workloads" and route.startswith("workloads:"):
                 section = route.split(":")[1]
                 active = match.url_name.startswith(section) or (section == "monitor" and match.url_name == "faculty") or (section == "availability" and match.url_name == "faculty-availability")
+                if route == "workloads:section-assignments" and not is_system_admin(user):
+                    active = active or match.url_name.startswith(("assignments", "balancing"))
             if match and match.namespace == "timetabling" and route.startswith("timetabling:"):
                 section = route.split(":")[1]
                 active = match.url_name.startswith(section) or (section == "schedules" and match.url_name in ("timetable", "conflicts", "entries-add", "entries-edit", "entries-delete", "validate", "schedule-review", "schedule-history", "unscheduled"))
             if match and route in ("faculty-management:list", "subjects:list", "rooms:list"):
                 active = active or match.namespace == route.split(":")[0]
+                if route == "faculty-management:list" and not is_system_admin(user):
+                    active = active or (match.namespace == "workloads" and match.url_name in ("faculty", "faculty-availability", "monitor", "availability"))
             if match and route in ("college-list", "department-list"):
                 active = active or match.url_name == route.replace("-list", "-detail")
             links.append({"label": label, "route": route, "active": active})
@@ -60,6 +69,9 @@ def navigation(request):
                 "balancing-runs", "balancing-run-detail", "balancing-run-accept", "balancing-run-discard"}))
         if all(permission in granted for permission in GENERATION_PERMISSIONS):
             special.append(("Generate schedule", "timetabling:generator", {"generator"}))
+            if all(permission in granted for permission in ("timetabling.view_classsection",
+                    "workloads.view_subjectoffering", "academics.view_subject")):
+                special.append(("Generate by section", "timetabling:section-generator", {"section-generator"}))
         if "timetabling.view_schedulegenerationrun" in granted and "academics.view_academicterm" in granted:
             special.append(("Generated schedule history", "timetabling:generation-runs", {
                 "generation-runs", "generation-run-detail", "generation-run-accept", "generation-run-discard"}))
@@ -82,10 +94,12 @@ def navigation(request):
         "home": "grid", "faculty-management:list": "person",
         "workloads:availability": "clock", "workloads:monitor": "chart",
         "workloads:assignments": "swap", "workloads:balancing": "chart",
+        "workloads:section-assignments": "swap",
         "workloads:balancing-runs": "history", "subjects:list": "book",
         "workloads:offerings": "layers", "timetabling:sections": "people",
         "timetabling:requirements": "checklist", "timetabling:meeting-requirements": "clock",
         "timetabling:schedules": "calendar", "timetabling:prepare": "checklist", "timetabling:generator": "spark",
+        "timetabling:section-generator": "spark",
         "timetabling:configurations": "sliders", "rooms:list": "building",
         "timetabling:closures": "block", "timetabling:generation-runs": "history",
         "timetabling:my-schedules": "calendar", "timetabling:review-queue": "review",
@@ -97,9 +111,9 @@ def navigation(request):
         link["icon"] = icons.get(link["route"], "file")
     # Group only links that passed the existing permission checks above.
     overview = ("Dashboard", "grid", ("home",))
-    faculty = ("Faculty & workload", "people", ("faculty-management:list", "workloads:availability", "workloads:assignments", "workloads:monitor", "workloads:balancing", "workloads:balancing-runs"))
+    faculty = ("Faculty & workload", "people", ("faculty-management:list", "workloads:availability", "workloads:section-assignments", "workloads:assignments", "workloads:monitor", "workloads:balancing", "workloads:balancing-runs"))
     academic = ("Academic setup", "book", ("academic-calendar", "subjects:list", "workloads:offerings", "timetabling:sections", "rooms:list", "timetabling:requirements", "timetabling:meeting-requirements", "timetabling:closures"))
-    scheduling = ("Academic scheduling", "calendar", ("timetabling:prepare", "timetabling:generator", "timetabling:schedules", "timetabling:generation-runs"))
+    scheduling = ("Academic scheduling", "calendar", ("timetabling:prepare", "timetabling:section-generator", "timetabling:generator", "timetabling:schedules", "timetabling:generation-runs"))
     review = ("Review & publication", "review", ("timetabling:my-schedules", "timetabling:review-queue", "timetabling:official-schedules"))
     reports = ("Reports", "file", ("reporting:index",))
     administration = ("Administration", "settings", ("college-list", "department-list", "timetabling:configurations"))
@@ -107,6 +121,7 @@ def navigation(request):
     if user.is_authenticated and is_system_admin(user):
         sections = (overview, academic, faculty, scheduling, review, reports, administration)
     else:
+        faculty = ("Faculty & workload", "people", ("faculty-management:list", "workloads:section-assignments"))
         sections = (overview, academic, faculty, scheduling, review, reports, administration)
     teaching = ('My teaching', 'person', ('faculty-portal:schedule', 'faculty-portal:workload'))
     sections = (*sections, teaching)
@@ -131,9 +146,15 @@ def navigation(request):
         breadcrumbs.append({"label": "Current page", "url": None})
     name = SystemSetting.objects.filter(key="institution_name").values_list("value", flat=True).first() or settings.INSTITUTION_NAME
     assigned_unit = profile.department or profile.college if profile else None
+    from academics.calendar import staff_uses_current_term, current_terms
+    current_term_only = authorized and not faculty_only(user) and staff_uses_current_term(user)
     scope = "Institution-wide" if user.is_authenticated and is_system_admin(user) else assigned_unit.name if assigned_unit else str(person) if person else "No assigned scope"
     return {
-        "workflow_groups": workflow_groups, "breadcrumbs": breadcrumbs, "institution_name": name, "navigation_links": links, "navigation_groups": navigation_groups, "access_scope": scope,
+        "workflow_groups": workflow_groups, "breadcrumbs": breadcrumbs, "institution_name": name,
+        "navigation_links": [link for group in navigation_groups for link in group["links"]],
+        "navigation_groups": navigation_groups, "access_scope": scope,
         "role_label": "Admin" if user.is_authenticated and user.is_superuser else profile.get_role_display() if profile else "Faculty" if person else "Account",
         "can_administer": authorized and user.is_staff and is_system_admin(user),
+        "current_term_only": current_term_only,
+        "staff_current_term": current_terms().select_related("academic_year", "semester").first() if current_term_only else None,
     }

@@ -1,6 +1,7 @@
     <header class="topbar">
       <button class="btn btn-outline-secondary d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar" aria-label="Open navigation">☰</button>
-      <button class="btn btn-outline-secondary btn-sm d-none d-lg-inline-flex sidebar-collapse-button" id="sidebar-collapse" type="button" aria-controls="sidebar" aria-expanded="true" title="Collapse navigation"><span aria-hidden="true">⇤</span><span class="visually-hidden">Collapse navigation</span></button>
+      <a class="btn btn-outline-secondary btn-sm flex-shrink-0" id="page-back" href="{% url 'home' %}" title="Return to dashboard"><span aria-hidden="true">←</span> Back</a>
+      <button class="btn btn-outline-secondary btn-sm d-none d-lg-inline-flex sidebar-collapse-button" id="sidebar-collapse" type="button" aria-controls="sidebar" aria-expanded="true" title="Hide sidebar"><span aria-hidden="true">⇤</span><span class="sidebar-toggle-label" aria-hidden="true">Hide sidebar</span><span class="visually-hidden">Hide sidebar</span></button>
       <div class="institution-name"><strong>NORSU</strong><span>Bayawan–Santa Catalina Campus</span></div>
       <div class="account-summary"><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{{ role_label }} · {{ access_scope }}</small></div>
       <form class="d-none d-lg-block" method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" type="submit">Sign out</button></form>

@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import FacultyWorkloadView, TeachingDeleteView, TeachingDetailView, TeachingFormView, TeachingListView
+from .assignment_views import SectionAssignmentsView
 from .balancing_views import (
     BalancingAcceptView, BalancingDiscardView, BalancingRequestView,
     BalancingRunDetailView, BalancingRunListView,
@@ -7,6 +8,7 @@ from .balancing_views import (
 
 app_name = "workloads"
 urlpatterns = [
+    path("assignments/by-section/", SectionAssignmentsView.as_view(), name="section-assignments"),
     path("", TeachingListView.as_view(), name="monitor"),
     path("balancing/", BalancingRequestView.as_view(), name="balancing"),
     path("balancing/runs/", BalancingRunListView.as_view(), name="balancing-runs"),

@@ -6,6 +6,106 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db.models.functions import Lower
 from decimal import Decimal
+from datetime import date, timedelta
+import calendar as calendar_names
+from django.core.validators import MaxValueValidator
+
+
+MONTHS = [(month, calendar_names.month_name[month]) for month in range(1, 13)]
+
+
+class AcademicCalendar(TrackedModel):
+    name = models.CharField(max_length=100, default="Institution academic calendar")
+    is_enabled = models.BooleanField(default=True, help_text="Automatically create calendar periods and use the current term for staff.")
+    year_start_month = models.PositiveSmallIntegerField(choices=MONTHS, default=6)
+    year_start_day = models.PositiveSmallIntegerField(default=1, validators=[MinValueValidator(1), MaxValueValidator(31)])
+    last_rollover_date = models.DateField(null=True, blank=True, editable=False)
+    academic_years = models.ManyToManyField("AcademicYear", blank=True, related_name="automatic_calendars", editable=False)
+
+    class Meta:
+        verbose_name = "automatic academic calendar"
+        constraints = [models.UniqueConstraint(fields=["is_enabled"], condition=models.Q(is_enabled=True), name="one_enabled_academic_calendar")]
+
+    def clean(self):
+        super().clean()
+        try:
+            date(2001, self.year_start_month, self.year_start_day)
+        except (ValueError, TypeError):
+            raise ValidationError({"year_start_day": "Enter a date that exists every year."})
+        if self.pk:
+            ranges = [pattern.dates_for_year(2001, calendar=self) for pattern in self.patterns.all()]
+            for index, (start, end) in enumerate(ranges):
+                if any(start <= other_end and end >= other_start for other_start, other_end in ranges[index + 1:]):
+                    raise ValidationError("Term dates must not overlap. Edit the term patterns first.")
+
+    def save(self, *args, **kwargs):
+        self.last_rollover_date = None
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def year_dates(self, start_year):
+        start = date(start_year, self.year_start_month, self.year_start_day)
+        end = date(start_year + 1, self.year_start_month, self.year_start_day) - timedelta(days=1)
+        return start, end
+
+    def __str__(self):
+        return self.name
+
+
+class CalendarTermPattern(TrackedModel):
+    calendar = models.ForeignKey(AcademicCalendar, on_delete=models.CASCADE, related_name="patterns")
+    semester = models.ForeignKey("Semester", on_delete=models.PROTECT)
+    code = models.CharField(max_length=30, help_text="Code used for newly created academic terms.")
+    start_month = models.PositiveSmallIntegerField(choices=MONTHS)
+    start_day = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(31)])
+    end_month = models.PositiveSmallIntegerField(choices=MONTHS)
+    end_day = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(31)])
+
+    class Meta:
+        ordering = ["pk"]
+        constraints = [models.UniqueConstraint(fields=["calendar", "semester"], name="calendar_semester_pattern_unique"),
+                       models.UniqueConstraint(fields=["calendar", "code"], name="calendar_term_code_unique")]
+
+    def dates_for_year(self, start_year, *, calendar=None):
+        calendar = calendar or self.calendar
+        year_start = (calendar.year_start_month, calendar.year_start_day)
+        try:
+            start = date(start_year + ((self.start_month, self.start_day) < year_start), self.start_month, self.start_day)
+            end = date(start_year + ((self.end_month, self.end_day) < year_start), self.end_month, self.end_day)
+        except (ValueError, TypeError):
+            raise ValidationError("Term month and day must describe a date that exists every year.")
+        if end < start:
+            raise ValidationError("Term end must follow its start within the academic year.")
+        return start, end
+
+    def clean(self):
+        super().clean()
+        if not self.calendar_id:
+            return
+        start, end = self.dates_for_year(2001)
+        if not self.semester.is_active:
+            raise ValidationError({"semester": "Choose an active semester type."})
+        if getattr(self, "_validated_with_calendar_formset", False):
+            return
+        for other in self.calendar.patterns.exclude(pk=self.pk):
+            other_start, other_end = other.dates_for_year(2001)
+            if start <= other_end and end >= other_start:
+                raise ValidationError("Term dates must not overlap another pattern.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        result = super().save(*args, **kwargs)
+        AcademicCalendar.objects.filter(pk=self.calendar_id).update(last_rollover_date=None)
+        return result
+
+    def delete(self, *args, **kwargs):
+        calendar_id = self.calendar_id
+        result = super().delete(*args, **kwargs)
+        AcademicCalendar.objects.filter(pk=calendar_id).update(last_rollover_date=None)
+        return result
+
+    def __str__(self):
+        return f"{self.semester}: {self.code}"
 
 
 class AcademicYear(TrackedModel):

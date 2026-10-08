@@ -23,6 +23,7 @@ urlpatterns = [
     path("schedules/<int:schedule_id>/entries/<int:pk>/delete/", views.EntryDelete.as_view(), name="entries-delete"),
     path("closures/<int:pk>/delete/", views.ClosureDelete.as_view(), name="closures-delete"),
     path("generator/", views.GeneratorView.as_view(), name="generator"),
+    path("by-section/", views.SectionGeneratorView.as_view(), name="section-generator"),
     path("generation-runs/", views.GenerationRunList.as_view(), name="generation-runs"),
     path("generation-runs/<int:pk>/", views.GenerationRunDetail.as_view(), name="generation-run-detail"),
     path("generation-runs/<int:pk>/accept/", views.GenerationAcceptView.as_view(), name="generation-run-accept"),

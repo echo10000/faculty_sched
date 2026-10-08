@@ -22,6 +22,8 @@ from .balancing_signature import compute_balancing_source_signature
 from .calculation import calculate_workload, resolve_policy
 from .models import FacultySubjectAssignment, SubjectOffering, WorkloadRecommendationRun
 from .operations import check_share
+from .selectors import accessible_terms
+from academics.calendar import constrain_term_queryset
 
 
 class BalancingError(Exception):
@@ -30,11 +32,11 @@ class BalancingError(Exception):
 
 def scoped_balancing_runs(user):
     require_access(user, "workloads.view_workloadrecommendationrun")
-    return department_scoped_queryset(
+    return constrain_term_queryset(user, department_scoped_queryset(
         user, WorkloadRecommendationRun.objects.select_related(
             "academic_term", "department", "initiated_by", "accepted_by",
         ),
-    )
+    ))
 
 
 def scoped_balancing_run(user, pk):
@@ -42,7 +44,7 @@ def scoped_balancing_run(user, pk):
         return get_object_or_404(scoped_balancing_runs(user), pk=pk)
     require_access(user, "workloads.generate_workloadrecommendation")
     return get_object_or_404(
-        department_scoped_queryset(user, WorkloadRecommendationRun.objects.all())
+        constrain_term_queryset(user, department_scoped_queryset(user, WorkloadRecommendationRun.objects.all()))
         .filter(initiated_by=user), pk=pk,
     )
 
@@ -56,8 +58,7 @@ def _scope(user, academic_term, department):
         department_scoped_queryset(user, Department.objects.select_related("college"), "pk"),
         pk=department_id,
     )
-    from academics.models import AcademicTerm
-    term = get_object_or_404(AcademicTerm.objects.select_related("academic_year", "semester"), pk=term_id)
+    term = get_object_or_404(accessible_terms(user), pk=term_id)
     return term, scoped_department
 
 

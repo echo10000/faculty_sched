@@ -1,7 +1,7 @@
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
-from django.db.models import Q
+from django.db.models import F, OuterRef, Q, Subquery
 from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -10,12 +10,14 @@ from django.views.generic import ListView
 
 from academics.models import AcademicTerm, Subject
 from core.views import ProtectedViewMixin
+from accounts.permissions import is_system_admin
 from faculty.models import Faculty
 from scheduling.models import Room
 from workloads.services import resolve_capacity
 from .forms import FacultyForm, ResourceFilterForm, RoomForm, SubjectForm
 from .selectors import scope_resources
 from .services import permission_for, save_resource, set_resource_status
+from .browsing import academic_group_label
 
 
 SPECS = {
@@ -55,9 +57,18 @@ class ResourceListView(ResourceMixin, ListView):
     template_name = "resources/list.html"
     paginate_by = 20
 
+    def get_template_names(self):
+        if self.kind == "subjects":
+            return ["resources/subject_directory.html"]
+        if self.kind == "faculty" and not is_system_admin(self.request.user):
+            return ["workloads/faculty_directory.html"]
+        return super().get_template_names()
+
     def get_queryset(self):
         qs = self.queryset()
         self.filter_form = ResourceFilterForm(self.request.GET, user=self.request.user, kind=self.kind)
+        if self.kind in ("faculty", "subjects") and not is_system_admin(self.request.user):
+            self.filter_form.fields["department"].label_from_instance = lambda department: department.name
         if not self.filter_form.is_valid():
             return qs.none()
         data = self.filter_form.cleaned_data
@@ -82,6 +93,24 @@ class ResourceListView(ResourceMixin, ListView):
         for field in ("employment_category", "academic_rank", "category", "building"):
             if data.get(field):
                 qs = qs.filter(**{field: data[field]})
+        self.subject_term = None
+        self.subject_placements = None
+        if self.kind == "subjects" and "academic_term" in self.filter_form.fields:
+            from workloads.selectors import accessible_terms
+            from timetabling.models import OfferingRequirement
+            from timetabling.queries import scoped
+            self.subject_term = data.get("academic_term") or accessible_terms(self.request.user, active=True).first()
+            self.subject_placements = scoped(self.request.user, OfferingRequirement.objects.filter(
+                subject_offering__academic_term=self.subject_term, section__year_level__isnull=False,
+            ))
+            placement = self.subject_placements.filter(subject_offering__subject_id=OuterRef("pk"))
+            qs = qs.annotate(browse_year=Subquery(placement.order_by("section__year_level").values("section__year_level")[:1]))
+            year = data.get("year_level")
+            if year == "unplaced":
+                qs = qs.filter(browse_year__isnull=True)
+            elif year:
+                qs = qs.filter(pk__in=self.subject_placements.filter(section__year_level=int(year)).values("subject_offering__subject_id"))
+            return qs.order_by("owning_department__college__name", "owning_department__name", F("browse_year").asc(nulls_last=True), "code", "pk")
         return qs.order_by(*self.model._meta.ordering, "pk")
 
     def get_context_data(self, **kwargs):
@@ -90,6 +119,37 @@ class ResourceListView(ResourceMixin, ListView):
         query = self.request.GET.copy()
         query.pop("page", None)
         context.update(filter_form=self.filter_form, page_query=query.urlencode(), kind=self.kind)
+        if self.kind == "subjects":
+            context["subject_filters_active"] = any(self.request.GET.get(name) for name in
+                ("q", "college", "department", "year_level", "status"))
+            context["primary_filters"] = [field for field in self.filter_form if field.name != "status"
+                and (field.name != "college" or is_system_admin(self.request.user) or field.errors)]
+            context["secondary_filters"] = [self.filter_form["status"]]
+            context["more_filters_open"] = bool(self.filter_form["status"].value() or self.filter_form["status"].errors)
+            context["subject_term"] = getattr(self, "subject_term", None)
+            context["term"] = context["subject_term"]
+            if context["subject_term"]:
+                query["academic_term"] = context["subject_term"].pk
+                context["page_query"] = query.urlencode()
+            year_filter = self.filter_form.cleaned_data.get("year_level", "")
+            context["browse_year_filter"] = year_filter if year_filter != "unplaced" else ""
+            people = list(context["object_list"])
+            years = {}
+            placements = getattr(self, "subject_placements", None)
+            if placements is not None:
+                for subject_id, year in placements.filter(subject_offering__subject_id__in=[obj.pk for obj in people]).values_list(
+                        "subject_offering__subject_id", "section__year_level").distinct():
+                    years.setdefault(subject_id, set()).add(year)
+            for obj in people:
+                obj.browse_group = academic_group_label(self.request.user, obj.owning_department, years.get(obj.pk, ()))
+                if "year_level" not in self.filter_form.fields:
+                    obj.browse_group = obj.owning_department.name if obj.owning_department else "No program assigned"
+            context["object_list"] = people
+        if self.kind == "faculty":
+            context["primary_filters"] = [field for field in self.filter_form if field.name in ("q", "department", "academic_term")]
+            context["secondary_filters"] = [field for field in self.filter_form if field.name not in ("q", "department", "academic_term")
+                                             and (field.name != "college" or field.errors)]
+            context["more_filters_open"] = any(field.value() or field.errors for field in context["secondary_filters"])
         if self.kind == "faculty" and "academic_term" in self.filter_form.fields and self.filter_form.is_valid():
             from workloads.selectors import accessible_terms, scoped_records
             from workloads.calculation import calculate_workloads
@@ -124,7 +184,7 @@ class ResourceDetailView(ResourceMixin, View):
         if self.kind == "subjects":
             fields.append(("Total units", obj.total_units))
         context.update(object=obj, details=fields, kind=self.kind)
-        if self.kind == "faculty" and request.user.has_perm("academics.view_academicterm"):
+        if self.kind in ("faculty", "rooms") and request.user.has_perm("academics.view_academicterm"):
             from workloads.selectors import accessible_terms
             raw_term = request.GET.get("academic_term")
             if raw_term:
@@ -132,6 +192,9 @@ class ResourceDetailView(ResourceMixin, View):
                     context["term"] = get_object_or_404(accessible_terms(request.user), pk=int(raw_term))
                 except ValueError:
                     return HttpResponseBadRequest("Select a valid academic term.")
+            else:
+                context["term"] = accessible_terms(request.user, active=True).first() or accessible_terms(request.user).first()
+        if self.kind == "faculty" and request.user.has_perm("academics.view_academicterm"):
             context["show_capacities"] = True
             capacities = []
             for term in AcademicTerm.objects.filter(is_active=True).select_related("academic_year", "semester"):
@@ -141,8 +204,15 @@ class ResourceDetailView(ResourceMixin, View):
                     capacities.append({"term": term, "error": "; ".join(error.messages)})
             context["capacities"] = capacities
         if self.kind == "faculty":
-            from reporting.services import available_catalog
-            context["faculty_schedule_report"] = any(item["key"] == "faculty-schedule" for item in available_catalog(request.user))
+            if request.GET.get("schedule"):
+                from timetabling.queries import get_schedule
+                from django.http import Http404
+                try:
+                    context["schedule"] = get_schedule(request.user, int(request.GET["schedule"]))
+                except (ValueError, TypeError):
+                    raise Http404("Invalid schedule")
+                if context["schedule"].academic_term_id != getattr(context.get("term"), "pk", None):
+                    raise Http404("Schedule does not belong to the selected term")
             tab = request.GET.get("tab", "overview")
             if tab not in ("overview", "qualifications"):
                 return HttpResponseBadRequest("Choose a valid faculty tab.")

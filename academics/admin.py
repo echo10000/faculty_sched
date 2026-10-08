@@ -3,6 +3,56 @@ from django.contrib import admin
 from .models import Curriculum, CurriculumSubject, IrregularEnrollment, Student, Subject
 from .models import AcademicYear, AcademicTerm, Semester
 from core.admin_mixins import AuditedAdmin
+from django.forms.models import BaseInlineFormSet
+from django import forms
+from django.core.exceptions import ValidationError
+from .models import AcademicCalendar, CalendarTermPattern
+
+
+class CalendarPatternForm(forms.ModelForm):
+    class Meta:
+        model = CalendarTermPattern
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # The formset compares all edited rows together, including new/deleted rows.
+        self.instance._validated_with_calendar_formset = True
+
+
+class CalendarPatternFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        ranges = []
+        for form in self.forms:
+            if not form.cleaned_data or form.cleaned_data.get("DELETE"):
+                continue
+            start, end = form.instance.dates_for_year(2001, calendar=self.instance)
+            if any(start <= other_end and end >= other_start for other_start, other_end in ranges):
+                raise ValidationError("Term dates must not overlap.")
+            ranges.append((start, end))
+        if self.instance.is_enabled and not ranges:
+            raise ValidationError("Add at least one term pattern before enabling automatic creation.")
+
+
+class CalendarTermPatternInline(admin.TabularInline):
+    model = CalendarTermPattern
+    form = CalendarPatternForm
+    formset = CalendarPatternFormSet
+    fields = ("semester", "code", "start_month", "start_day", "end_month", "end_day")
+    extra = 0
+
+
+@admin.register(AcademicCalendar)
+class AcademicCalendarAdmin(AuditedAdmin):
+    list_display = ("name", "is_enabled", "year_start_month", "year_start_day", "last_rollover_date")
+    readonly_fields = (*AuditedAdmin.readonly_fields, "last_rollover_date")
+    inlines = (CalendarTermPatternInline,)
+    fieldsets = ((None, {"fields": ("name", "is_enabled", "year_start_month", "year_start_day"),
+        "description": "The academic year ends the day before the next year's start. Each enabled calendar creates the current and next year on the first signed-in visit each day. Staff use the term whose dates include today. Date changes apply to newly created periods; edit existing academic years and terms separately. Students and teaching assignments are not copied."}),
+        ("Creation history", {"fields": readonly_fields, "classes": ("collapse",)}))
 
 
 @admin.register(AcademicYear)

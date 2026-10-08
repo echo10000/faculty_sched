@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -19,11 +19,19 @@ from .services import available_catalog, build_report
 @never_cache
 def index(request):
     require_access(request.user, "academics.view_academicterm")
+    from workloads.selectors import accessible_terms
+    term = None
+    if request.GET.get("term"):
+        try:
+            term = get_object_or_404(accessible_terms(request.user), pk=int(request.GET["term"]))
+        except (ValueError, TypeError):
+            raise Http404("Invalid academic term")
+    suffix = "?" + urlencode({"term": term.pk}) if term else ""
     catalog = [
-        {**item, "url": reverse("reporting:detail", args=[item["key"]])}
+        {**item, "url": reverse("reporting:detail", args=[item["key"]]) + suffix}
         for item in available_catalog(request.user)
     ]
-    return render(request, "reporting/index.html", {"title": "Reports", "catalog": catalog})
+    return render(request, "reporting/index.html", {"title": "Reports", "catalog": catalog, "term": term})
 
 
 def _prepared(request, kind):
@@ -43,10 +51,19 @@ def _prepared(request, kind):
 @never_cache
 def detail(request, kind):
     report, filters, context = _prepared(request, kind)
+    from workloads.selectors import accessible_terms
+    term_filter = next((item for item in filters if item["name"] == "term"), None)
+    term = accessible_terms(request.user).filter(pk=term_filter["selected"]).first() if term_filter and term_filter["selected"] else None
+    from timetabling.models import Schedule
+    from timetabling.queries import scoped
+    from workloads.selectors import scoped_faculty
+    selections = {item["name"]: item["selected"] for item in filters if item["selected"]}
+    schedule = scoped(request.user, Schedule.objects.select_related("academic_term", "department")).filter(pk=selections["schedule"]).first() if selections.get("schedule") else None
+    person = scoped_faculty(request.user).filter(pk=selections["faculty"]).first() if selections.get("faculty") else None
     query = request.GET.urlencode()
     suffix = f"?{query}" if query else ""
     return render(request, "reporting/detail.html", {
-        "report": report, "filters": filters,
+        "report": report, "filters": filters, "term": term, "schedule": schedule, "selected_faculty": person,
         "export_links": [
             {"label": label, "url": reverse("reporting:export", args=[kind, fmt]) + suffix}
             for fmt, label in (("pdf", "Export PDF"), ("xlsx", "Export XLSX"), ("csv", "Export CSV"))

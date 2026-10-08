@@ -78,8 +78,8 @@ class DashboardView(ProtectedViewMixin, TemplateView):
                 actions.append({"label": "Manage access and setup", "route": "admin:index", "description": "Open authorized system administration."})
         else:
             for permission, label, route, description in (
-                ("workloads.view_facultysubjectassignment", "Teaching assignments", "workloads:assignments", "Review authorized class assignments."),
-                ("workloads.view_workload", "Faculty workload", "workloads:monitor", "Review authorized teaching loads."),
+                ("workloads.view_facultysubjectassignment", "Teaching assignments", "workloads:section-assignments", "Choose a section and check its instructors' workload."),
+                ("faculty.view_faculty", "Faculty", "faculty-management:list", "Review teaching summaries and available times."),
                 ("timetabling.view_schedule", "Prepare schedule", "timetabling:prepare", "Follow your authorized scheduling steps."),
                 ("timetabling.review_schedule", "Schedules for review", "timetabling:review-queue", "Review authorized submissions."),
             ):
@@ -121,8 +121,9 @@ class DashboardView(ProtectedViewMixin, TemplateView):
         context["college_count"] = scoped_colleges(user, College.objects.all()).count() if user.has_perm("core.view_college") else None
         context["department_count"] = department_scoped_queryset(user, Department.objects.all(), "pk").count() if user.has_perm("core.view_department") else None
         if user.has_perm("academics.view_academicterm"):
-            context["terms"] = AcademicTerm.objects.filter(is_active=True).select_related("academic_year", "semester")[:5]
-            context["term_count"] = AcademicTerm.objects.filter(is_active=True).count()
+            from workloads.selectors import accessible_terms
+            context["terms"] = accessible_terms(user, active=True)[:5]
+            context["term_count"] = accessible_terms(user, active=True).count()
         return context
 
 
@@ -189,4 +190,5 @@ class CalendarView(ProtectedViewMixin, ListView):
 
     def get_queryset(self):
         # Academic calendars are intentionally institution-wide reference data.
-        return super().get_queryset().select_related("academic_year", "semester")
+        from workloads.selectors import accessible_terms
+        return accessible_terms(self.request.user)

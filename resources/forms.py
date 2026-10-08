@@ -56,6 +56,10 @@ class FacultyForm(ScopedModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["employment_category"].required = True
+        if not is_system_admin(self.user):
+            # Exclude these from ModelForm writes, including forged POST values.
+            self.fields.pop("recommended_load")
+            self.fields.pop("maximum_load")
 
 
 class SubjectForm(ScopedModelForm):
@@ -112,7 +116,23 @@ class ResourceFilterForm(StyledFormMixin, forms.Form):
                 self.fields["academic_term"] = forms.ModelChoiceField(queryset=accessible_terms(user), required=False, label="Workload term")
             self.fields["employment_category"] = forms.ModelChoiceField(queryset=EmploymentCategory.objects.all(), required=False)
             self.fields["academic_rank"] = forms.ModelChoiceField(queryset=AcademicRank.objects.all(), required=False)
+        if kind == "subjects" and all(user.has_perm(permission) for permission in (
+                "academics.view_academicterm", "workloads.view_subjectoffering",
+                "timetabling.view_offeringrequirement", "timetabling.view_classsection")):
+            from workloads.selectors import accessible_terms
+            from .browsing import YEAR_CHOICES
+            self.fields["academic_term"] = forms.ModelChoiceField(
+                queryset=accessible_terms(user), required=False, label="Academic term")
+            if self.is_bound and "academic_term" not in self.data:
+                term = accessible_terms(user, active=True).first()
+                self.data = self.data.copy()
+                self.data["academic_term"] = term.pk if term else ""
+            self.fields["year_level"] = forms.ChoiceField(required=False,
+                choices=[*YEAR_CHOICES, ("unplaced", "Year not assigned")], label="Year level")
+            self.fields["department"].label = "Program / department"
         if kind == "rooms":
             self.fields["category"] = forms.ModelChoiceField(queryset=RoomType.objects.all(), required=False, label="Room type")
             self.fields["building"] = forms.ModelChoiceField(queryset=Building.objects.all(), required=False)
+        from academics.calendar import use_current_term_field
+        use_current_term_field(self, user)
         self.style_fields()

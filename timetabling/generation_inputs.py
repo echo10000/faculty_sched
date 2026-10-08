@@ -26,6 +26,7 @@ from .conflicts import validate_candidate_schedule
 from .intervals import duration_minutes, terms_share_weekday
 from .models import (
     AssignmentMeetingRequirement,
+    ClassSection,
     OfferingRequirement,
     RoomUnavailability,
     ScheduleGenerationRun,
@@ -513,6 +514,7 @@ def prepare_generation_input(
     schedule_id: int,
     strategy: str,
     overrides: GenerationOverrides,
+    section_id: int | None = None,
 ) -> PreparedGeneration:
     if strategy not in ScheduleGenerationRun.Strategy.values:
         raise ValueError("Unknown timetable generation strategy.")
@@ -521,6 +523,12 @@ def prepare_generation_input(
 
     require_generation_access(user, strategy)
     schedule = get_schedule(user, schedule_id, action="change")
+    if section_id is not None:
+        authorized(user, ClassSection)
+        get_object_or_404(scoped(user, ClassSection.objects.filter(
+            academic_term_id=schedule.academic_term_id,
+            department_id=schedule.department_id, is_active=True,
+        )), pk=section_id)
     issues = _Issues()
     _schedule_readiness(schedule, issues)
 
@@ -566,6 +574,8 @@ def prepare_generation_input(
             configuration_snapshot = _configuration_snapshot(
                 effective_configuration
             )
+            if section_id is not None:
+                configuration_snapshot["generation_section_id"] = section_id
             policy = _policy_for(effective_configuration, schedule.academic_term)
 
     offerings = list(
@@ -575,6 +585,7 @@ def prepare_generation_input(
                 academic_term_id=schedule.academic_term_id,
                 department_id=schedule.department_id,
                 is_active=True,
+                **({"scheduling_requirement__section_id": section_id} if section_id is not None else {}),
             ),
         )
         .select_related(
@@ -586,6 +597,9 @@ def prepare_generation_input(
         .order_by("pk")
     )
     offering_ids = tuple(offering.pk for offering in offerings)
+    if section_id is not None and not offerings:
+        issues.add("SECTION_EMPTY", "ERROR", "This section has no active classes to schedule.",
+                   ("section", section_id))
 
     assignments = list(
         scoped_records(
@@ -705,8 +719,15 @@ def prepare_generation_input(
         retained_entries = current_entries
         replace_entries = []
     else:
-        retained_entries = [entry for entry in current_entries if entry.is_locked]
-        replace_entries = [entry for entry in current_entries if not entry.is_locked]
+        selected_offering_ids = {requirement.subject_offering_id for requirement in
+                                 offering_requirements if section_id is None or
+                                 requirement.section_id == section_id}
+        retained_entries = [entry for entry in current_entries if entry.is_locked or
+                            (section_id is not None and
+                             entry.assignment.subject_offering_id not in selected_offering_ids)]
+        replace_entries = [entry for entry in current_entries if not entry.is_locked and
+                           (section_id is None or
+                            entry.assignment.subject_offering_id in selected_offering_ids)]
     retained_entry_ids = tuple(entry.pk for entry in retained_entries)
     replace_entry_ids = tuple(entry.pk for entry in replace_entries)
 
@@ -858,6 +879,7 @@ def prepare_generation_input(
             retained_entries=retained_entries,
             proposed_entries=(),
             user=user,
+            section_id=section_id,
         )
         if retained_entries
         else ()
@@ -876,6 +898,9 @@ def prepare_generation_input(
     consumed = defaultdict(int)
     if policy is not None:
         for entry in retained_entries:
+            if section_id is not None and entry.assignment.subject_offering_id not in offering_ids:
+                fixed_meetings.append(_peer_fixed_meeting(entry, policy))
+                continue
             requirement = valid_requirements.get(
                 (entry.assignment_id, entry.meeting_type)
             )
@@ -934,6 +959,9 @@ def prepare_generation_input(
     for assignment in assignments:
         offering = assignment.subject_offering
         offering_requirement = offering_requirement_by_offering.get(offering.pk)
+        if section_id is not None and (offering_requirement is None or
+                                       offering_requirement.section_id != section_id):
+            continue
         if (
             not assignment_validity.get(assignment.pk)
             or not offering_validity.get(offering.pk)
@@ -1097,6 +1125,8 @@ def prepare_generation_input(
             "current_entry_count": len(current_entries),
         }
     )
+    if section_id is not None:
+        summary["generation_section_id"] = section_id
 
     solver_input = None
     if not issues.has_errors() and policy is not None:

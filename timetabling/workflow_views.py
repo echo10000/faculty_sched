@@ -15,6 +15,8 @@ from .models import (
     ScheduleWorkflowEvent,
 )
 from .queries import authorized, entry_queryset, get_schedule, scoped
+from .presentation import navigation_filters, present_conflicts
+from .forms import TimetableFilter
 from .workflow import (
     finalize_schedule, revise_approved_schedule,
 )
@@ -25,6 +27,20 @@ def _visible_schedules(user):
     return scoped(user, Schedule.objects.select_related(
         "academic_term", "department", "family", "submitted_by", "created_by",
     ))
+
+
+def _workflow_filters(request, records):
+    form = TimetableFilter(request.GET, user=request.user)
+    form.fields = {name: form.fields[name] for name in ("academic_term", "department")}
+    if not form.is_valid():
+        records = records.none()
+    else:
+        for name in form.fields:
+            if form.cleaned_data.get(name):
+                records = records.filter(**{name: form.cleaned_data[name]})
+    query = request.GET.copy()
+    query.pop("page", None)
+    return records, {"filter_form": form, "term": form.cleaned_data.get("academic_term"), "page_query": query.urlencode()}
 
 
 def _actions(user, schedule):
@@ -44,9 +60,10 @@ def review_queue(request):
     schedules = _visible_schedules(request.user).filter(status__in=("draft", "validated", "needs_revision", "under_review")).order_by(
         "submitted_at", "pk",
     )
+    schedules, context = _workflow_filters(request, schedules)
     page = Paginator(schedules, 20).get_page(request.GET.get("page"))
     return render(request, "timetabling/workflow_list.html", {
-        "title": "Schedules to finalize", "page_obj": page, "kind": "review",
+        **context, "title": "Schedules to finalize", "page_obj": page, "kind": "review",
     })
 
 
@@ -57,9 +74,10 @@ def my_submissions(request):
         Q(submitted_by=request.user) | Q(created_by=request.user)
         | Q(approval_snapshot__approved_by=request.user),
     ).distinct().order_by("-submitted_at", "-pk")
+    schedules, context = _workflow_filters(request, schedules)
     page = Paginator(schedules, 20).get_page(request.GET.get("page"))
     return render(request, "timetabling/workflow_list.html", {
-        "title": "My Scheduling Work", "page_obj": page, "kind": "mine",
+        **context, "title": "My Scheduling Work", "page_obj": page, "kind": "mine",
     })
 
 
@@ -74,9 +92,10 @@ def official_schedules(request):
             "schedule__approval_snapshot__approved_by",
         ),
     ).order_by("-academic_term__start_date", "department__name")
+    selections, context = _workflow_filters(request, selections)
     page = Paginator(selections, 20).get_page(request.GET.get("page"))
     return render(request, "timetabling/workflow_list.html", {
-        "title": "Official schedules", "page_obj": page, "kind": "official",
+        **context, "title": "Official schedules", "page_obj": page, "kind": "official",
     })
 
 
@@ -96,6 +115,7 @@ def schedule_history(request, pk):
     return render(request, "timetabling/workflow_history.html", {
         "schedule": schedule, "versions": versions, "events": events,
         "active_schedule_id": active.schedule_id if active else None,
+        "meeting_filters": navigation_filters(request) if request.user.has_perm("timetabling.view_scheduleentry") else {},
     })
 
 
@@ -122,7 +142,9 @@ def schedule_review(request, pk):
     snapshot = ScheduleApprovalSnapshot.objects.filter(schedule=schedule).first()
     frozen_entries = snapshot.payload.get("entries", []) if snapshot and isinstance(snapshot.payload, dict) else []
     return render(request, "timetabling/workflow_review.html", {
-        "schedule": schedule, "entries": entries, "conflicts": conflicts,
+        "schedule": schedule, "entries": entries, "conflicts": present_conflicts(request.user, conflicts, navigation_filters(request)),
+        "meeting_filters": navigation_filters(request),
+        "conflict_count": sum(item.severity in ("ERROR", "WARNING") for item in conflicts),
         "warning_codes": warning_codes, "events": events,
         "snapshot": snapshot, "frozen_entries": frozen_entries,
         "active_schedule_id": active.schedule_id if active else None,

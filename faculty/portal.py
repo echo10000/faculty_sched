@@ -66,7 +66,14 @@ def teaching_records(user, term_id=None):
 @never_cache
 def schedule(request, kind='schedule'):
     context = teaching_records(request.user, request.GET.get('term'))
-    return render(request, 'faculty/teaching_portal.html', {**context, 'kind': kind})
+    from timetabling.timetable import week_columns
+    view_mode = request.GET.get('view', 'calendar')
+    if view_mode not in ('calendar', 'table'):
+        view_mode = 'calendar'
+    week = week_columns([SimpleNamespace(**row) for row in context['entries']])
+    return render(request, 'faculty/teaching_portal.html', {
+        **context, 'kind': kind, 'view_mode': view_mode, 'week': week,
+    })
 
 
 @login_required

@@ -82,4 +82,5 @@ class ReviewSeedTests(TestCase):
         self.assertFalse(ActiveSchedule.objects.exists())
         self.assertFalse(ScheduleApprovalSnapshot.objects.exists())
         self.assertFalse(OfficialResourceBooking.objects.exists())
-        self.assertTrue(get_user_model().objects.filter(username="dev.chair").exists())
+        self.assertTrue(get_user_model().objects.filter(username="dev.staff").exists())
+        self.assertFalse(get_user_model().objects.filter(username__in=("dev.chair", "dev.dean")).exists())

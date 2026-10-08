@@ -12,6 +12,7 @@ from resources.selectors import available_resources, scope_resources
 from scheduling.models import Room
 from workloads.models import SubjectOffering, FacultySubjectAssignment
 from workloads.selectors import accessible_terms, scoped_records, scoped_faculty
+from academics.calendar import use_current_term_field
 from .models import (AssignmentMeetingRequirement, ClassSection, OfferingRequirement,
                      RoomUnavailability, Schedule, ScheduleEntry, ScheduleGenerationRun,
                      SchedulingConfiguration)
@@ -31,6 +32,7 @@ class ScopedForm(StyledFormMixin, forms.ModelForm):
             if term:
                 self.fields["academic_term"].queryset = self.fields["academic_term"].queryset.filter(pk=term.pk)
                 self.initial["academic_term"] = term.pk
+        use_current_term_field(self, user)
         self.style_fields()
 
 
@@ -38,6 +40,60 @@ class ScheduleForm(ScopedForm):
     class Meta:
         model = Schedule
         fields = ["academic_term", "department", "name"]
+
+
+class SectionGenerationForm(StyledFormMixin, forms.Form):
+    academic_term = forms.ModelChoiceField(queryset=None, label="Academic term")
+    department = forms.ModelChoiceField(queryset=None, label="Department / program")
+    year_level = forms.TypedChoiceField(
+        choices=[(year, str(year)) for year in range(1, 5)], coerce=int, label="Year level")
+    section = forms.ModelChoiceField(queryset=None, required=False, label="Section")
+    schedule = forms.ModelChoiceField(queryset=None, required=False, label="Draft schedule")
+    strategy = forms.ChoiceField(choices=ScheduleGenerationRun.Strategy.choices,
+                                initial=ScheduleGenerationRun.Strategy.FILL_GAPS,
+                                label="Generation mode")
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["academic_term"].queryset = accessible_terms(user, active=True)
+        self.fields["department"].queryset = department_scoped_queryset(
+            user, Department.objects.filter(is_active=True, college__is_active=True).select_related("college"), "pk")
+        self.fields["department"].label_from_instance = lambda obj: f"{obj.college.name} · {obj.name}"
+        sections = scoped(user, ClassSection.objects.filter(is_active=True,
+            academic_term__is_active=True, department__is_active=True,
+            department__college__is_active=True)).select_related("program", "department__college",
+                "academic_term__academic_year", "academic_term__semester")
+        schedules = scoped(user, Schedule.objects.filter(status__in=("draft", "validated", "needs_revision"))
+            .select_related("academic_term", "department"))
+        values = self.data if self.is_bound else self.initial
+        for name in ("academic_term", "department", "year_level"):
+            raw = values.get(name)
+            if raw:
+                try:
+                    value = int(raw)
+                except (ValueError, TypeError):
+                    sections, schedules = sections.none(), schedules.none()
+                    break
+                sections = sections.filter(**{name: value})
+                if name != "year_level":
+                    schedules = schedules.filter(**{name: value})
+        self.fields["section"].queryset = sections
+        self.fields["section"].label_from_instance = lambda obj: obj.code
+        self.fields["schedule"].queryset = schedules.order_by("-updated_at", "-pk")
+        self.fields["schedule"].label_from_instance = lambda obj: f"{obj.name} · v{obj.version_number}"
+        use_current_term_field(self, user)
+        self.style_fields()
+
+    def clean(self):
+        data = super().clean()
+        section, schedule = data.get("section"), data.get("schedule")
+        for obj, field in ((section, "section"), (schedule, "schedule")):
+            if obj and (obj.academic_term != data.get("academic_term") or
+                        obj.department != data.get("department")):
+                self.add_error(field, "Choose a record for the selected term and department.")
+        if section and section.year_level != data.get("year_level"):
+            self.add_error("section", "Choose a section for the selected year level.")
+        return data
 
 
 class SectionForm(ScopedForm):
@@ -165,6 +221,7 @@ class GenerationRequestForm(StyledFormMixin, forms.Form):
             else:
                 schedules = schedules.filter(academic_term=term)
         self.fields["schedule"].queryset = schedules
+        use_current_term_field(self, user)
         self.style_fields()
 
     def clean(self):
@@ -214,7 +271,7 @@ class TimetableFilter(StyledFormMixin, forms.Form):
     day_of_week = forms.TypedChoiceField(required=False, coerce=int, empty_value=None, choices=[("", "All days"), *DAYS])
     q = forms.CharField(required=False, label="Search")
 
-    def __init__(self, *args, user, **kwargs):
+    def __init__(self, *args, user, academic_browse=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["academic_term"].queryset = accessible_terms(user)
         self.fields["department"].queryset = department_scoped_queryset(user, Department.objects.all(), "pk")
@@ -222,4 +279,13 @@ class TimetableFilter(StyledFormMixin, forms.Form):
         self.fields["faculty"].queryset = scoped_faculty(user)
         self.fields["room"].queryset = scope_resources(user, Room.objects.all())
         self.fields["section"].queryset = scoped(user, ClassSection.objects.all())
+        if academic_browse:
+            from resources.browsing import YEAR_CHOICES, narrow_section_choices
+            self.fields["year_level"] = forms.ChoiceField(required=False, choices=YEAR_CHOICES, label="Year level")
+            self.fields["department"].label = "Program / department"
+            from accounts.permissions import is_system_admin
+            if not is_system_admin(user):
+                self.fields["department"].label_from_instance = lambda department: department.name
+            narrow_section_choices(self.fields["section"], self.data if self.is_bound else self.initial)
+        use_current_term_field(self, user)
         self.style_fields()

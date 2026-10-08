@@ -1,0 +1,8 @@
+{% load workspace %}
+<nav class="d-flex flex-wrap gap-3 mb-3 small" aria-label="Related academic records">
+{% if perms.academics.view_subject %}<a href="{% workspace_url 'subjects:list' year_level=browse_year_filter %}">Subject catalog</a>{% endif %}
+{% if perms.workloads.view_subjectoffering %}<a href="{% workspace_url 'workloads:offerings' year_level=browse_year_filter section=filter_form.cleaned_data.section.pk %}">Classes offered</a>{% endif %}
+{% if perms.timetabling.view_classsection %}<a href="{% workspace_url 'timetabling:sections' year_level=browse_year_filter %}">Class sections</a>{% endif %}
+{% if perms.timetabling.view_offeringrequirement %}<a href="{% workspace_url 'timetabling:requirements' year_level=browse_year_filter section=filter_form.cleaned_data.section.pk %}">Class scheduling requirements</a>{% endif %}
+{% if perms.timetabling.view_assignmentmeetingrequirement %}<a href="{% workspace_url 'timetabling:meeting-requirements' year_level=browse_year_filter section=filter_form.cleaned_data.section.pk %}">Class meeting requirements</a>{% endif %}
+</nav>

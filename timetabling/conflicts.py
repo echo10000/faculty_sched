@@ -347,13 +347,14 @@ def _entry_identity(entry, candidate_indexes):
     return "candidate", candidate_indexes[id(entry)]
 
 
-def _meeting_requirement_conflicts(schedule, entries):
-    assignments = list(
-        FacultySubjectAssignment.objects.filter(
-            subject_offering__academic_term=schedule.academic_term,
-            subject_offering__department=schedule.department,
-        ).select_related("subject_offering__subject")
-    )
+def _meeting_requirement_conflicts(schedule, entries, *, section_id=None):
+    assignments = FacultySubjectAssignment.objects.filter(
+        subject_offering__academic_term=schedule.academic_term,
+        subject_offering__department=schedule.department,
+    ).select_related("subject_offering__subject")
+    if section_id is not None:
+        assignments = assignments.filter(subject_offering__scheduling_requirement__section_id=section_id)
+    assignments = list(assignments)
     requirements_by_assignment = {}
     for requirement in AssignmentMeetingRequirement.objects.filter(
         assignment__in=assignments
@@ -476,6 +477,7 @@ def validate_candidate_schedule(
     proposed_entries,
     user=None,
     excluded_schedule_ids=(),
+    section_id=None,
 ) -> list[Conflict]:
     retained_entries = tuple(retained_entries)
     proposed_entries = tuple(proposed_entries)
@@ -542,11 +544,11 @@ def validate_candidate_schedule(
                 result.append(conflict)
                 seen.add(key)
 
-    result.extend(_meeting_requirement_conflicts(schedule, candidates))
+    result.extend(_meeting_requirement_conflicts(schedule, candidates, section_id=section_id))
     return result
 
 
-def get_schedule_conflicts(schedule, *, user=None, excluded_schedule_ids=()):
+def get_schedule_conflicts(schedule, *, user=None, excluded_schedule_ids=(), section_id=None):
     entries = list(entry_queryset().filter(schedule=schedule))
     return validate_candidate_schedule(
         schedule,
@@ -554,6 +556,7 @@ def get_schedule_conflicts(schedule, *, user=None, excluded_schedule_ids=()):
         proposed_entries=(),
         user=user,
         excluded_schedule_ids=excluded_schedule_ids,
+        section_id=section_id,
     )
 
 

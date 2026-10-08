@@ -16,10 +16,18 @@ from .models import (
     ScheduleGenerationRun,
     SchedulingConfiguration,
 )
+from academics.calendar import constrain_term_queryset
 
 
 def scoped(user, queryset):
     model = queryset.model
+    term_paths = {Schedule: "academic_term", ClassSection: "academic_term",
+        SchedulingConfiguration: "academic_term", OfferingRequirement: "section__academic_term",
+        AssignmentMeetingRequirement: "assignment__subject_offering__academic_term",
+        ScheduleGenerationRun: "schedule__academic_term", RoomUnavailability: "academic_term",
+        ScheduleEntry: "schedule__academic_term"}
+    if model in term_paths:
+        queryset = constrain_term_queryset(user, queryset, term_paths[model])
     if model in (Schedule, ClassSection):
         return department_scoped_queryset(user, queryset)
     if model is SchedulingConfiguration:

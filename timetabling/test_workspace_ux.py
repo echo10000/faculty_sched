@@ -72,7 +72,8 @@ class WorkspaceUXTests(TimetableFixture):
         expected = calculate_workload(self.faculty, self.term)
         self.assertEqual(person.workload["assigned_load"], expected["assigned_load"])
         self.assertEqual(person.workload["status"], expected["status"])
-        self.assertNotContains(page, self.records[self.external.pk]["faculty-management"].employee_id)
+        # Check visible text; short fixture IDs can occur inside random CSRF tokens.
+        self.assertNotContains(page, f'>{self.records[self.external.pk]["faculty-management"].employee_id}<')
 
     def test_qualification_tab_checks_explicit_permission_and_scope(self):
         FacultyQualification.objects.create(faculty=self.faculty, subject=self.offering.subject)
