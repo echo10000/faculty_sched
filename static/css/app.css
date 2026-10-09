@@ -1,34 +1,32 @@
 :root {
-  --ink:#203342;
-  --muted:#536675;
-  --navy:#163447;
-  --navy-deep:#102a3b;
-  --teal:#0f766e;
-  --teal-hover:#0b625b;
-  --teal-soft:#e8f5f2;
-  --canvas:#edf1f4;
-  --surface:#fff;
-  --surface-muted:#f5f7f9;
-  --surface-tint:#eef5f4;
-  --surface-context:#e5ebef;
-  --line:#dce4e9;
+  --ink:#193342;
+  --muted:#546a76;
+  --navy:#102e40;
+  --navy-deep:#0a2231;
+  --teal:#126b64;
+  --teal-hover:#0b534d;
+  --teal-soft:#e5efea;
+  --canvas:#f5f3ee;
+  --surface:#fffefb;
+  --surface-muted:#eeeee7;
+  --surface-tint:#e9eee7;
+  --line:#dbddd5;
   --control-line:#8495a2;
   /* Shared foundation lives here; refinement.css owns workspace compositions.
-     White primary panels sit above tinted secondary sections and the canvas. */
+     Warm canvas, restrained surfaces, and readable administrative controls. */
   --space-1:4px;
   --space-2:8px;
   --space-3:12px;
   --space-4:16px;
   --space-5:24px;
   --space-6:32px;
-  --radius:8px;
-  --radius-control:6px;
-  --radius-small:6px;
+  --radius:6px;
+  --radius-control:5px;
+  --radius-small:4px;
   --surface-shadow:none;
-  --emphasis-shadow:0 4px 8px rgba(16,42,59,.08),0 14px 28px -18px rgba(16,42,59,.3);
   --menu-shadow:0 4px 8px rgba(16,42,59,.06),0 16px 40px -12px rgba(16,42,59,.2);
   --font-body:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
-  --font-heading:"Segoe UI Variable Display","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --font-heading:Georgia,"Times New Roman",serif;
   --type-page:clamp(1.8rem,2.5vw,2.25rem);
   --type-section:1.125rem;
   --type-body:.9375rem;
@@ -36,7 +34,7 @@
   --type-label:.875rem;
   --motion-fast:160ms ease;
   --focus:#a46915;
-  --institution-gold:#d4af32;
+  --institution-gold:#b99a51;
   --status-success:#246a4b;
   --status-warning:#805006;
   --status-danger:#9b3835;
@@ -47,8 +45,8 @@
   --status-danger-bg:#fae4e2;
   --status-neutral-bg:#e8eef2;
   --status-info-bg:#e6edf8;
-  --bs-primary:#0f766e;
-  --bs-primary-rgb:15,118,110;
+  --bs-primary:#126b64;
+  --bs-primary-rgb:18,107,100;
   --bs-body-color:var(--ink);
   --bs-secondary-color:var(--muted);
   --bs-border-color:var(--line);
@@ -85,19 +83,20 @@ a {
 }
 .btn { --bs-btn-border-radius:var(--radius-control); --bs-btn-padding-y:.5rem; --bs-btn-padding-x:1rem; font-weight:600; transition:color var(--motion-fast),background-color var(--motion-fast),border-color var(--motion-fast),box-shadow var(--motion-fast); }
 .btn:active { box-shadow:inset 0 2px 3px rgba(16,42,59,.12); }
+.btn:focus-visible { outline:3px solid var(--focus); outline-offset:3px; }
 .btn-sm { --bs-btn-padding-y:.32rem; --bs-btn-padding-x:.7rem; }
 .btn-outline-secondary { --bs-btn-color:var(--muted); --bs-btn-border-color:var(--control-line); --bs-btn-hover-bg:var(--surface-muted); --bs-btn-hover-color:var(--ink); --bs-btn-hover-border-color:var(--muted); }
 .btn-outline-danger { --bs-btn-color:var(--status-danger); --bs-btn-border-color:var(--status-danger); }
 h1 {
   font-family:var(--font-heading);
-  font-weight:650;
+  font-weight:400;
   letter-spacing:-.03em;
   font-size:var(--type-page);
   line-height:1.2;
   overflow-wrap:anywhere;
 }
 h2,.h5,h3,.h6 {
-  font-family:var(--font-heading);
+  font-family:var(--font-body);
   font-weight:600;
   letter-spacing:-.018em;
 }
@@ -107,14 +106,14 @@ h2,.h5,h3,.h6 {
   display:flex;
 }
 .sidebar {
-  --bs-offcanvas-width:280px;
+  --bs-offcanvas-width:244px;
   background:var(--navy-deep)!important;
   color:#fff;
-  width:280px;
+  width:244px;
   flex-shrink:0;
 }
 .sidebar .offcanvas-body {
-  padding:24px 16px;
+  padding:28px 18px 22px;
   min-height:100vh;
   overflow-y:auto;
 }
@@ -154,18 +153,18 @@ h2,.h5,h3,.h6 {
   gap:10px;
   min-width:0;
   padding:11px 12px;
-  color:#c8d6df;
-  font-size:.9rem;
+  color:#bdd0d7;
+  font-size:.875rem;
   line-height:1.4;
   border-radius:var(--radius-control);
   transition:background-color .15s ease,color .15s ease;
 }
 .sidebar .nav-link:hover,.sidebar .nav-link.active {
-  background:#23465b;
+  background:#1d4350;
   color:white;
 }
 .sidebar .nav-link.active {
-  box-shadow:inset 3px 0 #80cfb5;
+  box-shadow:inset 3px 0 var(--institution-gold);
   font-weight:600;
 }
 .sidebar-footer {
@@ -194,12 +193,12 @@ h2,.h5,h3,.h6 {
   flex-direction:column;
 }
 .topbar {
-  min-height:68px;
+  min-height:66px;
   display:flex;
   align-items:center;
   gap:16px;
-  padding:12px 24px;
-  background:var(--surface);
+  padding:12px 38px;
+  background:var(--canvas);
   border-bottom:1px solid var(--line);
 }
 .institution-name {
@@ -209,18 +208,8 @@ h2,.h5,h3,.h6 {
   font-weight:550;
   color:#536977;
 }
-.account-summary {
-  text-align:right;
-  font-size:var(--type-label);
-}
-.account-summary small {
-  display:block;
-  color:var(--muted);
-  font-size:var(--type-small);
-  margin-top:3px;
-}
 .content {
-  padding:var(--space-5) var(--space-6) 48px;
+  padding:30px 38px 48px;
   max-width:1440px;
   width:100%;
   margin:0 auto;
@@ -473,9 +462,6 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   }
   .institution-name {
     font-size:.72rem;
-  }
-  .account-summary {
-    display:none;
   }
   .page-footer {
     padding:20px 22px;

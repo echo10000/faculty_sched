@@ -1,56 +1,109 @@
 {% extends 'base.html' %}
-{% load workspace %}
-{% block title %}Dashboard{% endblock %}
+{% load static workspace %}
+{% block title %}Academic Workbench{% endblock %}
+{% block body_class %}academic-workbench{% endblock %}
+{% block content_class %}workbench-content{% endblock %}
 {% block current_term_notice %}{% if not staff_current_term %}{{ block.super }}{% endif %}{% endblock %}
 {% block content %}
-<header class="page-heading dashboard-heading">
-  <div><p class="eyebrow">ACADEMIC WORKSPACE</p><h1>Dashboard</h1><p>A clear view of academic activity and your next steps.</p></div>
+<header class="workbench-heading">
+  <div><p class="workbench-kicker">Dashboard / The academic desk</p><h1>Your academic<br><em>workbench.</em></h1></div>
+  <details class="workbench-context">
+    <summary><svg class="workbench-icon" aria-hidden="true"><use href="{% static 'icons/campusload.svg' %}#calendar"></use></svg><span><strong>{{ selected_term.code|default:'Academic context' }} <span aria-hidden="true">⌄</span></strong><small>{% if selected_term %}{{ selected_term.academic_year }} · {% endif %}{{ access_scope }}</small></span></summary>
+    <div class="workbench-context-panel">
+      <p class="workbench-kicker">Academic context</p>
+      {% if term_options and not current_term_only %}
+      <form method="get" action="{% url 'home' %}">
+        <label class="form-label" for="dashboard-academic-term">Academic term</label>
+        <select class="form-select" id="dashboard-academic-term" name="academic_term">{% for term in term_options %}<option value="{{ term.pk }}" {% if selected_term.pk == term.pk %}selected{% endif %}>{{ term }}</option>{% endfor %}</select>
+        <button class="btn btn-primary btn-sm mt-3" type="submit">Apply term</button>
+      </form>
+      {% else %}<p>{{ selected_term|default:'No academic term available.' }}{% if current_term_only and selected_term %}<small class="d-block text-secondary">Selected automatically from the academic calendar.</small>{% endif %}</p>{% endif %}
+      {% if selected_term %}<p class="workbench-context-dates">{{ selected_term.start_date|date:'M j, Y' }} — {{ selected_term.end_date|date:'M j, Y' }}</p>{% endif %}
+      <p class="mb-0 text-secondary">{{ role_label }} · {{ access_scope }}</p>
+    </div>
+  </details>
 </header>
-<div class="dashboard-context mb-4">
-  <div class="dashboard-scope"><span class="context-label">Organization</span><strong>{{ access_scope }}</strong></div>
-  {% if term_options and not current_term_only %}
-  <form class="dashboard-term-filter" method="get" action="{% url 'home' %}">
-    <label class="context-label" for="dashboard-academic-term">Academic term</label>
-    <div class="dashboard-term-control"><select class="form-select" id="dashboard-academic-term" name="academic_term">{% for term in term_options %}<option value="{{ term.pk }}" {% if selected_term.pk == term.pk %}selected{% endif %}>{{ term }}</option>{% endfor %}</select><button class="btn btn-outline-secondary" type="submit">Apply</button></div>
-  </form>
-  {% else %}<div class="dashboard-scope"><span class="context-label">Academic term{% if current_term_only and selected_term %} · selected automatically{% endif %}</span><strong>{{ selected_term|default:"No term available" }}</strong></div>{% endif %}
+
+{% if teaching_term or active_faculty_count != None or monitoring.schedules %}
+<section class="workbench-metrics" aria-label="Operational metrics">
+  {% if teaching_term %}<a class="workbench-metric" href="{% workspace_url 'workloads:monitor' %}"><strong>{{ teaching_assignment_count }}</strong><span>Teaching assignments<small>Selected term</small></span></a>{% endif %}
+  {% for metric in resource_metrics %}{% if metric.label == 'Faculty' %}<a class="workbench-metric" href="{% workspace_url metric.route %}"><strong>{{ metric.active }}</strong><span>Active faculty<small>Scope inventory</small></span></a>{% endif %}{% endfor %}
+  {% if monitoring.schedules and perms.timetabling.finalize_schedule %}<a class="workbench-metric" href="{% workspace_url 'timetabling:review-queue' %}"><strong>{{ monitoring.schedules.finalization_count }}</strong><span>Unpublished versions<small>To review</small></span></a>{% endif %}
+  {% if monitoring.schedules %}<a class="workbench-metric" href="{% workspace_url 'timetabling:official-schedules' %}"><strong>{{ monitoring.schedules.official_count }}</strong><span>Current official<small>Selected term</small></span></a>{% endif %}
+</section>
+{% endif %}
+
+<div class="workbench-grid {% if not perms.timetabling.view_schedule or not perms.academics.view_academicterm %}workbench-grid-single{% endif %}">
+  {% for link in primary_navigation %}{% if link.route == 'timetabling:prepare' %}
+  <aside class="workbench-desk" aria-labelledby="workbench-desk-title">
+    <p class="workbench-kicker">The scheduling desk</p><h2 id="workbench-desk-title">Prepare<br>Academic Schedule</h2>
+    <p class="workbench-desk-intro">Move through the seven-stage guided workflow. Keep the term, department, and version together.</p>
+    <a class="btn workbench-open" href="{% workspace_url link.route %}">Open scheduling workspace <span aria-hidden="true">→</span></a>
+    <nav class="workbench-stages" aria-label="Scheduling stages">
+      <a href="{% workspace_url link.route stage=1 %}"><span class="workbench-stage-number">1</span><span><strong>Select context</strong><small>Term, department &amp; version</small></span></a>
+      <a href="{% workspace_url link.route stage=2 %}"><span class="workbench-stage-number">2</span><span><strong>Classes &amp; assignments</strong><small>Teaching allocation</small></span></a>
+      <a href="{% workspace_url link.route stage=3 %}"><span class="workbench-stage-number">3</span><span><strong>Teaching units</strong><small>Interactive unit review</small></span></a>
+      <a href="{% workspace_url link.route stage=4 %}"><span class="workbench-stage-number">4</span><span><strong>Meeting needs</strong><small>Room &amp; time requirements</small></span></a>
+      <a href="{% workspace_url link.route stage=5 %}"><span class="workbench-stage-number">5</span><span><strong>Generate timetable</strong><small>Build a proposal</small></span></a>
+      <a href="{% workspace_url link.route stage=6 %}"><span class="workbench-stage-number">6</span><span><strong>Proposals &amp; conflicts</strong><small>Review generated results</small></span></a>
+      <a href="{% workspace_url link.route stage=7 %}"><span class="workbench-stage-number">7</span><span><strong>Review &amp; finalize</strong><small>Validate and publish</small></span></a>
+    </nav>
+    <p class="workbench-desk-note">Stages are navigation steps, not evidence of completion or publication readiness.</p>
+  </aside>
+  {% endif %}{% endfor %}
+
+  <div class="workbench-ledger">
+    {% if monitoring.schedules %}
+    <section aria-labelledby="workbench-ledger-title">
+      <div class="workbench-section-heading"><h2 id="workbench-ledger-title">Work in progress</h2><a class="workbench-link" href="{% workspace_url 'timetabling:schedules' %}">All schedules <span aria-hidden="true">↗</span></a></div>
+      <p class="workbench-intro">{{ monitoring.schedules.finalization_count }} unpublished version{{ monitoring.schedules.finalization_count|pluralize }} in your scope.{% if perms.timetabling.finalize_schedule %} Open a working version to continue preparation.{% else %} Browse schedules to continue your authorized tasks.{% endif %}</p>
+      <div class="workbench-states" aria-label="Schedule version counts by status">
+        {% for item in monitoring.schedules.counts %}<div class="workbench-state {% if item.count %}has-versions{% endif %}" data-schedule-state="{{ item.key }}"><strong>{{ item.count }}</strong><span><i class="status-dot schedule-{{ item.key }}" aria-hidden="true"></i>{{ item.label }}</span></div>{% endfor %}
+      </div>
+      <p class="workbench-caption">Published includes historical versions. Current official selections are counted separately.</p>
+      {% if perms.timetabling.finalize_schedule %}
+      <div class="workbench-versions">
+        {% for schedule in monitoring.schedules.recent_pending %}
+        <a class="workbench-version" href="{% url 'timetabling:schedule-review' schedule.pk %}">
+          <span class="workbench-version-icon"><svg class="workbench-icon" aria-hidden="true"><use href="{% static 'icons/campusload.svg' %}#calendar"></use></svg></span>
+          <span class="workbench-version-copy"><strong>{{ schedule.name }}</strong><small>{{ schedule.department.name }} · Version {{ schedule.version_number }}</small></span>
+          <span class="workbench-badge schedule-{{ schedule.status }}">{{ schedule.get_status_display }}</span><span class="workbench-arrow" aria-hidden="true">↗</span>
+        </a>
+        {% empty %}<div class="workbench-empty"><strong>No working versions to review.</strong><p>Open the scheduling workspace to select a version or prepare a new schedule.</p></div>{% endfor %}
+      </div>
+      {% endif %}
+      {% for item in monitoring.schedules.issues %}
+      <a class="workbench-finding {% if item.error_count %}has-errors{% endif %}" href="{% url 'timetabling:conflicts' item.schedule.pk %}">
+        <svg class="workbench-icon" aria-hidden="true"><use href="{% static 'icons/campusload.svg' %}#review"></use></svg>
+        <span><strong>{{ item.error_count }} validation error{{ item.error_count|pluralize }} · {{ item.warning_count }} warning{{ item.warning_count|pluralize }}</strong><small>{{ item.schedule.name }} · v{{ item.schedule.version_number }} · latest checked version</small></span>
+        <span class="workbench-arrow" aria-hidden="true">↗</span><span class="visually-hidden">Open validation findings</span>
+      </a>
+      {% endfor %}
+    </section>
+    {% elif selected_term %}<section class="workbench-empty"><h2>Your authorized workspace</h2><p>Schedule monitoring is unavailable with your current access. Use the authorized tasks below.</p></section>
+    {% else %}<section class="workbench-empty"><h2>Your academic context</h2><p>{% if perms.academics.view_academicterm %}No academic term is available. An administrator can configure the academic calendar to begin scheduling.{% else %}Your account has dashboard access. Contact your system administrator if you need access to academic tasks.{% endif %}</p></section>{% endif %}
+
+    {% for item in attention_items %}{% if item.actionable %}<a class="workbench-attention" href="{% workspace_url item.route %}"><span>{{ item.text }}</span><strong>{{ item.label }} <span aria-hidden="true">↗</span></strong></a>{% endif %}{% endfor %}
+
+    {% if monitoring.workload %}
+    <section class="workbench-people" aria-labelledby="workbench-people-title">
+      <div class="workbench-section-heading"><h3 id="workbench-people-title">People &amp; teaching</h3><a class="workbench-link" href="{% workspace_url 'workloads:monitor' %}">Workload <span aria-hidden="true">↗</span></a></div>
+      <p class="workbench-caption">Assignment-based load · {{ monitoring.workload.total }} faculty in scope</p>
+      {% with can_view_faculty=perms.faculty.view_faculty %}
+      {% for item in monitoring.workload.faculty|slice:':5' %}
+      <div class="workbench-person">
+        <span class="workbench-initials" aria-hidden="true">{{ item.faculty.first_name|slice:':1' }}{{ item.faculty.last_name|slice:':1' }}</span>
+        <span class="workbench-person-copy"><strong>{% if can_view_faculty %}<a href="{% workspace_url 'faculty-management:detail' item.faculty.pk %}">{{ item.faculty }}</a>{% else %}{{ item.faculty }}{% endif %}</strong><small>{{ item.status_label }} · {{ item.faculty.home_department.code }}</small></span>
+        <span class="workbench-person-load">{% if item.assigned_load != None %}{{ item.assigned_load|floatformat:'-2' }}<small>weighted load</small>{% else %}—<small>Not configured</small>{% endif %}</span>
+      </div>
+      {% empty %}<p class="workbench-intro">No active faculty in your authorized scope.</p>{% endfor %}
+      {% endwith %}
+    </section>
+    {% endif %}
+  </div>
+
 </div>
 
-{% for link in primary_navigation %}{% if link.route == 'timetabling:prepare' %}
-<section class="dashboard-start mb-4" aria-labelledby="dashboard-start-title">
-  <div><p class="eyebrow">YOUR NEXT STEP <span class="workflow-stage-count">7 guided stages</span></p><h2 id="dashboard-start-title">Prepare Academic Schedule</h2><p class="mb-0">Follow the seven-stage guided workflow to prepare classes, build a timetable, and review it for publication.</p></div>
-  <a class="btn btn-primary" href="{% workspace_url link.route %}">Open scheduling workspace <span aria-hidden="true">→</span></a>
-</section>
-{% endif %}{% endfor %}
-{% if teaching_term or active_faculty_count != None or monitoring.schedules %}<h2 class="dashboard-section-label mb-3">At a glance</h2>
-<div class="dashboard-metrics mb-4" aria-label="Primary metrics">
-{% if teaching_term %}<a class="dashboard-kpi" href="{% url 'workloads:monitor' %}?academic_term={{ teaching_term.pk }}"><span>Teaching assignments</span><strong>{{ teaching_assignment_count }}</strong><small>View workload <span aria-hidden="true">→</span></small></a>{% endif %}
-{% for metric in resource_metrics %}{% if metric.label == 'Faculty' %}<a class="dashboard-kpi" href="{% workspace_url metric.route %}"><span>Active faculty</span><strong>{{ metric.active }}</strong><small>View faculty <span aria-hidden="true">→</span></small></a>{% endif %}{% endfor %}
-{% if monitoring.schedules %}<a class="dashboard-kpi" href="{% workspace_url 'timetabling:official-schedules' %}"><span>Current official schedules</span><strong>{{ monitoring.schedules.official_count }}</strong><small>Selected versions <span aria-hidden="true">→</span></small></a>{% endif %}
-{% if monitoring.schedules and perms.timetabling.finalize_schedule %}<a class="dashboard-kpi" href="{% workspace_url 'timetabling:review-queue' %}"><span>Drafts to finalize</span><strong>{{ monitoring.schedules.finalization_count }}</strong><small>Review queue <span aria-hidden="true">→</span></small></a>{% endif %}
-</div>{% endif %}
-<div class="row g-4 mb-4"><div class="col-xl-7"><section class="surface" aria-labelledby="quick-actions-title"><p class="eyebrow">SUPPORTING TASKS</p><h2 class="h5" id="quick-actions-title">Quick actions</h2><p class="text-secondary small">{% if dashboard_role == 'admin' %}Review institutional setup and oversight pages.{% elif dashboard_role == 'staff' %}Review faculty, teaching assignments, and reports in your authorized scope.{% else %}Open the tasks granted to your account.{% endif %}</p>{% if quick_actions %}<div class="dashboard-action-grid">{% for action in quick_actions %}{% if action.route != 'timetabling:prepare' and action.route != 'timetabling:generator' %}<a class="dashboard-action" href="{% workspace_url action.route %}"><strong>{{ action.label }} <span aria-hidden="true">→</span></strong><small>{{ action.description }}</small></a>{% endif %}{% endfor %}</div>{% else %}<p class="text-secondary mb-0">Your account currently has dashboard access only. Contact your system administrator if you need another task assigned.</p>{% endif %}</section></div><div class="col-xl-5"><section class="dashboard-attention" aria-labelledby="attention-title"><p class="eyebrow">TERM OVERVIEW</p><h2 class="h5" id="attention-title">Needs attention</h2>{% if attention_items %}<ul class="list-unstyled mb-0">{% for item in attention_items %}<li class="attention-item"><p class="mb-1">{{ item.text }}</p>{% if item.actionable %}<a href="{% workspace_url item.route %}">{{ item.label }}</a>{% endif %}</li>{% endfor %}</ul>{% else %}<div class="attention-empty"><span class="attention-empty-mark" aria-hidden="true">—</span><p class="mb-0">{% if selected_term %}No actionable items are available from your authorized monitoring data for this term.{% elif perms.academics.view_academicterm %}Select an academic term to see relevant activity.{% else %}No task alerts are available with your current access.{% endif %}</p></div>{% endif %}</section></div></div>
-
-
-{% if resource_metrics or college_count != None or department_count != None or term_count != None or monitoring.rooms %}<section class="surface dashboard-secondary" aria-label="More campus counts"><h2>More campus counts</h2><div class="dashboard-secondary-list">{% for metric in resource_metrics %}{% if metric.label != 'Faculty' %}<a href="{% workspace_url metric.route %}" class="dashboard-stat-chip"><strong>{{ metric.active }}</strong><span>{{ metric.label }}</span></a>{% endif %}{% endfor %}{% if college_count != None %}<a href="{% url 'college-list' %}" class="dashboard-stat-chip"><strong>{{ college_count }}</strong><span>Colleges</span></a>{% endif %}{% if department_count != None %}<a href="{% url 'department-list' %}" class="dashboard-stat-chip"><strong>{{ department_count }}</strong><span>Departments</span></a>{% endif %}{% if term_count != None %}<a href="{% url 'academic-calendar' %}" class="dashboard-stat-chip"><strong>{{ term_count }}</strong><span>Active terms</span></a>{% endif %}{% if monitoring.rooms %}<span class="dashboard-stat-chip"><strong>{{ monitoring.rooms.used_count }}</strong><span>Rooms used</span></span>{% endif %}</div></section>{% endif %}
-
-{% if monitoring.workload or monitoring.schedules %}<div class="row g-4 mb-4">
-{% if monitoring.workload %}<div class="col-xl-6"><section class="surface h-100" aria-labelledby="dashboard-workload-title"><div class="dashboard-section-heading"><div><p class="eyebrow">WORKLOAD</p><h2 class="h5 mb-1" id="dashboard-workload-title">Faculty workload</h2><p class="small text-secondary mb-0">{{ monitoring.workload.total }} faculty · assignment-based load</p></div><a href="{% workspace_url 'workloads:monitor' %}">View details</a></div><div class="dashboard-status-list" aria-label="Faculty counts by workload status">{% for item in monitoring.workload.counts %}<div class="dashboard-status-row"><span class="status-dot workload-{{ item.key|lower }}" aria-hidden="true"></span><span>{{ item.label }}</span><strong>{{ item.count }}</strong></div>{% endfor %}</div>
-{% if monitoring.workload.faculty %}<div class="dashboard-summary-list"><h3 class="h6">Faculty workload detail</h3>{% for item in monitoring.workload.faculty|slice:':5' %}<div class="dashboard-summary-row"><span>{{ item.faculty }}</span><span class="text-end">{{ item.status_label }}{% if item.assigned_load != None %} · {{ item.assigned_load|floatformat:1 }} load{% endif %}</span></div>{% endfor %}</div>{% endif %}</section></div>{% endif %}
-{% if monitoring.schedules %}<div class="col-xl-6"><section class="surface h-100" aria-labelledby="dashboard-schedules-title"><div class="dashboard-section-heading"><div><p class="eyebrow">SCHEDULE PIPELINE</p><h2 class="h5 mb-1" id="dashboard-schedules-title">Version status</h2><p class="small text-secondary mb-0">Published includes historical versions; current official is shown separately.</p></div><a href="{% workspace_url 'timetabling:schedules' %}">View schedules</a></div><div class="dashboard-status-list" aria-label="Schedule version counts by status">{% for item in monitoring.schedules.counts %}<div class="dashboard-status-row"><span class="status-dot schedule-{{ item.key|lower }}" aria-hidden="true"></span><span>{{ item.label }}</span><strong>{{ item.count }}</strong></div>{% endfor %}</div><div class="dashboard-mini-stats"><span><strong>{{ monitoring.schedules.official_count }}</strong> current official</span><span><strong>{{ monitoring.schedules.returned_count }}</strong> need revision</span></div></section></div>{% endif %}
-</div>{% endif %}
-
-<details class="dashboard-details mb-4"><summary>Official schedules, history &amp; campus details</summary><div class="dashboard-details-content">
-{% if monitoring.schedules %}<div class="row g-4 mb-4"><div class="{% if perms.timetabling.finalize_schedule %}col-xl-8{% else %}col-12{% endif %}"><section class="surface h-100" aria-labelledby="dashboard-official-title"><div class="dashboard-section-heading"><div><p class="eyebrow">ACTIVE SELECTION</p><h2 class="h5 mb-0" id="dashboard-official-title">Current official schedules</h2></div><a href="{% workspace_url 'timetabling:official-schedules' %}">All official</a></div>{% if monitoring.schedules.recent_official %}<div class="table-responsive"><table class="table responsive-record-table mb-0"><thead><tr><th scope="col">Schedule</th><th scope="col">Department</th><th scope="col">Published</th><th scope="col">Meetings</th></tr></thead><tbody>{% for row in monitoring.schedules.recent_official %}<tr><td data-label="Schedule"><a href="{% url 'timetabling:schedule-history' row.selection.schedule.pk %}">{{ row.selection.schedule.family.name }}</a><br><small>Version {{ row.selection.schedule.version_number }} · {{ row.selection.academic_term.code }}</small></td><td data-label="Department">{{ row.selection.department }}</td><td data-label="Published">{{ row.snapshot.approved_at|date:'M j, Y' }}<br><small>by {{ row.snapshot.approved_by }}</small></td><td data-label="Meetings">{{ row.meeting_count|default_if_none:"—" }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="text-secondary mb-0">No current official schedule for this term and scope.</p>{% endif %}</section></div>{% if perms.timetabling.finalize_schedule %}<div class="col-xl-4"><section class="surface h-100" aria-labelledby="dashboard-review-title"><p class="eyebrow">REVIEW</p><h2 class="h5" id="dashboard-review-title">Schedules needing action</h2><div class="dashboard-mini-stats mb-3"><span><strong>{{ monitoring.schedules.finalization_count }}</strong> pending</span><span><strong>{{ monitoring.schedules.returned_count }}</strong> returned</span></div>{% if monitoring.schedules.recent_pending %}<div class="dashboard-summary-list">{% for schedule in monitoring.schedules.recent_pending %}<div class="dashboard-summary-row"><a href="{% url 'timetabling:schedule-review' schedule.pk %}">{{ schedule.name }} · v{{ schedule.version_number }}</a><small>{{ schedule.submitted_at|date:'M j' }} · {{ schedule.department }}</small></div>{% endfor %}</div>{% else %}<p class="small text-secondary">No drafts awaiting finalization.</p>{% endif %}{% if monitoring.schedules.recent_approved %}<h3 class="h6 mt-3">Recently published</h3><div class="dashboard-summary-list">{% for snapshot in monitoring.schedules.recent_approved %}<div class="dashboard-summary-row"><a href="{% url 'timetabling:schedule-history' snapshot.schedule.pk %}">{{ snapshot.schedule.family.name }} · v{{ snapshot.schedule.version_number }}</a><small>{{ snapshot.approved_at|date:'M j' }}</small></div>{% endfor %}</div>{% endif %}{% if perms.timetabling.finalize_schedule %}<a class="btn btn-outline-primary btn-sm mt-3" href="{% workspace_url 'timetabling:review-queue' %}">Open drafts to finalize</a>{% endif %}</section></div>{% endif %}</div>
-{% if monitoring.schedules.issues %}<section class="surface mb-4" aria-labelledby="dashboard-issues-title"><div class="dashboard-section-heading"><div><p class="eyebrow">VALIDATION</p><h2 class="h5 mb-0" id="dashboard-issues-title">Recent schedule check</h2></div></div><div class="dashboard-summary-list">{% for item in monitoring.schedules.issues %}<div class="dashboard-summary-row"><a href="{% url 'timetabling:conflicts' item.schedule.pk %}">{{ item.schedule.name }} · v{{ item.schedule.version_number }}</a><span>{{ item.error_count }} error{{ item.error_count|pluralize }} · {{ item.warning_count }} warning{{ item.warning_count|pluralize }}</span></div>{% endfor %}</div></section>{% endif %}{% endif %}
-
-{% if monitoring.rooms or monitoring.teaching %}<div class="row g-4 mb-4">{% if monitoring.rooms %}<div class="col-xl-6"><section class="surface surface-secondary h-100" aria-labelledby="dashboard-rooms-title"><p class="eyebrow">ROOMS</p><h2 class="h5" id="dashboard-rooms-title">Official room use</h2><p class="small text-secondary">{{ monitoring.rooms.used_count }} of {{ monitoring.rooms.active_count }} active rooms used · {{ monitoring.rooms.scheduled_hours|floatformat:1 }} scheduled hours this term</p>{% if monitoring.rooms.rows %}<div class="dashboard-summary-list">{% for room in monitoring.rooms.rows %}<div class="dashboard-summary-row"><a href="{% url 'rooms:detail' room.room_id %}">{{ room.code }}</a><strong>{{ room.hours|floatformat:1 }} h this term</strong></div>{% endfor %}</div>{% else %}<p class="small text-secondary mb-0">No official room bookings for this term.</p>{% endif %}</section></div>{% endif %}
-{% if monitoring.teaching %}<div class="col-xl-6"><section class="surface surface-secondary h-100" aria-labelledby="dashboard-teaching-title"><p class="eyebrow">TEACHING TIMETABLE</p><h2 class="h5" id="dashboard-teaching-title">Scheduled teaching</h2><div class="dashboard-fact-grid"><div><strong>{{ monitoring.teaching.scheduled_faculty_count }}</strong><span>faculty scheduled</span></div><div><strong>{{ monitoring.teaching.unscheduled_assignment_count }}</strong><span>assignments without official meetings</span></div><div><strong>{{ monitoring.teaching.scheduled_weekly_hours|floatformat:1 }}</strong><span>meeting hours per week</span></div></div><p class="small text-secondary mb-0 mt-3">These counts use current official schedules. Meeting hours are separate from assignment-based workload.</p></section></div>{% endif %}</div>{% endif %}
-
-{% if monitoring.generation or monitoring.balancing %}<div class="row g-4 mb-4">{% if monitoring.generation %}<div class="col-xl-6"><section class="surface surface-secondary h-100" aria-labelledby="dashboard-generation-title"><div class="dashboard-section-heading"><div><p class="eyebrow">SCHEDULE GENERATION</p><h2 class="h5 mb-0" id="dashboard-generation-title">Recent generated schedules</h2></div><a href="{% url 'timetabling:generation-runs' %}">View history</a></div><div class="dashboard-run-counts">{% for item in monitoring.generation.counts %}<span>{{ item.label }} <strong>{{ item.count }}</strong></span>{% endfor %}</div><div class="dashboard-summary-list">{% for run in monitoring.generation.recent %}<div class="dashboard-summary-row"><a href="{% url 'timetabling:generation-run-detail' run.pk %}">{{ run.schedule.name }}</a><span>{{ run.get_status_display }} · {{ run.requested_at|date:'M j' }}</span></div>{% empty %}<p class="small text-secondary mb-0">No schedule generation attempts for this term.</p>{% endfor %}</div></section></div>{% endif %}
-{% if monitoring.balancing %}<div class="col-xl-6"><section class="surface surface-secondary h-100" aria-labelledby="dashboard-balancing-title"><div class="dashboard-section-heading"><div><p class="eyebrow">FACULTY WORKLOAD</p><h2 class="h5 mb-0" id="dashboard-balancing-title">Recent recommendations</h2></div><a href="{% url 'workloads:balancing-runs' %}">View history</a></div><div class="dashboard-run-counts">{% for item in monitoring.balancing.counts %}<span>{{ item.label }} <strong>{{ item.count }}</strong></span>{% endfor %}</div><div class="dashboard-summary-list">{% for run in monitoring.balancing.recent %}<div class="dashboard-summary-row"><a href="{% url 'workloads:balancing-run-detail' run.pk %}">{{ run.department.name }}</a><span>{{ run.get_status_display }} · {{ run.created_at|date:'M j' }}</span></div>{% empty %}<p class="small text-secondary mb-0">No workload recommendations for this term.</p>{% endfor %}</div></section></div>{% endif %}</div>{% endif %}
-
-{% if monitoring.departments %}<section class="surface mb-4" aria-labelledby="dashboard-departments-title"><div class="dashboard-section-heading"><div><p class="eyebrow">ORGANIZATIONAL SCOPE</p><h2 class="h5 mb-0" id="dashboard-departments-title">Departments</h2></div><a href="{% url 'department-list' %}">View departments</a></div><div class="table-responsive"><table class="table responsive-record-table mb-0"><thead><tr><th scope="col">Department</th><th scope="col">Active faculty</th><th scope="col">Term offerings</th><th scope="col">Current official</th></tr></thead><tbody>{% for row in monitoring.departments %}<tr><td data-label="Department"><a href="{% url 'department-detail' row.department.pk %}">{{ row.department.name }}</a></td><td data-label="Active faculty">{% if row.active_faculty != None %}{{ row.active_faculty }}{% else %}—{% endif %}</td><td data-label="Term offerings">{% if row.offerings != None %}{{ row.offerings }}{% else %}—{% endif %}</td><td data-label="Current official">{% if row.official != None %}{{ row.official }}{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
-<div class="row g-4"><div class="col-xl-8"><section class="surface h-100"><h2 class="h5">Academic calendar</h2><p class="text-secondary">Active periods for the institution.</p>{% if perms.academics.view_academicterm %}{% for term in terms %}<div class="term-row"><div><strong>{{ term.academic_year }} · {{ term.semester }}</strong><small>{{ term.start_date|date:'M j, Y' }} — {{ term.end_date|date:'M j, Y' }}</small></div><span class="badge text-bg-success">Active</span></div>{% empty %}<div class="empty-state">No active terms yet.<small>A system administrator can configure the academic calendar.</small></div>{% endfor %}{% else %}<div class="empty-state">Calendar access has not been granted.<small>Contact your system administrator if you need access.</small></div>{% endif %}</section></div><div class="col-xl-4"><section class="surface access-panel h-100"><p class="eyebrow">ACCOUNT ACCESS</p><h2 class="h5">{{ role_label }}</h2><p>Your workspace is limited to <strong>{{ access_scope }}</strong>.</p><hr><p class="small text-secondary">Available pages reflect your assigned permissions. Contact your system administrator to request a change.</p>{% if can_administer %}<a class="btn btn-outline-primary w-100" href="{% url 'admin:index' %}">Manage foundation data</a>{% endif %}</section></div></div>
-</div></details>
+{% if quick_actions %}<nav class="workbench-operations" aria-label="Supporting tasks"><span class="workbench-kicker">Campus<br>operations</span>{% for action in quick_actions %}{% if action.route != 'timetabling:prepare' and action.route != 'timetabling:generator' %}<a href="{% workspace_url action.route %}" title="{{ action.description }}">{{ action.label }} <span aria-hidden="true">↗</span></a>{% endif %}{% endfor %}</nav>{% endif %}
+{% include 'core/_dashboard_details.html' %}
 {% endblock %}

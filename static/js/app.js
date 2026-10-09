@@ -1,4 +1,18 @@
 (() => {
+  const context = document.querySelector('.workbench-context');
+  if (!context) return;
+  context.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && context.open) {
+      context.open = false;
+      context.querySelector('summary').focus();
+    }
+  });
+  document.addEventListener('click', event => {
+    if (!context.contains(event.target)) context.open = false;
+  });
+})();
+
+(() => {
   const back = document.getElementById('page-back');
   if (!back || !document.referrer) return;
   try {
