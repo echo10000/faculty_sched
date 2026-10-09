@@ -24,6 +24,16 @@ from .selectors import accessible_terms, scoped_faculty, scoped_records
 from .views import TeachingMixin
 
 
+def assignment_preview(report):
+    """Display current totals from the existing create-assignment preview only."""
+    if report is None:
+        return None
+    return {**report,
+        "current_teaching_units": report["teaching_units"] - report["assignment_teaching_units"],
+        "current_teaching_hours": report["teaching_hours"] - report["assignment_teaching_hours"],
+    }
+
+
 class SectionAssignmentsView(TeachingMixin, View):
     section = "assignments"
 
@@ -88,9 +98,9 @@ class SectionAssignmentsView(TeachingMixin, View):
                 assignment.workload = reports[assignment.faculty_id]
                 assignment.share_percent = assignment.share * 100
                 by_offering.setdefault(assignment.subject_offering_id, []).append(assignment)
-            instructor_choices = [("", "Choose an instructor"), *[(person.pk, str(person)) for person in
-                scoped_faculty(request.user).filter(home_department=selected.department, is_active=True,
-                    home_department__is_active=True, home_department__college__is_active=True)]]
+            instructors = list(scoped_faculty(request.user).filter(home_department=selected.department, is_active=True,
+                home_department__is_active=True, home_department__college__is_active=True))
+            instructor_choices = [("", "Choose an instructor"), *[(person.pk, str(person)) for person in instructors]]
             for requirement in requirements:
                 offering = requirement.subject_offering
                 existing = by_offering.get(offering.pk, [])
@@ -100,8 +110,13 @@ class SectionAssignmentsView(TeachingMixin, View):
                 if form is not None:
                     form.fields["faculty"].choices = instructor_choices
                 rows.append({"offering": offering, "assignments": existing, "remaining": remaining,
-                    "form": form,
-                    "preview": preview if matching else None})
+                    "remaining_percent": remaining * 100,
+                    "assignment_state": "full" if remaining <= 0 else "partial" if existing else "needed",
+                    "form": form, "faculty_value": str(form["faculty"].value() or "") if form else "",
+                    "submitted": matching,
+                    "preview": assignment_preview(preview) if matching else None})
+        else:
+            instructors = []
         selection_values = {name: getattr(selected, name + "_id") if name in ("academic_term", "department")
                             else getattr(selected, name) for name in ("academic_term", "department", "year_level")} if selected else {}
         if selected:
@@ -109,6 +124,9 @@ class SectionAssignmentsView(TeachingMixin, View):
         url = reverse("workloads:section-assignments") + ("?" + urlencode({"academic_term": self.term.pk}) if self.term else "")
         return render(request, "workloads/section_assignments.html", {
             "term": self.term, "filter_form": selection, "selected_section": selected, "rows": rows,
+            "instructors": instructors,
+            "assignment_counts": {state: sum(row["assignment_state"] == state for row in rows)
+                                  for state in ("full", "partial", "needed")},
             "selection_values": selection_values, "workspace_url": url,
             "unassigned_count": sum(row["remaining"] > 0 for row in rows),
             "generator_url": reverse("timetabling:section-generator") + "?" + urlencode(selection_values),
@@ -151,7 +169,8 @@ class SectionAssignmentsView(TeachingMixin, View):
                 "assigned_load": str(report["assigned_load"]) if report["assigned_load"] is not None else None,
                 "maximum_load": str(report["policy"]["maximum_load"]) if report["policy"]["maximum_load"] is not None else None,
                 "status": report["status"].replace("_", " ").title(), "warnings": report["warnings"],
-                "summary_html": render_to_string("workloads/_load_summary.html", {"report": report, "compact": True}, request=request),
+                "summary_html": render_to_string("workloads/_assignment_preview.html",
+                    {"report": assignment_preview(report)}, request=request),
             }
             return JsonResponse({"preview": payload, "errors": form.errors.get_json_data()})
         if obj and intent == "save":
@@ -160,5 +179,5 @@ class SectionAssignmentsView(TeachingMixin, View):
                 messages.warning(request, warning)
             return redirect(reverse("workloads:section-assignments") + "?" + urlencode({
                 "academic_term": selected.academic_term_id, "department": selected.department_id,
-                "year_level": selected.year_level, "section": selected.pk}))
+                "year_level": selected.year_level, "section": selected.pk}) + f"#assignment-{obj.subject_offering_id}")
         return self.render_workspace(request, selection, submitted=form, preview=report)

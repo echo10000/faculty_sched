@@ -6,7 +6,7 @@
   <title>{% block title %}CampusLoad{% endblock %} · Faculty Workload & Academic Scheduling</title>
   <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
   <link rel="stylesheet" href="{% static 'css/app.css' %}?v=13">
-  <link rel="stylesheet" href="{% static 'css/refinement.css' %}?v=14">
+  <link rel="stylesheet" href="{% static 'css/refinement.css' %}?v=15">
   {% block extra_css %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -26,7 +26,7 @@
     <main id="main-content" class="content {% block content_class %}{% endblock %}" tabindex="-1">
       {% if messages %}{% for message in messages %}<div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'warning' %}alert-warning{% elif message.tags == 'error' %}alert-danger{% else %}alert-info{% endif %}" role="status">{{ message }}</div>{% endfor %}{% endif %}
       {% include "includes/breadcrumbs.html" %}
-      {% include "timetabling/_guide_navigation.html" %}
+      {% block scheduling_guide %}{% include "timetabling/_guide_navigation.html" %}{% endblock %}
       {% block current_term_notice %}{% if current_term_only %}<div class="alert alert-light border mb-3" role="status">{% if staff_current_term %}<strong>Current term:</strong> {{ staff_current_term }}<small class="d-block text-secondary">Selected automatically from the academic calendar. Your administrator manages the dates.</small>{% else %}<strong>No term is currently in progress.</strong> Your administrator can review the academic calendar. Scheduling will resume when the next term begins.{% endif %}</div>{% endif %}{% endblock %}
       {% block content %}{% endblock %}
     </main>
@@ -35,6 +35,6 @@
 </div>
 {% endblock %}
 <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
-<script src="{% static 'js/app.js' %}?v=11" defer></script>
+<script src="{% static 'js/app.js' %}?v=12" defer></script>
 {% block extra_js %}{% endblock %}
 </body></html>

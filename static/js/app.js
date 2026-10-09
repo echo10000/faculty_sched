@@ -114,15 +114,25 @@
   document.querySelectorAll('[data-assignment-preview]').forEach(form => {
     const output = form.querySelector('[data-preview-result]');
     const faculty = form.elements.namedItem('faculty');
+    const desk = form.hasAttribute('data-desk-form');
+    const save = form.querySelector('[value="save"]');
+    const check = form.querySelector('[value="preview"]');
+    const guidance = form.querySelector('[data-save-guidance]');
     let controller;
     const formatLoad = value => value == null ? 'Not configured' :
       Number(value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
     const preview = async () => {
+      if (desk && form.getAttribute('aria-busy') === 'true') return;
       if (controller) controller.abort();
-      if (!faculty.value) { output.textContent = ''; return; }
+      if (desk) save.disabled = true;
+      if (!faculty.value) {
+        output.textContent = 'Choose an instructor before checking workload.';
+        return;
+      }
       controller = new AbortController();
       const active = controller;
       output.textContent = 'Checking workload…';
+      if (desk) { check.setAttribute('aria-disabled', 'true'); form.setAttribute('aria-busy', 'true'); }
       const data = new FormData(form);
       data.set('intent', 'preview');
       try {
@@ -139,20 +149,37 @@
           // This fragment comes from our autoescaped Django summary template.
           // Never interpolate form values or raw error messages into HTML.
           output.innerHTML = report.summary_html;
-          const notice = document.createElement('p');
-          notice.className = 'text-secondary mt-2';
-          notice.textContent = 'Preview only; nothing saved. Saving rechecks the latest limits.';
-          output.append(notice);
+          if (desk) {
+            save.disabled = false;
+            guidance.textContent = 'Review the projected totals before saving. Saving rechecks the latest teaching shares and workload policy.';
+          } else {
+            const notice = document.createElement('p');
+            notice.className = 'text-secondary mt-2';
+            notice.textContent = 'Preview only; nothing saved. Saving rechecks the latest limits.';
+            output.append(notice);
+          }
         } else output.textContent = report ?
           `After assignment: ${formatLoad(report.assigned_load)} / ${formatLoad(report.maximum_load)} workload units · ${report.status}. ${report.warnings.join(' ')} Preview only; nothing saved.` :
           'Select a valid instructor and teaching share.';
       } catch (error) {
         if (error.name !== 'AbortError' && controller === active)
           output.textContent = 'Could not check workload. Try Check workload again. Saving will recheck the latest limits.';
+      } finally {
+        if (desk && controller === active) { check.removeAttribute('aria-disabled'); form.removeAttribute('aria-busy'); }
       }
     };
-    faculty.addEventListener('change', preview);
-    form.elements.namedItem('share').addEventListener('change', preview);
+    const invalidate = () => {
+      controller?.abort();
+      controller = null;
+      save.disabled = true;
+      check.removeAttribute('aria-disabled');
+      form.removeAttribute('aria-busy');
+      output.classList.remove('text-danger');
+      output.textContent = 'Check workload to compare current and projected totals for this selection.';
+      guidance.textContent = 'Check workload before saving. Saving rechecks the latest teaching shares, eligibility and workload policy.';
+    };
+    faculty.addEventListener('change', desk ? invalidate : preview);
+    form.elements.namedItem('share').addEventListener(desk ? 'input' : 'change', desk ? invalidate : preview);
     form.addEventListener('submit', event => {
       if (event.submitter?.value === 'preview') { event.preventDefault(); preview(); }
       else if (controller) controller.abort();
