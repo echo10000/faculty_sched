@@ -39,7 +39,8 @@ from .presentation import meeting_filters, present_conflicts
 from .presentation import navigation_filters
 from .presentation import lunch_violations
 from .workspace import guided_form_class, stage_links, stage_number
-from .preparation import task_actions, readiness_findings, preparation_counts
+from .preparation import (task_actions, readiness_findings, preparation_counts,
+                          publication_findings, publication_groups)
 from .room_eligibility import can_preview_rooms
 from .room_rules import resolve_room_requirement
 
@@ -132,7 +133,24 @@ class PrepareScheduleView(ProtectedViewMixin, TemplateView):
             context["preparation_counts"] = preparation_counts(user, schedule) if stage == 2 else {}
             context["can_generate_section"] = context["can_generate"] and all(user.has_perm(item) for item in (
                 "timetabling.view_classsection", "workloads.view_subjectoffering", "academics.view_subject"))
-            context["recent_proposals"] = generation_run_queryset(user).filter(schedule=schedule).order_by("-pk")[:5] if _can_view_runs(user) and stage == 6 else []
+            context["can_view_proposals"] = _can_view_runs(user)
+            if stage == 6 and context["can_view_proposals"]:
+                runs = generation_run_queryset(user).filter(schedule=schedule).order_by("-pk")
+                context["recent_proposals"] = runs[:5]
+                context["review_proposal"] = runs.filter(status=ScheduleGenerationRun.Status.PROPOSAL_READY).first()
+            if stage in (6, 7):
+                context["publication_findings"] = publication_findings(user, schedule) if display_status != "approved" else None
+                if context["publication_findings"] is not None:
+                    context["publication_groups"] = publication_groups(context["publication_findings"])
+                context["draft_meeting_count"] = scoped(user, entry_queryset()).filter(schedule=schedule).count() if user.has_perm("timetabling.view_scheduleentry") else None
+            if display_status == "approved":
+                context["is_current_official"] = ActiveSchedule.objects.filter(schedule=schedule).exists()
+        findings = context.get("readiness_findings") if stage in (3, 4, 5) else context.get("publication_findings")
+        if findings is not None:
+            context["finding_summary"] = {
+                "errors": sum(row["severity"] == "ERROR" for row in findings),
+                "warnings": sum(row["severity"] == "WARNING" for row in findings),
+            }
         return context
 
 

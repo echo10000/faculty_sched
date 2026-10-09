@@ -1,0 +1,27 @@
+{% load workspace %}
+<section class="prepare-publication" aria-labelledby="readiness-title">
+  <div class="prepare-section-heading"><h3 id="readiness-title" tabindex="-1">Publication readiness</h3><span class="prepare-caption">Live review findings</span></div>
+  {% if publication_findings != None %}
+  <div class="prepare-publication-overview {% if finding_summary.errors %}prepare-publication-blocked{% endif %}">
+    <div class="prepare-publication-counts"><span><strong>{{ finding_summary.errors }}</strong> blocking issue{{ finding_summary.errors|pluralize }}</span><span><strong>{{ finding_summary.warnings }}</strong> warning{{ finding_summary.warnings|pluralize }}</span></div>
+    <h4>{% if finding_summary.errors %}Not ready for publication{% else %}No blocking publication issues found{% endif %}</h4>
+    <p>{% if finding_summary.errors %}The saved schedule fails required publication checks. Resolve every blocking issue below, then check the schedule again.{% else %}Review any warnings before explicit validation and finalization.{% endif %} Passing generation input checks does not establish publication readiness.</p>
+    {% if perms.timetabling.view_scheduleentry %}<a class="workbench-link" href="{% workspace_url 'timetabling:schedule-review' schedule.pk %}">Review &amp; finalize <span aria-hidden="true">↗</span></a>{% endif %}
+  </div>
+  {% if publication_groups %}<p class="prepare-caption prepare-publication-help">Expand a category to inspect every finding and its available fix links. Only known issue types with the same severity and remedy are grouped.</p>{% endif %}
+  {% for group in publication_groups %}
+  <details class="prepare-validation-group">
+    <summary><span>{{ group.label }}</span><span class="prepare-issue-count {% if group.severity == 'ERROR' %}prepare-issue-blocking{% endif %}">{{ group.findings|length }} {% if group.severity == 'ERROR' %}blocking{% elif group.severity == 'WARNING' %}warning{{ group.findings|length|pluralize }}{% else %}{{ group.severity }}{% endif %}</span><span class="prepare-disclosure-chevron" aria-hidden="true">⌄</span></summary>
+    <ol class="prepare-validation-list">
+      {% for finding in group.findings %}<li>
+        <span class="prepare-issue-severity">{% if finding.severity == 'ERROR' %}Blocking issue{% elif finding.severity == 'WARNING' %}Warning{% else %}{{ finding.severity }}{% endif %}</span>
+        <p>{{ finding.message }}</p><p class="prepare-caption">{{ finding.remedy }}</p>
+        {% for meeting in finding.meetings %}<a class="prepare-meeting-fix" href="{{ meeting.url }}">{{ meeting.action }}: {{ meeting.label }} <span aria-hidden="true">↗</span></a>{% endfor %}
+        {% if finding.url %}<a class="workbench-link" href="{{ finding.url }}">{{ finding.label }} <span aria-hidden="true">↗</span></a>{% elif not finding.meetings %}<a class="workbench-link" href="{% workspace_url 'timetabling:schedule-review' schedule.pk %}">Inspect finding on review page <span aria-hidden="true">↗</span></a>{% endif %}
+      </li>{% endfor %}
+    </ol>
+  </details>
+  {% endfor %}
+  <p class="prepare-caption mt-3 mb-0">These are the existing review page's checks of the resulting schedule. Viewing findings does not validate this version, certify stage completion or publish it. Finalization checks again.</p>
+  {% else %}<p class="prepare-caption">Publication checks could not be shown with your current permissions. Ask an authorized staff member to review this version; no readiness result is assumed.</p>{% endif %}
+</section>

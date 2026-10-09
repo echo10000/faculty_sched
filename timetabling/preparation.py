@@ -71,8 +71,116 @@ def task_actions(user, term, department, schedule, stage):
             continue
         task_query = {key: value for key, value in query.items() if route != "rooms:list" or key != "department"}
         url = reverse(route) + ("?" + urlencode(task_query) if task_query else "")
-        actions.append({"label": label, "url": guided_url(url, guide)})
+        actions.append({"label": label, "url": guided_url(url, guide),
+                        "description": TASK_DESCRIPTIONS.get(route, ""),
+                        "advanced": route == "timetabling:configurations"})
     return actions
+
+
+TASK_DESCRIPTIONS = {
+    "workloads:offerings": "Confirm the subjects offered for this term.",
+    "timetabling:sections": "Organize the student groups attending classes.",
+    "workloads:section-assignments": "Choose faculty for each subject and section manually.",
+    "workloads:assignments": "Review instructors and their teaching shares.",
+    "workloads:monitor": "Check assigned units against existing workload policies.",
+    "timetabling:requirements": "Link each class to its section and required room type.",
+    "timetabling:meeting-requirements": "Set weekly frequency and duration for lectures and laboratories.",
+    "timetabling:room-eligibility": "Inspect eligible rooms and reasons for exclusions.",
+    "workloads:availability": "Record hard unavailability and preferred teaching times.",
+    "rooms:list": "Review room types, capacity and access.",
+    "timetabling:closures": "Protect times when rooms cannot be used.",
+    "timetabling:configurations": "Review operating hours, time grid and preference weights.",
+    "timetabling:generation-runs": "Inspect proposals before accepting meetings into the draft.",
+}
+
+
+PUBLICATION_FIXES = {
+    "ASSIGNMENT_INCOMPLETE": ("workloads:assignments", "Review teaching assignments", "workloads.view_facultysubjectassignment"),
+    "WORKLOAD_RULE": ("workloads:monitor", "Review faculty teaching units", "workloads.view_workload"),
+    "MEETING_REQUIREMENT_MISSING": ("timetabling:meeting-requirements", "Review meeting requirements", "timetabling.view_assignmentmeetingrequirement"),
+    "MEETING_REQUIREMENT_COUNT": ("timetabling:unscheduled", "Review meeting coverage", "timetabling.view_scheduleentry"),
+    "MEETING_REQUIREMENT_DURATION": ("timetabling:timetable", "Review meeting durations", "timetabling.view_scheduleentry"),
+    "MEETING_HOURS_WARNING": ("timetabling:unscheduled", "Review meeting coverage", "timetabling.view_scheduleentry"),
+    "TEACHING_HOURS_INCOMPLETE": ("timetabling:unscheduled", "Review meeting coverage", "timetabling.view_scheduleentry"),
+}
+
+
+PUBLICATION_GROUP_LABELS = {
+    "EMPTY_SCHEDULE": "No saved meetings",
+    "ASSIGNMENT_INCOMPLETE": "Incomplete teaching assignments",
+    "TEACHING_HOURS_INCOMPLETE": "Missing weekly teaching hours",
+    "MEETING_REQUIREMENT_MISSING": "Missing meeting requirements",
+    "MEETING_REQUIREMENT_COUNT": "Meeting frequency",
+    "MEETING_REQUIREMENT_DURATION": "Meeting duration",
+    "MEETING_HOURS_WARNING": "Meeting hours to review",
+    "WORKLOAD_RULE": "Faculty workload rules",
+    "SCHEDULING_RULE": "Operating days, hours and time grid",
+    "FACULTY_OVERLAP": "Faculty meeting overlaps",
+    "ROOM_OVERLAP": "Room booking overlaps",
+    "SECTION_OVERLAP": "Student section overlaps",
+    "FACULTY_UNAVAILABLE": "Recorded faculty unavailability",
+    "ROOM_UNAVAILABLE": "Blocked room times",
+    "ROOM_TYPE_MISMATCH": "Room specialization",
+    "ROOM_CAPACITY_WARNING": "Room capacity",
+    "LUNCH_BREAK_OVERLAP": "Mandatory lunch break",
+    "FACULTY_REST_PREFERENCE": "Faculty rest preference",
+    "SECTION_REQUIRED": "Missing class sections",
+    "INACTIVE_RESOURCE": "Inactive scheduling resources",
+    "INVALID_TIME_RANGE": "Invalid meeting times",
+    "INVALID_MEETING_TYPE": "Invalid meeting components",
+    "TERM_MISMATCH": "Academic term mismatch",
+    "ORGANIZATION_MISMATCH": "Department mismatch",
+    "PROTECTED_ENTRY": "Meetings requiring administrator review",
+}
+
+
+def publication_groups(findings):
+    """Group known validator types with matching severity/remedy; retain every row.
+
+    Unknown codes stay separate rather than inferring equivalence from prose.
+    These groups only organize presentation and never determine validation.
+    """
+    groups = {}
+    for index, finding in enumerate(findings):
+        code = finding["code"]
+        key = (code, finding["severity"], finding["remedy"]) if code in PUBLICATION_GROUP_LABELS else (index,)
+        if key not in groups:
+            groups[key] = {
+                "label": PUBLICATION_GROUP_LABELS.get(code, "Additional validation finding"),
+                "severity": finding["severity"], "findings": [],
+            }
+        groups[key]["findings"].append(finding)
+    return list(groups.values())
+
+
+def publication_findings(user, schedule):
+    """Show the review page's live checks without validating or publishing a version."""
+    if not user.has_perm("timetabling.view_scheduleentry"):
+        return None
+    from .finalization_validation import publication_conflicts
+    from .models import ActiveSchedule
+    from .presentation import present_conflicts
+
+    active = ActiveSchedule.objects.filter(academic_term=schedule.academic_term,
+                                           department=schedule.department).first()
+    conflicts = publication_conflicts(schedule, user,
+        excluded_schedule_ids=(active.schedule_id,) if active and active.schedule_id != schedule.pk else ())
+    findings = present_conflicts(user, conflicts)
+    guide = {"schedule": schedule, "stage": 7}
+    for finding in findings:
+        for meeting in finding["meetings"]:
+            meeting["url"] = guided_url(meeting["url"], guide)
+        fix = PUBLICATION_FIXES.get(finding["code"])
+        if fix and user.has_perm(fix[2]):
+            route, label, _ = fix
+            args = [schedule.pk] if route in ("timetabling:unscheduled", "timetabling:timetable") else []
+            query = {"academic_term": schedule.academic_term_id, "department": schedule.department_id}
+            finding.update(url=guided_url(reverse(route, args=args) + "?" + urlencode(query), guide), label=label)
+        elif finding["code"] == "EMPTY_SCHEDULE":
+            from .workspace import stage_links
+            finding.update(url=stage_links(schedule.academic_term, schedule.department, schedule)[4]["url"],
+                           label="Go to Generate timetable")
+    return findings
 
 
 FIXES = {
