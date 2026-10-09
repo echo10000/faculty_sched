@@ -61,7 +61,10 @@ class WorkspaceUXTests(TimetableFixture):
                 self.assertGreater(len(groups), 1)
             else:
                 self.assertEqual(len([link for group in groups for link in group["links"]]), len(page.context["navigation_links"]))
-                self.assertEqual(page.context["workflow_groups"][0]["label"], "Academic setup")
+                self.assertEqual([group["label"] for group in groups], [
+                    "Dashboard", "Prepare Academic Schedule", "Faculty & Teaching",
+                    "Schedules & Publication", "Reports", "Management & Settings",
+                ])
 
     def test_directory_workload_matches_existing_calculation(self):
         self.policy(recommended_load=12, maximum_load=18)

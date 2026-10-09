@@ -28,27 +28,62 @@
     try { localStorage.setItem(storageKey, String(value)); }
     catch { /* Navigation still works when storage is unavailable. */ }
   };
-  let expandedGroups = [];
-  const setCollapsed = (collapsed) => {
-    if (collapsed) {
-      expandedGroups = groups.filter(group => group.open).map(group => group.dataset.navLabel);
-      groups.forEach(group => { group.open = true; });
-    } else {
-      groups.forEach(group => {
-        group.open = expandedGroups.includes(group.dataset.navLabel) || !!group.querySelector('.nav-link.active');
-      });
-    }
-    document.body.classList.toggle('sidebar-collapsed', collapsed);
-    button.setAttribute('aria-expanded', String(!collapsed));
-    button.title = collapsed ? 'Show sidebar' : 'Hide sidebar';
+  const desktop = window.matchMedia('(min-width: 992px)');
+  let collapsed = readCollapsed();
+  const renderCollapsed = () => {
+    const compact = desktop.matches && collapsed;
+    // Keep disclosure state intact; compact mode hides only the child links.
+    document.body.classList.toggle('sidebar-collapsed', compact);
+    button.setAttribute('aria-expanded', String(!compact));
+    button.title = compact ? 'Show sidebar' : 'Hide sidebar';
     button.querySelector('.visually-hidden').textContent = button.title;
-    button.querySelector('[aria-hidden]').textContent = collapsed ? '⇥' : '⇤';
-    button.querySelector('.sidebar-toggle-label').textContent = collapsed ? 'Show sidebar' : 'Hide sidebar';
-    saveCollapsed(collapsed);
+    button.querySelector('[aria-hidden]').textContent = compact ? '⇥' : '⇤';
+    button.querySelector('.sidebar-toggle-label').textContent = button.title;
   };
-  groups.forEach(group => { group.dataset.navLabel = group.querySelector('.nav-group-label').textContent.trim(); });
-  if (readCollapsed()) setCollapsed(true);
-  button.addEventListener('click', () => setCollapsed(!document.body.classList.contains('sidebar-collapsed')));
+  renderCollapsed();
+  desktop.addEventListener('change', renderCollapsed);
+  window.addEventListener('pageshow', () => {
+    collapsed = readCollapsed();
+    renderCollapsed();
+  });
+  button.addEventListener('click', () => {
+    collapsed = !collapsed;
+    saveCollapsed(collapsed);
+    renderCollapsed();
+  });
+  groups.forEach(group => {
+    group.querySelector('summary').addEventListener('click', event => {
+      if (!desktop.matches || !collapsed) return;
+      event.preventDefault();
+      collapsed = false;
+      saveCollapsed(false);
+      renderCollapsed();
+      group.open = true;
+    });
+  });
+})();
+
+(() => {
+  const sidebar = document.getElementById('sidebar');
+  const toggle = document.getElementById('navigation-toggle');
+  if (!sidebar || !toggle) return;
+  const syncToggle = expanded => {
+    toggle.setAttribute('aria-expanded', String(expanded));
+    toggle.setAttribute('aria-label', expanded ? 'Close navigation' : 'Open navigation');
+  };
+  sidebar.addEventListener('shown.bs.offcanvas', () => syncToggle(true));
+  sidebar.addEventListener('hidden.bs.offcanvas', () => syncToggle(false));
+  sidebar.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', () => {
+      if (!window.matchMedia('(min-width: 992px)').matches)
+        bootstrap.Offcanvas.getInstance(sidebar)?.hide();
+    });
+  });
+  // Clear the drawer on restored history pages, including its backdrop/scroll lock.
+  window.addEventListener('pageshow', () => {
+    bootstrap.Offcanvas.getInstance(sidebar)?.hide();
+    syncToggle(false);
+  });
 })();
 
 (() => {

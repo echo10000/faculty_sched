@@ -33,15 +33,17 @@ class SectionAssignmentWorkspaceTests(TeachingFixture):
     def payload(self, **updates):
         return {**self.selection(), **self.assignment_data(), "intent": "preview", **updates}
 
-    def test_subjects_before_assignments_and_only_two_primary_staff_links(self):
+    def test_subjects_before_assignments_and_grouped_staff_teaching_tools(self):
         self.client.force_login(self.chair)
         response = self.client.get(self.workspace_url(), self.selection())
         self.assertContains(response, self.offering.subject.title)
         self.assertContains(response, "Choose an instructor")
         self.assertNotContains(response, "FOREIGN-1A")
-        group = next(group for group in response.context["navigation_groups"] if group["label"] == "Faculty & workload")
+        group = next(group for group in response.context["navigation_groups"] if group["label"] == "Faculty & Teaching")
         self.assertEqual([link["route"] for link in group["links"]],
-                         ["faculty-management:list", "workloads:section-assignments"])
+                         ["faculty-management:list", "workloads:section-assignments", "workloads:monitor",
+                          "workloads:availability", "workloads:assignments", "workloads:balancing",
+                          "workloads:balancing-runs"])
 
     def test_preview_has_authoritative_load_but_does_not_write_and_save_is_audited(self):
         self.policy(recommended_load=18, maximum_load=24)

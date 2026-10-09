@@ -50,10 +50,8 @@ class BalancingPageTests(TeachingFixture):
         AcademicTerm.objects.filter(pk=self.later.pk).update(is_active=False)
         page = self.client.get(self.url("balancing"))
         self.assertEqual(page.status_code, 200)
-        self.assertContains(page, self.department.code)
-        self.assertNotContains(page, self.sibling.code)
-        self.assertNotContains(page, self.external.code)
-        self.assertNotContains(page, 'value="%s"' % self.later.pk)
+        self.assertEqual(list(page.context["form"].fields["department"].queryset), [self.department])
+        self.assertNotIn(self.later, page.context["form"].fields["academic_term"].queryset)
         with patch("workloads.balancing_views.request_balancing_run", return_value=self.run) as service:
             response = self.client.post(self.url("balancing"), {
                 "academic_term": self.term.pk, "department": self.external.pk,
@@ -86,12 +84,12 @@ class BalancingPageTests(TeachingFixture):
     def test_dean_and_system_admin_see_only_their_granted_scope(self):
         self.client.force_login(self.dean)
         page = self.client.get(self.url("balancing"))
-        self.assertContains(page, self.department.code)
-        self.assertContains(page, self.sibling.code)
-        self.assertNotContains(page, self.external.code)
+        self.assertCountEqual(page.context["form"].fields["department"].queryset,
+                              [self.department, self.sibling])
         self.assertEqual(self.client.get(self.url("balancing-run-detail", self.foreign_run.pk)).status_code, 404)
         self.client.force_login(self.admin)
-        self.assertContains(self.client.get(self.url("balancing")), self.external.code)
+        self.assertIn(self.external,
+                      self.client.get(self.url("balancing")).context["form"].fields["department"].queryset)
         self.assertEqual(self.client.get(self.url("balancing-run-detail", self.foreign_run.pk)).status_code, 200)
 
     def test_terminal_actions_are_post_only_and_require_csrf(self):
@@ -144,8 +142,8 @@ class BalancingPageTests(TeachingFixture):
                 self.assertIn("workloads:section-assignments", routes)
                 self.assertIn("timetabling:generator", routes)
                 self.assertIn("timetabling:section-generator", routes)
-                self.assertNotIn("workloads:balancing", routes)
-                self.assertNotIn("workloads:balancing-runs", routes)
+                self.assertIn("workloads:balancing", routes)
+                self.assertIn("workloads:balancing-runs", routes)
                 markup = Markup(page.content.decode())
                 self.assertTrue(any(tag == "nav" and attrs.get("aria-label") == "Main navigation"
                                     for tag, attrs in markup.elements))

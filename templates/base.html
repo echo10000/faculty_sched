@@ -5,8 +5,8 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}CampusLoad{% endblock %} · Faculty Workload & Academic Scheduling</title>
   <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=8">
-  <link rel="stylesheet" href="{% static 'css/refinement.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=9">
+  <link rel="stylesheet" href="{% static 'css/refinement.css' %}?v=6">
   {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -18,7 +18,7 @@
     <div class="offcanvas-body d-flex flex-column">
       <a class="brand" href="{% url 'home' %}" aria-label="CampusLoad dashboard" title="CampusLoad · NORSU Bayawan–Santa Catalina Campus">{% include 'core/_norsu_seal.html' with seal_class='sidebar-seal' %}<span class="brand-copy">CampusLoad<small>Negros Oriental State University<br>Bayawan–Santa Catalina Campus</small></span></a>
       {% include "includes/sidebar_navigation.html" %}
-      <div class="sidebar-footer mt-auto"><span class="scope-dot" aria-hidden="true"></span><span class="sidebar-footer-text">{{ access_scope }}<small>Authorized workspace</small></span></div>
+      <div class="sidebar-footer mt-auto"><span class="scope-dot" aria-hidden="true"></span><span class="sidebar-footer-text">{{ role_label }}<small>{{ access_scope }}</small></span></div>
     </div>
   </aside>
   <div class="main-column">
@@ -35,6 +35,6 @@
 </div>
 {% endblock %}
 <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
-<script src="{% static 'js/app.js' %}?v=7" defer></script>
+<script src="{% static 'js/app.js' %}?v=8" defer></script>
 {% block extra_js %}{% endblock %}
 </body></html>

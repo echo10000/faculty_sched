@@ -6,7 +6,7 @@
   --teal:#0f766e;
   --teal-hover:#0b625b;
   --teal-soft:#e8f5f2;
-  --canvas:#edf2f5;
+  --canvas:#f1f4f6;
   --surface:#fff;
   --surface-muted:#f3f6f8;
   --line:#d5dfe5;
@@ -19,10 +19,10 @@
   --space-4:16px;
   --space-5:24px;
   --space-6:32px;
-  --radius:12px;
-  --radius-control:8px;
+  --radius:8px;
+  --radius-control:6px;
   --radius-small:6px;
-  --surface-shadow:0 2px 6px rgba(16,44,62,.055);
+  --surface-shadow:none;
   --menu-shadow:0 8px 24px rgba(16,44,62,.12);
   --focus:#a46915;
   --institution-gold:#d4af32;
@@ -88,10 +88,10 @@ h2,.h5 {
   display:flex;
 }
 .sidebar {
-  --bs-offcanvas-width:260px;
+  --bs-offcanvas-width:280px;
   background:var(--navy)!important;
   color:#fff;
-  width:260px;
+  width:280px;
   flex-shrink:0;
 }
 .sidebar .offcanvas-body {
@@ -129,20 +129,15 @@ h2,.h5 {
   font-size:.9rem;
   letter-spacing:.02em;
 }
-.nav-caption {
-  font-size:.65rem;
-  letter-spacing:.17em;
-  color:#9cb4c6;
-  margin:48px 12px 14px;
-}
 .sidebar .nav-link {
   display:flex;
   align-items:center;
   gap:10px;
   min-width:0;
-  padding:9px 10px;
+  padding:11px 12px;
   color:#c8d6df;
-  font-size:.84rem;
+  font-size:.9rem;
+  line-height:1.4;
   border-radius:var(--radius-control);
   transition:background-color .15s ease,color .15s ease;
 }
@@ -179,11 +174,11 @@ h2,.h5 {
   flex-direction:column;
 }
 .topbar {
-  min-height:72px;
+  min-height:68px;
   display:flex;
   align-items:center;
   gap:16px;
-  padding:12px 32px;
+  padding:12px 24px;
   background:white;
   border-bottom:1px solid var(--line);
 }
@@ -205,7 +200,7 @@ h2,.h5 {
   margin-top:3px;
 }
 .content {
-  padding:var(--space-6) var(--space-6) 48px;
+  padding:var(--space-5) var(--space-6) 48px;
   max-width:1440px;
   width:100%;
   margin:0 auto;
@@ -359,12 +354,12 @@ h2,.h5 {
   font-size:.76rem;
   font-weight:650;
   color:var(--muted);
-  padding:12px;
+  padding:10px 12px;
   background:var(--surface-muted);
   border-color:var(--line);
 }
 .table td {
-  padding:12px;
+  padding:10px 12px;
   border-color:var(--line);
   overflow-wrap:anywhere;
 }

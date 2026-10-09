@@ -13,13 +13,13 @@ def navigation(request):
     granted = user.get_all_permissions() if authorized else set()
     links = []
     for permission, label, route in [
-        ("core.view_dashboard", "Overview", "home"),
+        ("core.view_dashboard", "Dashboard", "home"),
         ("faculty.view_faculty", "Faculty", "faculty-management:list"),
         ("workloads.view_facultyavailability", "Faculty availability", "workloads:availability"),
         ("workloads.view_workload", "Faculty workload", "workloads:monitor"),
         ("academics.view_subject", "Subjects", "subjects:list"),
         ("workloads.view_subjectoffering", "Classes offered", "workloads:offerings"),
-        ("workloads.view_facultysubjectassignment", "Teaching assignments", "workloads:assignments"),
+        ("workloads.view_facultysubjectassignment", "Assignment records", "workloads:assignments"),
         ("workloads.view_facultysubjectassignment", "Teaching assignments", "workloads:section-assignments"),
         ("scheduling.view_room", "Rooms", "rooms:list"),
         ("timetabling.view_schedule", "Manage schedules", "timetabling:schedules"),
@@ -44,15 +44,13 @@ def navigation(request):
             if match and match.namespace == "workloads" and route.startswith("workloads:"):
                 section = route.split(":")[1]
                 active = match.url_name.startswith(section) or (section == "monitor" and match.url_name == "faculty") or (section == "availability" and match.url_name == "faculty-availability")
-                if route == "workloads:section-assignments" and not is_system_admin(user):
-                    active = active or match.url_name.startswith(("assignments", "balancing"))
             if match and match.namespace == "timetabling" and route.startswith("timetabling:"):
                 section = route.split(":")[1]
                 active = match.url_name.startswith(section) or (section == "schedules" and match.url_name in ("timetable", "conflicts", "entries-add", "entries-edit", "entries-delete", "validate", "schedule-review", "schedule-history", "unscheduled"))
+                if section == "requirements" and match.url_name == "room-eligibility":
+                    active = True
             if match and route in ("faculty-management:list", "subjects:list", "rooms:list"):
                 active = active or match.namespace == route.split(":")[0]
-                if route == "faculty-management:list" and not is_system_admin(user):
-                    active = active or (match.namespace == "workloads" and match.url_name in ("faculty", "faculty-availability", "monitor", "availability"))
             if match and route in ("college-list", "department-list"):
                 active = active or match.url_name == route.replace("-list", "-detail")
             links.append({"label": label, "route": route, "active": active})
@@ -80,7 +78,7 @@ def navigation(request):
         if all(permission in granted for permission in ("timetabling.finalize_schedule", "timetabling.view_schedule", "academics.view_academicterm")):
             special.append(("Schedules to finalize", "timetabling:review-queue", {"review-queue"}))
         if "timetabling.view_schedule" in granted and "academics.view_academicterm" in granted:
-            special.append(("Prepare schedule", "timetabling:prepare", {"prepare"}))
+            special.append(("Prepare Academic Schedule", "timetabling:prepare", {"prepare"}))
             special.append(("Official schedules", "timetabling:official-schedules", {"official-schedules"}))
         for label, route, names in special:
             links.append({"label": label, "route": route,
@@ -89,6 +87,9 @@ def navigation(request):
     if person:
         for label, route in [('My Teaching Schedule', 'faculty-portal:schedule'), ('My Teaching Load', 'faculty-portal:workload')]:
             links.append({'label': label, 'route': route, 'active': bool(request.resolver_match and request.resolver_match.view_name == route)})
+    can_administer = authorized and user.is_staff and is_system_admin(user)
+    if can_administer:
+        links.append({"label": "System administration", "route": "admin:index", "active": False})
     # Icons are presentation metadata; permissions and destinations stay above.
     icons = {
         "home": "grid", "faculty-management:list": "person",
@@ -106,36 +107,39 @@ def navigation(request):
         "timetabling:official-schedules": "check", "reporting:index": "file",
         "college-list": "building", "department-list": "people",
         "academic-calendar": "calendar",
+        "admin:index": "settings", "faculty-portal:schedule": "calendar",
+        "faculty-portal:workload": "chart",
     }
     for link in links:
         link["icon"] = icons.get(link["route"], "file")
     # Group only links that passed the existing permission checks above.
-    overview = ("Dashboard", "grid", ("home",))
-    faculty = ("Faculty & workload", "people", ("faculty-management:list", "workloads:availability", "workloads:section-assignments", "workloads:assignments", "workloads:monitor", "workloads:balancing", "workloads:balancing-runs"))
-    academic = ("Academic setup", "book", ("academic-calendar", "subjects:list", "workloads:offerings", "timetabling:sections", "rooms:list", "timetabling:requirements", "timetabling:meeting-requirements", "timetabling:closures"))
-    scheduling = ("Academic scheduling", "calendar", ("timetabling:prepare", "timetabling:section-generator", "timetabling:generator", "timetabling:schedules", "timetabling:generation-runs"))
-    review = ("Review & publication", "review", ("timetabling:my-schedules", "timetabling:review-queue", "timetabling:official-schedules"))
-    reports = ("Reports", "file", ("reporting:index",))
-    administration = ("Administration", "settings", ("college-list", "department-list", "timetabling:configurations"))
-    role = profile.role if profile else ""
-    if user.is_authenticated and is_system_admin(user):
-        sections = (overview, academic, faculty, scheduling, review, reports, administration)
-    else:
-        faculty = ("Faculty & workload", "people", ("faculty-management:list", "workloads:section-assignments"))
-        sections = (overview, academic, faculty, scheduling, review, reports, administration)
-    teaching = ('My teaching', 'person', ('faculty-portal:schedule', 'faculty-portal:workload'))
-    sections = (*sections, teaching)
+    sections = (
+        ("Dashboard", "grid", ("home",), True),
+        ("Prepare Academic Schedule", "checklist", ("timetabling:prepare",), True),
+        ("Faculty & Teaching", "people", (
+            "faculty-management:list", "workloads:section-assignments", "workloads:monitor",
+            "workloads:availability", "workloads:assignments", "workloads:balancing",
+            "workloads:balancing-runs"), False),
+        ("Schedules & Publication", "calendar", (
+            "timetabling:schedules", "timetabling:section-generator", "timetabling:generator",
+            "timetabling:generation-runs", "timetabling:my-schedules", "timetabling:review-queue",
+            "timetabling:official-schedules"), False),
+        ("Reports", "file", ("reporting:index",), True),
+        ("Management & Settings", "settings", (
+            "academic-calendar", "college-list", "department-list", "subjects:list",
+            "workloads:offerings", "timetabling:sections", "rooms:list", "timetabling:requirements",
+            "timetabling:meeting-requirements", "timetabling:closures", "timetabling:configurations",
+            "admin:index"), False),
+        ("My Teaching Schedule", "calendar", ("faculty-portal:schedule",), True),
+        ("My Teaching Load", "chart", ("faculty-portal:workload",), True),
+    )
     navigation_groups = []
-    for label, icon, routes in sections:
+    for label, icon, routes, direct in sections:
         items = sorted((link for link in links if link["route"] in routes),
                        key=lambda link: routes.index(link["route"]))
         if items:
-            navigation_groups.append({"label": label, "icon": icon, "links": items,
+            navigation_groups.append({"label": label, "icon": icon, "links": items, "direct": direct,
                                       "active": any(link["active"] for link in items)})
-    workflow_groups = sorted(
-        (group for group in navigation_groups if group["label"] not in ("Dashboard", "Administration")),
-        key=lambda group: ("Academic setup", "Faculty & workload", "Academic scheduling", "Review & publication", "Reports", "My teaching").index(group["label"]),
-    )
     breadcrumbs = []
     match = request.resolver_match
     current_link = next((link for link in links if link["active"]), None)
@@ -150,11 +154,12 @@ def navigation(request):
     current_term_only = authorized and not faculty_only(user) and staff_uses_current_term(user)
     scope = "Institution-wide" if user.is_authenticated and is_system_admin(user) else assigned_unit.name if assigned_unit else str(person) if person else "No assigned scope"
     return {
-        "workflow_groups": workflow_groups, "breadcrumbs": breadcrumbs, "institution_name": name,
+        "breadcrumbs": breadcrumbs, "institution_name": name,
+        "primary_navigation": [group["links"][0] for group in navigation_groups if group["direct"]],
         "navigation_links": [link for group in navigation_groups for link in group["links"]],
         "navigation_groups": navigation_groups, "access_scope": scope,
         "role_label": "Admin" if user.is_authenticated and user.is_superuser else profile.get_role_display() if profile else "Faculty" if person else "Account",
-        "can_administer": authorized and user.is_staff and is_system_admin(user),
+        "can_administer": can_administer,
         "current_term_only": current_term_only,
         "staff_current_term": current_terms().select_related("academic_year", "semester").first() if current_term_only else None,
     }

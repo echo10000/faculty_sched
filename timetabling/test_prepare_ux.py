@@ -19,7 +19,7 @@ class PrepareScheduleUXTests(TimetableFixture):
         self.assertContains(final_stage, reverse("timetabling:validate", args=[self.schedule.pk]))
         self.assertContains(page, self.department.name)
         self.assertNotContains(page, self.external.name)
-        self.assertContains(self.client.get(reverse("home")), "Prepare schedule")
+        self.assertContains(self.client.get(reverse("home")), "Prepare Academic Schedule")
 
     def test_staff_default_preparation_is_scope_checked(self):
         self.client.force_login(self.staff)
