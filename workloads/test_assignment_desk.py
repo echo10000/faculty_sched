@@ -66,7 +66,8 @@ class AssignmentDeskTests(TeachingFixture):
             self.assertIsNone(row["form"]["faculty"].value())
             self.assertEqual(row["form"].fields["faculty"].choices[0][0], "")
         failed = self.client.post(self.url(), self.payload(faculty="", intent="save"))
-        self.assertTrue(failed.context["rows"][0]["form"].errors)
+        submitted_row = next(row for row in failed.context["rows"] if row["offering"].pk == self.offering.pk)
+        self.assertTrue(submitted_row["form"].errors)
         self.assertFalse(FacultySubjectAssignment.objects.exists())
 
     def test_preview_comparison_uses_authoritative_units_hours_and_load_without_writes(self):

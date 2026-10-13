@@ -6,6 +6,7 @@ from resources.forms import ResourceFilterForm, StyledFormMixin
 from .calculation import STATUSES
 from .models import FacultyAvailability, FacultySubjectAssignment, SubjectOffering
 from .selectors import accessible_terms, scoped_faculty, scoped_records
+from .monitoring import CONDITIONS
 from academics.calendar import use_current_term_field
 
 
@@ -121,4 +122,24 @@ class WorkloadFilterForm(ResourceFilterForm):
             self.fields["section"] = forms.ModelChoiceField(required=False, queryset=scoped(user, ClassSection.objects.all()))
             narrow_section_choices(self.fields["section"], self.data if self.is_bound else self.initial)
         use_current_term_field(self, user)
+        self.style_fields()
+
+
+class WorkloadMonitorFilterForm(WorkloadFilterForm):
+    """Keep existing filters while adding the capacity-focused display filter."""
+
+    condition = forms.ChoiceField(required=False, label="Workload condition", choices=[
+        ("", "All conditions"), *[(key, label) for key, label, _, _ in CONDITIONS],
+        ("above", "Above target, within maximum"),
+    ])
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, user=user, section="monitor", **kwargs)
+        self.fields["q"].label = "Find a faculty member"
+        self.fields["q"].widget = forms.TextInput(attrs={
+            "type": "search", "placeholder": "Find a faculty member or employee code"})
+        self.fields["department"].empty_label = "All permitted departments"
+        self.fields["department"].label_from_instance = lambda department: department.name
+        self.fields["employment_category"].empty_label = "All categories"
+        self.fields["workload_status"].label = "Legacy calculator status"
         self.style_fields()

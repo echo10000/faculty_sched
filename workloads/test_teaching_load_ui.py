@@ -69,8 +69,8 @@ class TeachingLoadInterfaceTests(TeachingFixture):
         self.save_assignment(share="0.5")
         self.client.force_login(self.chair)
         page = self.client.get(self.url("monitor") + f"&faculty={self.faculty.pk}")
-        for text in ("Teaching units / contact hours", "Weighted teaching load", "Target / maximum",
-                     "Capacity / status", "1.50", "2.50", "1.75", "22.25", "Department workload policy"):
+        for text in ("Academic units", "Contact hours", "Weighted load", "Recommended target",
+                     "Configured maximum", "Remaining capacity", "1.50", "2.50", "1.75", "22.25", "Department workload policy"):
             self.assertContains(page, text)
 
     def baseline_payload(self, **updates):
