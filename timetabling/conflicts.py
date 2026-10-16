@@ -398,6 +398,11 @@ def _meeting_requirement_conflicts(schedule, entries, *, section_id=None):
             requirement
         )
 
+    return assignment_requirement_conflicts(assignments, requirements_by_assignment, entries)
+
+
+def assignment_requirement_conflicts(assignments, requirements_by_assignment, entries):
+    """Canonical coverage checks over already selected inputs, also used by the UI."""
     conflicts = []
     for assignment in assignments:
         requirements = requirements_by_assignment.get(assignment.pk, ())

@@ -30,6 +30,7 @@ def teaching_records(user, term_id=None):
         entries = [dict(row) for row in payload.get('entries', []) if row.get('faculty_id') == person.pk]
         for row in entries:
             row['day_label'] = dict(DAYS).get(row['day_of_week'], row['day_of_week'])
+            row['publication'] = payload.get('schedule', {})
         if entries:
             published.append((selection, payload, entries))
     terms = list({item[0].academic_term_id: item[0].academic_term for item in published}.values())

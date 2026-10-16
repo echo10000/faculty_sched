@@ -7,6 +7,43 @@ from .forms import TimetableFilter
 from .queries import entry_queryset, scoped
 
 
+def group_findings(findings):
+    """Group explanations without changing any canonical severity or text."""
+    from itertools import groupby
+
+    groups = []
+    for severity, label in (("ERROR", "Blocking errors"), ("WARNING", "Warnings"), ("INFO", "Information")):
+        rows = sorted((item for item in findings if item["severity"] == severity), key=lambda item: item["code"])
+        if rows:
+            categories = [{"code": code, "findings": list(items)} for code, items in groupby(rows, key=lambda item: item["code"])]
+            groups.append({"severity": severity, "label": label, "findings": rows, "categories": categories})
+    return groups
+
+
+def meeting_coverage(user, assignments, entries):
+    """Attribute unchanged canonical coverage findings to scoped assignments."""
+    from .conflicts import assignment_requirement_conflicts
+    from .models import AssignmentMeetingRequirement
+
+    assignments, entries = list(assignments), list(entries)
+    requirements = {}
+    for requirement in AssignmentMeetingRequirement.objects.filter(assignment__in=assignments):
+        requirements.setdefault(requirement.assignment_id, []).append(requirement)
+    entries_by_assignment = {}
+    for entry in entries:
+        entries_by_assignment.setdefault(entry.assignment_id, []).append(entry)
+    rows = []
+    for assignment in assignments:
+        meetings = entries_by_assignment.get(assignment.pk, [])
+        if not meetings:
+            continue
+        findings = assignment_requirement_conflicts([assignment], requirements, meetings)
+        if findings:
+            rows.append({"assignment": assignment, "meeting_count": len(meetings),
+                         "findings": present_conflicts(user, findings)})
+    return rows
+
+
 def lunch_violations(user, configuration):
     """Visible existing overlaps only; no mutations or protected counts are exposed."""
     if not user.has_perm("timetabling.view_scheduleentry"):

@@ -38,6 +38,7 @@ from .timetable import filtered_entries, week_columns
 from .presentation import meeting_filters, present_conflicts
 from .presentation import navigation_filters
 from .presentation import lunch_violations
+from .presentation import group_findings, meeting_coverage
 from .workspace import guided_form_class, stage_links, stage_number
 from .preparation import (task_actions, readiness_findings, preparation_counts,
                           publication_findings, publication_groups)
@@ -363,6 +364,7 @@ class ScheduleDetail(TimetableMixin, View):
         ).first()
         is_official = bool(active and active.schedule_id == schedule.pk)
         form = TimetableFilter(request.GET, user=request.user)
+        form.fields["q"].label = "Subject code or title"
         entries = filtered_entries(request.user, schedule, form)
         report = summarize(get_schedule_conflicts(
             schedule, user=request.user,
@@ -383,12 +385,10 @@ class ScheduleDetail(TimetableMixin, View):
         requirement_findings = [item for item in findings if item["code"] in (
             "MEETING_REQUIREMENT_MISSING", "MEETING_REQUIREMENT_COUNT", "MEETING_REQUIREMENT_DURATION", "MEETING_HOURS_WARNING",
         )] if report else []
-        conflict_groups = []
-        if report:
-            for severity, label in (("ERROR", "Blocking errors"), ("WARNING", "Warnings"), ("INFO", "Information")):
-                group_findings = [item for item in findings if item["severity"] == severity]
-                if group_findings:
-                    conflict_groups.append({"label": label, "findings": sorted(group_findings, key=lambda item: item["code"])})
+        conflict_groups = group_findings(findings)
+        coverage = meeting_coverage(request.user, assignments, all_entries) if unscheduled is not None and self.mode in ("detail", "unscheduled") else None
+        if coverage is not None:
+            summary["coverage_attention"] = len(coverage)
         filters = meeting_filters(form)
         selected_faculty = form.cleaned_data.get("faculty") if form.is_valid() else None
         faculty_choices = []
@@ -406,6 +406,7 @@ class ScheduleDetail(TimetableMixin, View):
             "can_edit_version": editable, "can_submit_action": editable and request.user.has_perm("timetabling.finalize_schedule") and request.user.has_perm("timetabling.change_schedule"),
             "is_official": is_official, "summary": summary, "unscheduled_assignments": unscheduled,
             "requirement_findings": requirement_findings, "conflict_groups": conflict_groups,
+            "coverage_rows": coverage,
             "conflict_count": report["errors"] + report["warnings"],
             "meeting_filters": filters, "selected_faculty": selected_faculty, "faculty_choices": faculty_choices})
 
@@ -486,12 +487,18 @@ class EntryDelete(TimetableMixin, View):
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request, schedule_id, pk):
-        return render(request, "timetabling/delete.html", {"object": self.entry, "list_url": reverse("timetabling:schedules-detail", args=[schedule_id])})
+        from urllib.parse import urlencode
+        filters = navigation_filters(request)
+        url = reverse("timetabling:schedules-detail", args=[schedule_id])
+        return render(request, "timetabling/delete.html", {"object": self.entry,
+            "list_url": url + ("?" + urlencode(filters) if filters else "")})
 
     def post(self, request, schedule_id, pk):
         remove_entry(user=request.user, schedule_id=schedule_id, pk=pk)
         messages.success(request, "Meeting removed; audit history retained.")
-        return redirect("timetabling:schedules-detail", schedule_id)
+        from urllib.parse import urlencode
+        filters = navigation_filters(request)
+        return redirect(reverse("timetabling:schedules-detail", args=[schedule_id]) + ("?" + urlencode(filters) if filters else ""))
 
 
 class ValidateView(TimetableMixin, View):
@@ -731,12 +738,21 @@ class GenerationRunList(ProtectedViewMixin, View):
         workspace = getattr(request, "scheduling_workspace", None)
         if workspace:
             runs = runs.filter(schedule=workspace["schedule"])
+        schedule = workspace["schedule"] if workspace else None
+        if request.GET.get("schedule"):
+            try:
+                schedule = get_schedule(request.user, int(request.GET["schedule"]))
+            except (ValueError, TypeError):
+                raise Http404("Invalid schedule context")
+            runs = runs.filter(schedule=schedule)
         page = Paginator(runs, 20).get_page(request.GET.get("page"))
         query = request.GET.copy()
         query.pop("page", None)
         return render(request, "timetabling/generation_run_list.html", {
             "page_obj": page, "can_generate": _can_generate(request.user),
             "page_query": query.urlencode(),
+            "schedule": schedule,
+            "meeting_filters": navigation_filters(request) if request.user.has_perm("timetabling.view_scheduleentry") else {},
         })
 
 
@@ -879,6 +895,8 @@ class GenerationRunDetail(LoginRequiredMixin, View):
             ("conflicts", "Conflicts"), ("candidate_count", "Candidates"), ("variable_count", "Variables"))]
         return render(request, "timetabling/generation_run_detail.html", {
             "run": run, "status_explanation": STATUS_EXPLANATIONS.get(run.status, "Status unavailable."),
+            "schedule": run.schedule, "term": run.academic_term,
+            "meeting_filters": navigation_filters(request) if request.user.has_perm("timetabling.view_scheduleentry") else {},
             "generation_section": section,
             "solver_explanation": SOLVER_EXPLANATIONS.get(run.solver_status, "The solver has not started."),
             "proposal_week": week, "proposal_display_warnings": display_warnings,
@@ -892,6 +910,7 @@ class GenerationRunDetail(LoginRequiredMixin, View):
             "rest_preference_minutes": snapshot.get("faculty_rest_minutes", 0) if snapshot.get("faculty_rest_minutes") in (30, 60) else 0,
             "rest_shortfalls": penalties.get("faculty_rest", 0) if type(penalties.get("faculty_rest", 0)) is int else None,
             "can_finalize": run.status == "PROPOSAL_READY" and _can_generate(request.user, run.strategy),
+            "can_accept_proposal": run.schedule.status in ("draft", "validated", "needs_revision"),
             "can_view_generation_runs": _can_view_runs(request.user),
         })
 
@@ -921,7 +940,9 @@ class GenerationTerminalView(ProtectedViewMixin, View):
             messages.info(request, "The proposal was discarded.")
         else:
             messages.warning(request, STATUS_EXPLANATIONS.get(run.status, "The proposal was not applied."))
-        return redirect("timetabling:generation-run-detail", pk=run.pk)
+        from urllib.parse import urlencode
+        filters = navigation_filters(request) if request.user.has_perm("timetabling.view_scheduleentry") else {}
+        return redirect(reverse("timetabling:generation-run-detail", args=[run.pk]) + ("?" + urlencode(filters) if filters else ""))
 
 
 class GenerationAcceptView(GenerationTerminalView):

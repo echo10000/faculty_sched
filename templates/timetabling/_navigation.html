@@ -4,7 +4,7 @@
 <a href="{% workspace_url 'timetabling:schedules-detail' schedule.pk %}" {% if request.resolver_match.url_name == 'schedules-detail' %}aria-current="page"{% endif %}>Overview</a>
 <a href="{% workspace_url 'timetabling:timetable' schedule.pk %}" {% if request.resolver_match.url_name == 'timetable' %}aria-current="page"{% endif %}>Timetable</a>
 <a href="{% workspace_url 'timetabling:conflicts' schedule.pk %}" {% if request.resolver_match.url_name == 'conflicts' %}aria-current="page"{% endif %}>Conflicts{% if conflict_count != None %}<span class="tab-count">{{ conflict_count }}</span>{% endif %}</a>
-<a href="{% workspace_url 'timetabling:unscheduled' schedule.pk %}" {% if request.resolver_match.url_name == 'unscheduled' %}aria-current="page"{% endif %}>Unscheduled{% if summary.without_meetings != None %}<span class="tab-count">{{ summary.without_meetings }}</span>{% endif %}</a>
+<a href="{% workspace_url 'timetabling:unscheduled' schedule.pk %}" {% if request.resolver_match.url_name == 'unscheduled' %}aria-current="page"{% endif %}>Unscheduled &amp; coverage{% if summary.without_meetings != None %}<span class="tab-count">{{ summary.without_meetings }} without meetings</span>{% endif %}</a>
 <a href="{% workspace_url 'timetabling:schedule-review' schedule.pk %}" {% if request.resolver_match.url_name == 'schedule-review' %}aria-current="page"{% endif %}>Review &amp; publication</a>
 {% endif %}
 <a href="{% workspace_url 'timetabling:schedule-history' schedule.pk %}" {% if request.resolver_match.url_name == 'schedule-history' %}aria-current="page"{% endif %}>Version history</a>

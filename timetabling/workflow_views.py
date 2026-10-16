@@ -15,7 +15,7 @@ from .models import (
     ScheduleWorkflowEvent,
 )
 from .queries import authorized, entry_queryset, get_schedule, scoped
-from .presentation import navigation_filters, present_conflicts
+from .presentation import group_findings, navigation_filters, present_conflicts
 from .forms import TimetableFilter
 from .workflow import (
     finalize_schedule, revise_approved_schedule,
@@ -140,9 +140,13 @@ def schedule_review(request, pk):
         "-created_at", "-pk",
     )
     snapshot = ScheduleApprovalSnapshot.objects.filter(schedule=schedule).first()
-    frozen_entries = snapshot.payload.get("entries", []) if snapshot and isinstance(snapshot.payload, dict) else []
+    from .intervals import DAYS
+    frozen_entries = [{**entry, "day_label": dict(DAYS).get(entry.get("day_of_week"), "Day not recorded")}
+                      for entry in snapshot.payload.get("entries", [])] if snapshot and isinstance(snapshot.payload, dict) else []
+    findings = present_conflicts(request.user, conflicts, navigation_filters(request))
     return render(request, "timetabling/workflow_review.html", {
-        "schedule": schedule, "entries": entries, "conflicts": present_conflicts(request.user, conflicts, navigation_filters(request)),
+        "schedule": schedule, "entries": entries, "conflicts": findings,
+        "conflict_groups": group_findings(findings),
         "meeting_filters": navigation_filters(request),
         "conflict_count": sum(item.severity in ("ERROR", "WARNING") for item in conflicts),
         "warning_codes": warning_codes, "events": events,
@@ -181,4 +185,6 @@ def transition(request, pk, action):
         "finalize": "Schedule finalized, published and selected as official.",
         "revise": "Editable schedule version created.",
     }[action])
-    return redirect("timetabling:schedule-review", updated.pk)
+    from urllib.parse import urlencode
+    filters = navigation_filters(request) if request.user.has_perm("timetabling.view_scheduleentry") else {}
+    return redirect(reverse("timetabling:schedule-review", args=[updated.pk]) + ("?" + urlencode(filters) if filters else ""))

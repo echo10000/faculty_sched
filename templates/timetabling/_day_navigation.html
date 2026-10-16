@@ -1,0 +1,3 @@
+<nav class="timetable-days" aria-label="Jump to a day">
+{% for column in columns %}<a href="#{{ day_prefix|default:'week-day' }}-{{ column.number }}" aria-label="{{ column.day }}: {% if proposal %}{{ column.meetings|length }} meeting{{ column.meetings|length|pluralize }}{% else %}{{ column.entries|length }} meeting{{ column.entries|length|pluralize }}{% endif %}"><span>{{ column.day|slice:':3' }}</span><small>{% if proposal %}{{ column.meetings|length }}{% else %}{{ column.entries|length }}{% endif %}</small></a>{% endfor %}
+</nav>

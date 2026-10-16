@@ -35,6 +35,9 @@ MEETING_ROUTES = {
     "timetabling:unscheduled", "timetabling:schedule-review", "timetabling:schedule-history",
     "timetabling:entries-edit", "timetabling:entries-add",
     "timetabling:validate",
+    "timetabling:generation-run-detail", "timetabling:generation-run-accept",
+    "timetabling:generation-run-discard", "timetabling:entries-delete",
+    "timetabling:generation-runs",
 }
 TEACHING_RECORD_ROUTES = {
     f"workloads:{section}-{action}"
@@ -67,6 +70,8 @@ def workspace_url(context, route, *args, **overrides):
         query["schedule"] = schedule.pk
     if route in MEETING_ROUTES:
         query.update(context.get("meeting_filters", {}))
+    if route == "timetabling:generation-runs" and schedule:
+        query["schedule"] = schedule.pk
     if route in {"workloads:assignments", "workloads:assignments-add", "workloads:availability"} and person:
         query["faculty"] = person.pk
     if route in {"reporting:index", "reporting:detail"}:

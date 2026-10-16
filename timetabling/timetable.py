@@ -17,11 +17,16 @@ def filtered_entries(user, schedule, form):
         from django.db.models import Q
         qs = qs.filter(Q(assignment__subject_offering__subject__code__icontains=data["q"]) | Q(assignment__subject_offering__subject__title__icontains=data["q"]))
     entries = list(qs)
-    requirements = {r.subject_offering_id: r for r in OfferingRequirement.objects.select_related("section")}
+    requirements = {r.subject_offering_id: r for r in scoped(user, OfferingRequirement.objects.filter(
+        subject_offering_id__in=[entry.offering.pk for entry in entries],
+    )).select_related("section")}
     for entry in entries:
         entry.section_label = requirements[entry.offering.pk].section.code if entry.offering.pk in requirements else "Not configured"
     return entries
 
 
 def week_columns(entries):
-    return [{"day": label, "entries": [entry for entry in entries if entry.day_of_week == number]} for number, label in DAYS]
+    return [{"number": number, "day": label, "entries": sorted(
+        (entry for entry in entries if entry.day_of_week == number),
+        key=lambda entry: (entry.start_time, entry.end_time, getattr(entry, "pk", 0) or 0),
+    )} for number, label in DAYS]

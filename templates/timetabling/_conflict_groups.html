@@ -1,0 +1,6 @@
+{% for group in conflict_groups %}
+<section class="finding-group" aria-label="{{ group.label }}">
+<h3 class="h6">{{ group.label }} <span class="tab-count">{{ group.findings|length }}</span></h3>
+{% for category in group.categories %}<details class="finding-category" {% if group.severity == 'ERROR' or category.findings|length < 4 %}open{% endif %}><summary>{{ category.code }} <span class="tab-count">{{ category.findings|length }}</span></summary><div class="mt-3">{% include 'timetabling/conflict_list.html' with conflicts=category.findings %}</div></details>{% endfor %}
+</section>
+{% empty %}<p class="mb-0">No conflicts found in the current records.</p>{% endfor %}
