@@ -78,6 +78,21 @@ def workspace_url(context, route, *args, **overrides):
             query["faculty"] = person.pk
     if route.startswith("faculty-portal:") and term:
         query["term"] = term.pk
+    if route.startswith("rooms:"):
+        query.update(context.get("room_navigation", {}))
+        if term:
+            query["academic_term"] = term.pk
+        if schedule:
+            query["schedule"] = schedule.pk
+        preview = context.get("preview")
+        if preview:
+            query["subject_offering"] = preview["offering"].pk
+    if route == "timetabling:room-eligibility":
+        if schedule:
+            query["schedule"] = schedule.pk
+        offering = context.get("room_offering")
+        if offering:
+            query.update(subject_offering=offering.pk, department=offering.department_id)
     for key, value in overrides.items():
         if value is None or value == "":
             query.pop(key, None)

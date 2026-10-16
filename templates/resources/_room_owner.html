@@ -1,0 +1,1 @@
+{% if room.owner_department %}{{ room.owner_department.name }}<small class="d-block text-secondary">{{ room.owner_department.college.name }}</small>{% elif room.owner_college %}{{ room.owner_college.name }}<small class="d-block text-secondary">College-owned</small>{% else %}Institution-owned{% endif %}

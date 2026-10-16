@@ -1,0 +1,57 @@
+/* Room workspace: shared Academic Workbench typography and Arctic Emerald tokens. */
+.room-workspace { min-width:0; }
+.room-workspace .workbench-heading { margin-bottom:24px; align-items:flex-start; }
+.room-workspace .workbench-heading h1 { font-family:var(--font-heading); overflow-wrap:anywhere; }
+.room-actions { display:flex; gap:10px; flex-wrap:wrap; }
+.room-context { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:16px 20px; margin-bottom:24px; border-left:3px solid var(--teal); background:var(--surface-tint); font-size:var(--type-small); overflow-wrap:anywhere; }
+.room-context .workbench-kicker { display:block; margin-bottom:5px; }
+.room-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+.room-card { min-width:0; display:flex; flex-direction:column; overflow-wrap:anywhere; }
+.room-card-top { display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.room-code { color:var(--muted); font-size:var(--type-small); }
+.room-card h3 { font-size:1.2rem; margin-bottom:4px; }
+.room-card h3 a { text-decoration:none; color:var(--ink); }
+.room-card h3 a:hover { color:var(--teal-ink); text-decoration:underline; }
+.room-facts { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:16px; margin:8px 0 20px; }
+.room-facts dt,.room-dates dt { font-size:var(--type-small); font-weight:400; color:var(--muted); margin-bottom:4px; }
+.room-facts dd { font-weight:600; margin:0; }
+.room-facts dd small { font-weight:400; }
+.room-owner { grid-column:1/-1; }
+.room-readiness { margin-top:auto; border-top:1px solid var(--line); padding-top:16px; }
+.room-readiness p { margin:8px 0 0; }
+.room-readiness ul { font-size:var(--type-small); padding-left:20px; margin:8px 0 0; }
+.room-card-footer { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:18px; font-size:var(--type-small); }
+.room-empty { grid-column:1/-1; padding:32px; }
+.room-detail-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:24px; }
+.room-detail-grid>section { min-width:0; overflow-wrap:anywhere; }
+.room-profile-facts { margin-top:24px; }
+.room-dates { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px 20px; margin-bottom:0; padding-top:16px; border-top:1px solid var(--line); font-size:var(--type-small); }
+.room-dates dd { margin:0; }
+.room-status-action { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; padding:20px 0; border-top:1px solid var(--line); }
+.room-workspace .form-control,.room-workspace .form-select { min-width:0; width:100%; }
+.room-workspace .badge { white-space:normal; text-align:left; line-height:1.45; }
+.room-comparison-table td { overflow-wrap:anywhere; }
+.room-comparison-table { table-layout:fixed; }
+.room-comparison-table th:first-child { width:26%; }
+.room-comparison-table th:nth-child(2) { width:9%; }
+.room-comparison-table th:nth-child(3) { width:20%; }
+.room-comparison-table ul { padding-left:18px; }
+.room-workspace summary { cursor:pointer; }
+.room-workspace a:focus-visible,.room-workspace summary:focus-visible { outline:2px solid var(--focus); outline-offset:3px; }
+@media(max-width:1100px) { .room-detail-grid { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:650px) {
+  .room-workspace .workbench-heading { display:block; }
+  .room-workspace .workbench-heading h1 { font-size:32px; }
+  .room-actions { margin-top:18px; }
+  .room-actions .btn { flex:1 1 auto; }
+  .room-context { align-items:flex-start; flex-direction:column; gap:12px; }
+  .room-grid { grid-template-columns:minmax(0,1fr); gap:16px; }
+  .room-facts { gap:16px 12px; }
+  .room-workspace .btn,.room-card-footer a,.room-context>a { min-height:44px; display:inline-flex; align-items:center; }
+  .room-comparison-wrap { overflow:visible; }
+  .room-comparison-table,.room-comparison-table tbody { display:block; min-width:0; width:100%; }
+  .room-comparison-table thead { position:absolute; width:1px; height:1px; clip-path:inset(50%); overflow:hidden; }
+  .room-comparison-table tr { display:grid; grid-template-columns:minmax(0,1fr); padding:18px 0; border-top:1px solid var(--line); gap:12px; }
+  .room-comparison-table td { display:block; min-width:0; border:0; padding:0; }
+  .room-comparison-table td[data-label]::before { content:attr(data-label); display:block; color:var(--muted); font-size:var(--type-small); margin-bottom:5px; }
+}

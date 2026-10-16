@@ -1,5 +1,7 @@
 {% extends 'base.html' %}
-{% load workspace %}
+{% load static workspace %}
+{% block extra_css %}{% if singular == 'room' %}<link rel="stylesheet" href="{% static 'css/rooms.css' %}">{% endif %}{% endblock %}
+{% block content_class %}{% if singular == 'room' %}room-workspace{% endif %}{% endblock %}
 {% block title %}{% if editing %}Edit{% else %}Add{% endif %} {{ singular }}{% endblock %}
 {% block content %}
 <div class="page-heading"><div><p class="eyebrow">{{ title|upper }}</p><h1>{% if editing %}Edit{% else %}Add{% endif %} {{ singular }}</h1><p class="text-secondary">Required fields are marked with an asterisk.</p></div><a class="btn btn-outline-secondary" href="{% guided_link list_url %}">{% if workload_configuration %}Back to teaching load{% else %}Back to {{ title|lower }}{% endif %}</a></div>
@@ -7,7 +9,7 @@
 {% include 'workloads/term.html' %}
 <section class="surface surface-secondary mb-4"><h2 class="h5">Saved teaching load</h2>{% if report %}{% include 'workloads/_load_summary.html' %}{% endif %}<p class="small mt-3 mb-0"><strong>Faculty baseline applies across terms.</strong> Faculty-term overrides take precedence. These totals reflect saved values; save the form to recalculate with the updated configuration.</p></section>
 {% endif %}
-{% if singular == 'room' %}{% include 'resources/_room_help.html' %}{% endif %}
+{% if singular == 'room' %}{% include 'resources/_room_context.html' %}{% include 'resources/_room_help.html' %}{% endif %}
 <section class="surface form-surface"><form method="post" novalidate>{% csrf_token %}<div class="row g-3">{% include 'resources/fields.html' with resource_form=True %}</div><div class="form-actions"><button class="btn btn-primary" type="submit">Save {{ singular }}</button><a class="btn btn-outline-secondary" href="{% guided_link list_url %}">Cancel</a></div></form></section>
 {% endblock %}
 {% block extra_js %}{{ form.media }}{% endblock %}

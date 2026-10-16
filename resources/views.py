@@ -37,12 +37,22 @@ class ResourceMixin(ProtectedViewMixin):
         self.spec = SPECS[self.kind]
         self.model = self.spec["model"]
         self.permission = permission_for(self.model, self.action)
+        self.room_context = {}
+        if self.kind == "rooms" and request.user.is_authenticated:
+            from accounts.permissions import require_access
+            from .room_workspace import room_navigation
+            require_access(request.user, self.permission)
+            self.room_context = room_navigation(request)
         return super().dispatch(request, *args, **kwargs)
 
     def queryset(self):
         qs = scope_resources(self.request.user, self.model.objects.all())
         relations = {"faculty": ["home_department__college", "employment_category", "academic_rank"], "subjects": ["owning_department__college"], "rooms": ["owner_college", "owner_department__college", "category", "building"]}
         return qs.select_related(*relations[self.kind])
+
+    def room_detail_url(self, pk):
+        query = urlencode(self.room_context.get("room_navigation", {}))
+        return reverse("rooms:detail", args=[pk]) + ("?" + query if query else "")
 
     def base_context(self):
         namespace = self.spec["namespace"]
@@ -52,6 +62,7 @@ class ResourceMixin(ProtectedViewMixin):
             "can_add": self.request.user.has_perm(permission_for(self.model, "add")),
             "can_change": self.request.user.has_perm(permission_for(self.model, "change")),
             "can_activate": self.request.user.has_perm(permission_for(self.model, "activate")),
+            **self.room_context,
         }
 
 
@@ -60,6 +71,8 @@ class ResourceListView(ResourceMixin, ListView):
     paginate_by = 20
 
     def get_template_names(self):
+        if self.kind == "rooms":
+            return ["resources/room_directory.html"]
         if self.kind == "subjects":
             return ["resources/subject_directory.html"]
         if self.kind == "faculty" and not is_system_admin(self.request.user):
@@ -121,6 +134,13 @@ class ResourceListView(ResourceMixin, ListView):
         query = self.request.GET.copy()
         query.pop("page", None)
         context.update(filter_form=self.filter_form, page_query=query.urlencode(), kind=self.kind)
+        if self.kind == "rooms":
+            from .room_workspace import configuration_failures
+            rooms = list(context["object_list"])
+            for room in rooms:
+                room.configuration_failures = configuration_failures(room)
+            context["object_list"] = rooms
+            context["room_filters_active"] = any(self.request.GET.get(name) for name in self.filter_form.fields)
         if self.kind == "subjects":
             context["subject_filters_active"] = any(self.request.GET.get(name) for name in
                 ("q", "college", "department", "year_level", "status"))
@@ -184,17 +204,12 @@ class ResourceDetailView(ResourceMixin, View):
         if self.kind == "rooms":
             fields.append(("College", obj.college or "Institution-owned"))
             fields = [("Room specialization / type" if label == "Category" else "Seating capacity" if label == "Capacity" else label, value) for label, value in fields]
-            from timetabling.room_rules import room_resource_failures
-            failures = room_resource_failures(obj)
-            if not obj.is_active:
-                failures.append("Room is inactive")
-            if (obj.owner_department_id and (not obj.owner_department.is_active or not obj.owner_department.college.is_active)) or (obj.owner_college_id and not obj.owner_college.is_active):
-                failures.append("Owning department or college is inactive")
-            context["room_configuration_failures"] = failures
+            from .room_workspace import configuration_failures
+            context["room_configuration_failures"] = configuration_failures(obj)
         if self.kind == "subjects":
             fields.append(("Total units", obj.total_units))
         context.update(object=obj, details=fields, kind=self.kind)
-        if self.kind in ("faculty", "rooms") and request.user.has_perm("academics.view_academicterm"):
+        if self.kind == "faculty" and request.user.has_perm("academics.view_academicterm"):
             from workloads.selectors import accessible_terms
             raw_term = request.GET.get("academic_term")
             if raw_term:
@@ -234,7 +249,7 @@ class ResourceDetailView(ResourceMixin, View):
                 context["qualifications"] = obj.qualifications.filter(
                     subject__in=scope_resources(request.user, Subject.objects.all())
                 ).select_related("subject")
-        return render(request, "resources/detail.html", context)
+        return render(request, "resources/room_detail.html" if self.kind == "rooms" else "resources/detail.html", context)
 
 
 class ResourceFormView(ResourceMixin, View):
@@ -299,6 +314,8 @@ class ResourceFormView(ResourceMixin, View):
             messages.success(request, "Record updated." if pk else "Record created.")
             if self.load_context:
                 return redirect(self.load_context["workload_return_url"])
+            if self.kind == "rooms" and request.user.has_perm(permission_for(self.model, "view")):
+                return redirect(self.room_detail_url(obj.pk))
             # A write grant need not include a read grant.
             return redirect(f"{self.spec['namespace']}:detail", pk=obj.pk) if request.user.has_perm(permission_for(self.model, "view")) else redirect("home")
         return self.render_form(form, pk)
@@ -320,4 +337,6 @@ class ResourceStatusView(ResourceMixin, View):
             obj = get_object_or_404(self.queryset(), pk=pk)
             return render(request, "resources/status.html", {**self.base_context(), "object": obj, "error": "; ".join(error.messages)})
         messages.success(request, "Record activated." if obj.is_active else "Record deactivated.")
+        if self.kind == "rooms" and request.user.has_perm(permission_for(self.model, "view")):
+            return redirect(self.room_detail_url(pk))
         return redirect(f"{self.spec['namespace']}:detail", pk=pk) if request.user.has_perm(permission_for(self.model, "view")) else redirect("home")

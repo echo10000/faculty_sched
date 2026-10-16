@@ -149,6 +149,8 @@ class ResourceFilterForm(StyledFormMixin, forms.Form):
                 choices=[*YEAR_CHOICES, ("unplaced", "Year not assigned")], label="Year level")
             self.fields["department"].label = "Program / department"
         if kind == "rooms":
+            self.fields["q"].label = "Search rooms"
+            self.fields["q"].widget.attrs["placeholder"] = "Name, code or building"
             self.fields["category"] = forms.ModelChoiceField(queryset=RoomType.objects.all(), required=False, label="Room specialization / type")
             self.fields["building"] = forms.ModelChoiceField(queryset=Building.objects.all(), required=False)
         from academics.calendar import use_current_term_field
