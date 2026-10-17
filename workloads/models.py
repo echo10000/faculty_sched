@@ -229,7 +229,7 @@ class FacultySubjectAssignment(TermRecord):
 
 
 class WorkloadRecommendationRun(models.Model):
-    """A proposal-only balancing run; acceptance is handled by the service layer."""
+    """An advisory balancing run, retaining legacy acceptance history."""
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"

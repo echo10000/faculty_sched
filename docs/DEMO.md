@@ -16,7 +16,7 @@ For an existing demo database, run `configure_demo_accounts --college DEMO-A`. T
 
 1. Sign in as `dev.staff`. Open **Overview** and select the fictional term; show college-scoped faculty, workload status, offerings and assignments.
 2. Open the manual timetable and use its validation page to show the seeded valid meetings and a conflict preview. Review the separate generator workspace, request a bounded Phase 5 proposal, inspect its objective/status and accept only after reviewing the proposal.
-3. Open the Phase 6 balancing example. Request a recommendation, compare before/after loads and accept or discard using the real review action.
+3. Open the Phase 6 balancing example. Request a recommendation and compare current/suggested loads. Recommendations are advisory only and may be viewed or discarded; there is no assignment-application action. Legacy/direct acceptance requests are rejected server-side. If an instructor or teaching share needs changing, choose it deliberately in **Teaching assignments**; normal permissions, scope, share and workload validation still apply. Timetable proposals separately allocate days, times and rooms to those manually selected assignments.
 4. Open **My schedules** and the validated fictional schedule. Show its revision token, findings and workflow history. As Authorized Staff, review the validation results and finalize only after the required warning acknowledgments. This creates a real frozen snapshot, dated bookings and active official selection.
 5. Return to **Official schedules** and **Overview** to show the selected version. Create a revision of the approved version; show that the older version remains official until a replacement approval commits.
 6. Open **Reports** as Authorized Staff. Compare current official and historical snapshot labels; print and export a scoped report. Use a second college or department choice as Admin to demonstrate organization scoping.
@@ -25,6 +25,8 @@ For an existing demo database, run `configure_demo_accounts --college DEMO-A`. T
 For real Faculty accounts, use the existing account administration: create a user, link the Faculty record under **Teaching identity**, then assign an enabled **Faculty** profile. Each Faculty record has its own linked user. Use college-scoped **Authorized Staff** profiles for the people responsible for scheduling that college.
 
 The actual action order depends on the seeded version's current state; repeat seeds preserve decisions and do not reset passwords or approvals. Use a fresh disposable database for a repeatable live presentation. Never alter production data for the demo. The matching-weekday booking model has no holiday or date exceptions.
+
+These usernames and generated passwords are disposable local examples, never production credentials. If the automatic calendar is enabled, Staff can access only its in-progress term; the separate `DEMO-BALANCING` example may then be outside Staff access. Use Admin for historical/example-term inspection, or prepare the staff demonstration in the current term. Do not disable term scoping or alter institutional settings to make an inaccessible example appear.
 
 ## CAS section-generation demo
 

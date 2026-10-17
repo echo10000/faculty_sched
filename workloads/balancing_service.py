@@ -1,4 +1,4 @@
-"""Scoped, reviewable workload recommendations and atomic acceptance."""
+"""Scoped, advisory workload recommendations; teaching assignments stay manual."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from collections import defaultdict
 from dataclasses import asdict
 from decimal import Decimal
 
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -19,9 +19,8 @@ from timetabling.locking import scheduling_lock
 
 from .balancing_inputs import prepare_balancing_input
 from .balancing_signature import compute_balancing_source_signature
-from .calculation import calculate_workload, resolve_policy
-from .models import FacultySubjectAssignment, SubjectOffering, WorkloadRecommendationRun
-from .operations import check_share
+from .calculation import calculate_workload
+from .models import FacultySubjectAssignment, WorkloadRecommendationRun
 from .selectors import accessible_terms
 from academics.calendar import constrain_term_queryset
 
@@ -256,118 +255,18 @@ def _authorized_run(user, run):
     return row
 
 
-def _match_proposal(run, prepared):
-    by_offering = {demand.offering_id: demand for demand in prepared.solver_input.offerings}
-    rows = run.proposed_assignments
-    if not isinstance(rows, list) or len(rows) != len(by_offering):
-        raise ValidationError("The stored recommendation has an invalid offering count.")
-    choices = []
-    seen = set()
-    for row in rows:
-        if not isinstance(row, dict) or type(row.get("offering_id")) is not int:
-            raise ValidationError("The stored recommendation contains an invalid offering.")
-        offering_id = row["offering_id"]
-        if offering_id in seen or offering_id not in by_offering:
-            raise ValidationError("The stored recommendation contains a duplicate or foreign offering.")
-        seen.add(offering_id)
-        proposed = row.get("proposed")
-        if not isinstance(proposed, list):
-            raise ValidationError("The stored recommendation has invalid teaching shares.")
-        try:
-            pairs = tuple(sorted((item["faculty_id"], int(Decimal(item["share"]) * 100)) for item in proposed))
-        except (KeyError, TypeError, ValueError, ArithmeticError):
-            raise ValidationError("The stored recommendation has invalid teaching shares.") from None
-        matches = [option for option in by_offering[offering_id].options if _shares(option) == pairs]
-        if len(matches) != 1:
-            raise ValidationError("The stored recommendation is no longer an eligible option.")
-        choices.append(matches[0])
-    if _proposal_rows(prepared, choices, _comparison(prepared, choices, run.academic_term)) != rows:
-        raise ValidationError("The stored recommendation details were modified.")
-    return choices
-
-
-def _apply_proposal(run, prepared, choices, user):
-    options = {option.offering_id: option for option in choices}
-    mutable_ids = set(prepared.mutable_offering_ids)
-    offerings = {offering.pk: offering for offering in prepared.offerings}
-    for offering_id in sorted(mutable_ids):
-        option = options[offering_id]
-        if _shares(option) == _current(prepared, offering_id):
-            continue
-        existing = list(FacultySubjectAssignment.objects.select_for_update().filter(
-            subject_offering_id=offering_id,
-        ))
-        for assignment in existing:
-            record_event("facultysubjectassignment.deleted", actor=user, obj=assignment,
-                         details={"academic_term_id": run.academic_term_id, "before": {
-                             "faculty_id": assignment.faculty_id, "subject_offering_id": offering_id,
-                             "share": str(assignment.share),
-                         }, "balancing_run_id": run.pk})
-            assignment.delete()
-        for share in option.shares:
-            assignment = FacultySubjectAssignment(
-                faculty_id=share.faculty_id, subject_offering=offerings[offering_id],
-                share=Decimal(share.share_centis) / 100, created_by=user,
-            )
-            check_share(assignment)
-            assignment.save()
-            record_event("facultysubjectassignment.created", actor=user, obj=assignment,
-                         details={"academic_term_id": run.academic_term_id, "after": {
-                             "faculty_id": share.faculty_id, "subject_offering_id": offering_id,
-                             "share": str(assignment.share),
-                         }, "balancing_run_id": run.pk})
-    for member in prepared.faculty:
-        report = calculate_workload(member, run.academic_term)
-        policy = resolve_policy(member, run.academic_term)
-        if policy["enforce_maximum"]:
-            if policy["maximum_load"] is None or report["assigned_load"] is None or report["assigned_load"] > policy["maximum_load"]:
-                raise ValidationError("The accepted assignments would exceed a hard workload maximum.")
-
-
 def accept_balancing_run(*, user, run):
-    row = _authorized_run(user, run)
-    try:
-        with transaction.atomic():
-            scheduling_lock()
-            row = WorkloadRecommendationRun.objects.select_for_update().get(pk=row.pk)
-            if row.status != WorkloadRecommendationRun.Status.PROPOSAL_READY:
-                raise BalancingError("Only a ready recommendation can be accepted.")
-            signature = compute_balancing_source_signature(academic_term=row.academic_term, department=row.department)
-            if signature != row.source_signature:
-                failure = WorkloadRecommendationRun.Status.STALE
-            else:
-                prepared = prepare_balancing_input(academic_term=row.academic_term, department=row.department)
-                if prepared.solver_input is None or any(item["severity"] == "ERROR" for item in prepared.diagnostics):
-                    failure = WorkloadRecommendationRun.Status.VALIDATION_FAILED
-                else:
-                    choices = _match_proposal(row, prepared)
-                    if _comparison(prepared, choices, row.academic_term) != row.comparison:
-                        raise ValidationError("The stored before/after comparison was modified.")
-                    _apply_proposal(row, prepared, choices, user)
-                    row.status = WorkloadRecommendationRun.Status.ACCEPTED
-                    row.accepted_by = user
-                    row.accepted_at = timezone.now()
-                    row.save(update_fields=["status", "accepted_by", "accepted_at", "updated_at"])
-                    record_event("balancing.accepted", actor=user, obj=row,
-                                 details={"assignment_changes": row.comparison["summary"]["assignment_changes"]})
-                    return row
-            row.status = failure
-            row.diagnostics = [_diagnostic("INPUT_CHANGED" if failure == "STALE" else "INPUT_INVALID",
-                                           "Teaching or policy inputs changed; request a fresh recommendation.")]
-            row.save(update_fields=["status", "diagnostics", "updated_at"])
-            record_event("balancing.failed", actor=user, obj=row,
-                         details={"status": row.status, "codes": [item["code"] for item in row.diagnostics]})
-            return row
-    except ValidationError as error:
-        with transaction.atomic():
-            row = WorkloadRecommendationRun.objects.select_for_update().get(pk=row.pk)
-            if row.status == WorkloadRecommendationRun.Status.PROPOSAL_READY:
-                row.status = WorkloadRecommendationRun.Status.VALIDATION_FAILED
-                row.diagnostics = [_diagnostic("PROPOSAL_INVALID", "; ".join(error.messages))]
-                row.save(update_fields=["status", "diagnostics", "updated_at"])
-                record_event("balancing.failed", actor=user, obj=row,
-                             details={"status": row.status, "codes": ["PROPOSAL_INVALID"]})
-            return row
+    """Reject legacy acceptance calls after the usual permission and scope checks.
+
+    Keep this entry point and its URL for older clients. Recommendations may
+    describe alternative faculty shares, but only an explicit manual assignment
+    operation may save the instructor and share selected by staff.
+    """
+    _authorized_run(user, run)
+    raise BalancingError(
+        "Workload recommendations are advisory only. Choose the instructor and "
+        "teaching share manually in the Teaching Assignment Desk."
+    )
 
 
 def discard_balancing_run(*, user, run):

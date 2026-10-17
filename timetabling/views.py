@@ -34,7 +34,7 @@ from .generation import (InvalidRunTransition, request_generation,
 from .locking import scheduling_lock
 from .mutations import save_record, save_entry, remove_entry, remove_closure, validate_schedule, effective_status
 from .conflicts import get_schedule_conflicts, summarize
-from .timetable import filtered_entries, week_columns
+from .timetable import filtered_entries, frozen_filter_labels, publication_rows, schedule_labels, week_columns
 from .presentation import meeting_filters, present_conflicts
 from .presentation import navigation_filters
 from .presentation import lunch_violations
@@ -199,7 +199,7 @@ class RecordList(TimetableMixin, View):
             ], widget=forms.Select(attrs={"class": "form-select"}))
         qs = scoped(request.user, model.objects.all())
         if self.section == "schedules":
-            qs = qs.select_related("family", "academic_term", "department")
+            qs = qs.select_related("family", "academic_term", "department", "approval_snapshot")
         elif self.section == "meeting-requirements":
             qs = qs.select_related("assignment__faculty", "assignment__subject_offering__subject",
                 "assignment__subject_offering__academic_term__academic_year", "assignment__subject_offering__academic_term__semester", "assignment__subject_offering__department__college",
@@ -276,6 +276,7 @@ class RecordList(TimetableMixin, View):
                         if obj.capacity_is_hard:
                             obj.browse_summary += " · Capacity must fit the section"
             if isinstance(obj, Schedule):
+                obj.publication_labels = schedule_labels(obj)
                 obj.display_status = effective_status(obj) if obj.status in ("draft", "validated") else obj.status
                 obj.display_status_label = dict(Schedule.Status.choices).get(obj.display_status, "Unknown")
                 obj.is_official = obj.pk in official_ids
@@ -365,6 +366,7 @@ class ScheduleDetail(TimetableMixin, View):
         is_official = bool(active and active.schedule_id == schedule.pk)
         form = TimetableFilter(request.GET, user=request.user)
         form.fields["q"].label = "Subject code or title"
+        frozen_filter_labels(form, schedule)
         entries = filtered_entries(request.user, schedule, form)
         report = summarize(get_schedule_conflicts(
             schedule, user=request.user,
@@ -398,8 +400,15 @@ class ScheduleDetail(TimetableMixin, View):
             faculty_ids = all_entries.values("assignment__faculty_id")
             assignment_ids = assignments.values("faculty_id") if unscheduled is not None else faculty_ids
             faculty_choices = scoped_faculty(request.user).filter(Q(pk__in=faculty_ids) | Q(pk__in=assignment_ids))
+            frozen_names = {row.get("faculty_id"): row.get("faculty_name") or "Not recorded at publication"
+                            for row in publication_rows(schedule)}
+            for person in faculty_choices:
+                person.timetable_label = frozen_names.get(person.pk, "Not recorded at publication") if schedule.status == Schedule.Status.APPROVED else str(person)
+            if selected_faculty:
+                selected_faculty.timetable_label = frozen_names.get(selected_faculty.pk, "Not recorded at publication") if schedule.status == Schedule.Status.APPROVED else str(selected_faculty)
         display_status = effective_status(schedule) if editable and schedule.status in ("draft", "validated") else schedule.status
         return render(request, "timetabling/detail.html", {**self.context(), "schedule": schedule, "status": display_status,
+            "schedule_labels": schedule_labels(schedule),
             "status_label": dict(Schedule.Status.choices).get(display_status, "Unknown"),
             "filter_form": form, "entries": entries, "week": week_columns(entries), "mode": self.mode, "report": report,
             "can_generate": editable and _can_generate(request.user), "can_view_generation_runs": _can_view_runs(request.user),

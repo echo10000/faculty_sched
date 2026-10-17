@@ -17,6 +17,7 @@ from .models import (
 from .queries import authorized, entry_queryset, get_schedule, scoped
 from .presentation import group_findings, navigation_filters, present_conflicts
 from .forms import TimetableFilter
+from .timetable import NOT_RECORDED, publication_rows, schedule_labels
 from .workflow import (
     finalize_schedule, revise_approved_schedule,
 )
@@ -25,7 +26,7 @@ from .workflow import (
 def _visible_schedules(user):
     authorized(user, Schedule)
     return scoped(user, Schedule.objects.select_related(
-        "academic_term", "department", "family", "submitted_by", "created_by",
+        "academic_term", "department", "family", "submitted_by", "created_by", "approval_snapshot",
     ))
 
 
@@ -62,6 +63,8 @@ def review_queue(request):
     )
     schedules, context = _workflow_filters(request, schedules)
     page = Paginator(schedules, 20).get_page(request.GET.get("page"))
+    for schedule in page:
+        schedule.publication_labels = schedule_labels(schedule)
     return render(request, "timetabling/workflow_list.html", {
         **context, "title": "Schedules to finalize", "page_obj": page, "kind": "review",
     })
@@ -76,6 +79,8 @@ def my_submissions(request):
     ).distinct().order_by("-submitted_at", "-pk")
     schedules, context = _workflow_filters(request, schedules)
     page = Paginator(schedules, 20).get_page(request.GET.get("page"))
+    for schedule in page:
+        schedule.publication_labels = schedule_labels(schedule)
     return render(request, "timetabling/workflow_list.html", {
         **context, "title": "My Scheduling Work", "page_obj": page, "kind": "mine",
     })
@@ -94,6 +99,8 @@ def official_schedules(request):
     ).order_by("-academic_term__start_date", "department__name")
     selections, context = _workflow_filters(request, selections)
     page = Paginator(selections, 20).get_page(request.GET.get("page"))
+    for selection in page:
+        selection.schedule.publication_labels = schedule_labels(selection.schedule)
     return render(request, "timetabling/workflow_list.html", {
         **context, "title": "Official schedules", "page_obj": page, "kind": "official",
     })
@@ -112,8 +119,11 @@ def schedule_history(request, pk):
         academic_term_id=schedule.academic_term_id,
         department_id=schedule.department_id,
     ).first()
+    for version in versions:
+        version.publication_labels = schedule_labels(version)
     return render(request, "timetabling/workflow_history.html", {
         "schedule": schedule, "versions": versions, "events": events,
+        "schedule_labels": schedule_labels(schedule),
         "active_schedule_id": active.schedule_id if active else None,
         "meeting_filters": navigation_filters(request) if request.user.has_perm("timetabling.view_scheduleentry") else {},
     })
@@ -141,11 +151,16 @@ def schedule_review(request, pk):
     )
     snapshot = ScheduleApprovalSnapshot.objects.filter(schedule=schedule).first()
     from .intervals import DAYS
-    frozen_entries = [{**entry, "day_label": dict(DAYS).get(entry.get("day_of_week"), "Day not recorded")}
-                      for entry in snapshot.payload.get("entries", [])] if snapshot and isinstance(snapshot.payload, dict) else []
+    visible_entry_ids = set(entries.values_list("pk", flat=True))
+    frozen_entries = [{**{key: entry.get(key) or NOT_RECORDED for key in
+                          ("start_time", "end_time", "subject_code", "subject_title", "section_code",
+                           "meeting_type", "faculty_name", "room_code", "room_name")},
+                       "day_label": dict(DAYS).get(entry.get("day_of_week"), "Day not recorded")}
+                      for entry in publication_rows(schedule) if entry.get("entry_id") in visible_entry_ids]
     findings = present_conflicts(request.user, conflicts, navigation_filters(request))
     return render(request, "timetabling/workflow_review.html", {
         "schedule": schedule, "entries": entries, "conflicts": findings,
+        "schedule_labels": schedule_labels(schedule),
         "conflict_groups": group_findings(findings),
         "meeting_filters": navigation_filters(request),
         "conflict_count": sum(item.severity in ("ERROR", "WARNING") for item in conflicts),

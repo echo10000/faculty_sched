@@ -11,7 +11,8 @@ from django.urls import reverse
 from academics.models import AcademicTerm
 from accounts.models import AdminProfile
 from resources.test_frontend_design import Markup
-from .models import WorkloadRecommendationRun
+from audit.models import AuditLog
+from .models import FacultySubjectAssignment, WorkloadPolicy, WorkloadRecommendationRun
 from .tests import TeachingFixture
 
 
@@ -79,7 +80,8 @@ class BalancingPageTests(TeachingFixture):
         self.assertNotContains(detail, "<safely>")
         self.assertContains(detail, "&lt;safely&gt;", html=False)
         self.assertNotContains(detail, "<private>")
-        self.assertContains(detail, "Accept recommendation")
+        self.assertNotContains(detail, "Accept recommendation")
+        self.assertContains(detail, "Teaching Assignment Desk")
 
     def test_dean_and_system_admin_see_only_their_granted_scope(self):
         self.client.force_login(self.dean)
@@ -112,7 +114,8 @@ class BalancingPageTests(TeachingFixture):
         self.client.force_login(self.staff)
         self.assertEqual(self.client.get(self.url('balancing')).status_code, 200)
         self.assertEqual(self.client.get(self.url('balancing-runs')).status_code, 200)
-        self.assertContains(self.client.get(self.url('balancing-run-detail', self.run.pk)), 'Accept recommendation')
+        self.assertNotContains(self.client.get(self.url('balancing-run-detail', self.run.pk)), 'Accept recommendation')
+        self.assertContains(self.client.get(self.url('balancing-run-detail', self.run.pk)), 'Teaching Assignment Desk')
         self.assertTrue(self.staff.has_perm('workloads.change_facultysubjectassignment'))
 
     def test_generate_only_staff_can_review_own_run_but_not_history(self):
@@ -129,8 +132,60 @@ class BalancingPageTests(TeachingFixture):
         self.assertEqual(self.client.get(self.url("balancing-runs")).status_code, 200)
         self.assertEqual(self.client.get(self.url("balancing-run-detail", self.run.pk)).status_code, 200)
         detail = self.client.get(self.url("balancing-run-detail", own.pk))
-        self.assertContains(detail, "Accept recommendation")
+        self.assertNotContains(detail, "Accept recommendation")
+        self.assertContains(detail, "Teaching Assignment Desk")
         self.assertContains(detail, "Workload recommendation history")
+
+    def test_generate_and_view_pages_never_change_saved_instructors_or_shares(self):
+        FacultySubjectAssignment.objects.create(faculty=self.faculty, subject_offering=self.offering, share="1.00")
+        WorkloadPolicy.objects.create(
+            academic_term=self.term, department=self.department,
+            recommended_load=6, maximum_load=9, lecture_weight=1, laboratory_weight=1,
+        )
+        before = list(FacultySubjectAssignment.objects.order_by("pk").values())
+        response = self.client.post(self.url("balancing"), {
+            "academic_term": self.term.pk, "department": self.department.pk,
+        })
+        self.assertEqual(response.status_code, 302)
+        generated = WorkloadRecommendationRun.objects.order_by("-pk").first()
+        self.assertEqual(generated.status, "PROPOSAL_READY")
+        self.assertEqual(before, list(FacultySubjectAssignment.objects.order_by("pk").values()))
+        for name, args in (("balancing", ()), ("balancing-runs", ()),
+                           ("balancing-run-detail", (generated.pk,))):
+            with self.subTest(page=name):
+                page = self.client.get(self.url(name, *args))
+                self.assertEqual(page.status_code, 200)
+                self.assertEqual(before, list(FacultySubjectAssignment.objects.order_by("pk").values()))
+        self.assertFalse(AuditLog.objects.filter(action__startswith="facultysubjectassignment.").exists())
+
+    def test_direct_accept_post_rejects_without_changing_assignments_run_or_audit(self):
+        FacultySubjectAssignment.objects.create(faculty=self.faculty, subject_offering=self.offering, share="0.50")
+        before = list(FacultySubjectAssignment.objects.order_by("pk").values())
+        stored_run = WorkloadRecommendationRun.objects.filter(pk=self.run.pk).values().get()
+        audit = list(AuditLog.objects.order_by("pk").values())
+        response = self.client.post(self.url("balancing-run-accept", self.run.pk))
+        self.assertContains(response, "advisory only", status_code=409)
+        self.assertContains(response, "Teaching Assignment Desk", status_code=409)
+        self.assertEqual(before, list(FacultySubjectAssignment.objects.order_by("pk").values()))
+        self.assertEqual(stored_run, WorkloadRecommendationRun.objects.filter(pk=self.run.pk).values().get())
+        self.assertEqual(audit, list(AuditLog.objects.order_by("pk").values()))
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.post(self.url("balancing-run-accept", self.run.pk)).status_code, 409)
+        self.assertEqual(before, list(FacultySubjectAssignment.objects.order_by("pk").values()))
+        self.client.logout()
+        self.assertEqual(self.client.post(self.url("balancing-run-accept", self.run.pk)).status_code, 302)
+        user = get_user_model().objects.create_user(username="balancing-denied")
+        self.client.force_login(user)
+        self.assertEqual(self.client.post(self.url("balancing-run-accept", self.run.pk)).status_code, 403)
+        self.assertEqual(before, list(FacultySubjectAssignment.objects.order_by("pk").values()))
+
+    def test_historical_acceptance_explains_previous_workflow_without_application_controls(self):
+        WorkloadRecommendationRun.objects.filter(pk=self.run.pk).update(status="ACCEPTED")
+        detail = self.client.get(self.url("balancing-run-detail", self.run.pk))
+        self.assertContains(detail, "Historical record")
+        self.assertContains(detail, "New recommendations are advisory only")
+        self.assertNotContains(detail, 'action="' + self.url("balancing-run-accept", self.run.pk) + '"')
+        self.assertNotContains(detail, "Discard recommendation")
 
     def test_navigation_permissions(self):
         for user in (self.staff, self.chair, self.college_staff):

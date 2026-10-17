@@ -146,7 +146,7 @@ class TimetableInterfaceTests(TimetableFixture):
         page=self.client.get(reverse('timetabling:generation-run-detail',args=[run.pk]),self.filters)
         self.assertEqual(page.status_code,200)
         self.assertContains(page,'Acceptance is not publication')
-        self.assertContains(page,'Generated proposal Â· awaiting acceptance')
+        self.assertContains(page,'Generated proposal · awaiting acceptance')
         markup=Markup(page.content.decode())
         path=reverse('timetabling:timetable',args=[self.schedule.pk])
         link=next(a['href'] for t,a in markup.elements if t=='a' and urlsplit(a.get('href','')).path==path)

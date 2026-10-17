@@ -24,13 +24,13 @@ VIEW_PERMISSION = "workloads.view_workloadrecommendationrun"
 
 STATUS_EXPLANATIONS = {
     "PENDING": "The request is recorded; no assignments have changed.",
-    "PROPOSAL_READY": "A complete proposal is ready for review; no assignments have changed.",
-    "ACCEPTED": "The proposed faculty assignments were applied. Timetables were not regenerated.",
+    "PROPOSAL_READY": "An advisory proposal is ready for review; no assignments have changed.",
+    "ACCEPTED": "Historical record: the proposed faculty assignments were applied under the previous acceptance workflow. New recommendations are advisory only.",
     "DISCARDED": "The proposal was discarded without changing assignments.",
     "INPUT_INVALID": "The source data was not ready, so no recommendation was applied.",
     "INFEASIBLE": "No complete recommendation satisfied the captured hard constraints.",
-    "STALE": "Source data changed after generation. Request a new recommendation before accepting.",
-    "VALIDATION_FAILED": "The proposal failed acceptance validation and was not applied.",
+    "STALE": "Source data changed after generation. Request a new recommendation for current advice.",
+    "VALIDATION_FAILED": "Historical record: the proposal failed acceptance validation and was not applied.",
     "FAILED": "Generation failed and no assignments changed.",
 }
 
@@ -137,7 +137,8 @@ class BalancingRunDetailView(LoginRequiredMixin, View):
             "statistics": statistics,
             "diagnostic_errors": [item["message"] for item in diagnostics if item["severity"] == "ERROR"],
             "diagnostic_warnings": [item["message"] for item in diagnostics if item["severity"] == "WARNING"],
-            "can_finalize": run.status == WorkloadRecommendationRun.Status.PROPOSAL_READY and _can_generate(request.user),
+            "can_discard": run.status == WorkloadRecommendationRun.Status.PROPOSAL_READY and _can_generate(request.user),
+            "can_assign": request.user.has_perm("workloads.add_facultysubjectassignment"),
             "can_view_history": _can_view_history(request.user),
         })
 
@@ -160,9 +161,7 @@ class BalancingTerminalView(ProtectedViewMixin, View):
             run = self.operation(user=request.user, run=run)
         except BalancingError as error:
             return HttpResponse(str(error), status=409)
-        if run.status == WorkloadRecommendationRun.Status.ACCEPTED:
-            messages.success(request, "The recommendation was accepted; assignments changed and timetables were not regenerated.")
-        elif run.status == WorkloadRecommendationRun.Status.DISCARDED:
+        if run.status == WorkloadRecommendationRun.Status.DISCARDED:
             messages.info(request, "The recommendation was discarded without changing assignments.")
         else:
             messages.warning(request, STATUS_EXPLANATIONS.get(run.status, "The recommendation was not applied."))

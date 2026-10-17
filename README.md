@@ -33,41 +33,39 @@ The supported roles are Admin, Authorized Staff, and read-only Faculty. Staff pr
 - Faculty, subject and room list/detail/create/edit/status pages, scoped search/filters/pagination and dashboard counts.
 - Configurable employment categories, academic ranks, buildings, room types and academic-term teaching-capacity policies/overrides.
 
-Term-specific teaching assignments, manual timetable creation/conflict checks, and automated timetable proposals are available. No paid AI API is needed.
+Term-specific teaching assignments, manual timetable creation/conflict checks, and automated timetable proposals are available. Faculty instructors and teaching shares are chosen manually in **Teaching assignments**. Workload-balancing recommendations are advisory only: generating or viewing them never changes assignments, and legacy acceptance requests are rejected server-side. Timetable generation places the existing assignments into permitted days, times and rooms; accepting a timetable proposal updates draft meetings only. No paid AI API is needed.
 
 The **Prepare schedule** workspace guides staff through seven stages: select a term, department and version; prepare classes and teaching assignments; review teaching units; configure availability, rooms and meeting needs; generate a department or section timetable; review proposals, conflicts and unscheduled meetings; then validate, finalize and publish. Task pages retain the selected version and provide a return link and Back/Continue navigation. Missing-input findings come from the existing generation checks, with links to the affected forms. Stages are navigation guidance, not completion certificates. Save task changes before continuing; use **Change term, department or version** to select a different context. Accepting a proposal fills the draft; publication still requires the existing explicit validation and finalization actions.
 
-## Run this prepared workspace
+## Run a configured local workspace
 
-This checkout uses an isolated loopback-only PostgreSQL database on port **55432**. Its `.env` is Git-ignored. On this prepared machine, the existing virtual environment and database helper live in the sibling `CAPSTONE SYSTEM\faculty_sched` workspace; a new clone should follow [Fresh installation](#fresh-installation) instead.
+First complete [Fresh installation](#fresh-installation) for a new clone. For an existing checkout, use its configured Python environment and confirm the intended local PostgreSQL database in the Git-ignored `.env` before running migrations or seeds. Local paths and credentials are installation-specific.
 
 From the repository root in PowerShell:
 
 ```powershell
-$python = 'C:\Users\PERSONAL\Documents\ChatGPT\CAPSTONE SYSTEM\faculty_sched\.venv\Scripts\python.exe'
+$python = '.\.venv\Scripts\python.exe'
 & $python manage.py migrate
 & $python manage.py check
 & $python manage.py runserver 127.0.0.1:8000
 ```
 
-Open [the application](http://127.0.0.1:8000/). Development accounts are:
+Open [the application](http://127.0.0.1:8000/). On a fresh disposable database, `seed_foundation --create-users` creates the first two accounts below; an optional resource/teaching/timetable seed also creates Faculty logins for the available fictional Faculty records:
 
 | Account | Role |
 | --- | --- |
 | `dev.admin` | Admin; can open Django admin |
-| `dev.dean` | Authorized Staff for Example College A |
-| `dev.chair` | Authorized Staff for Example Department One |
-| `dev.staff` | Authorized Staff for Example Department One |
+| `dev.staff` | Authorized Staff for all departments in Example College A (`DEMO-A`) |
 | `dev.faculty` | Read-only Faculty linked to DEMO-F1; created with a resource/teaching/timetable seed option |
+| `dev.faculty2` | Read-only Faculty linked to DEMO-F2; created with a resource/teaching/timetable seed option |
+| `dev.faculty3` | Read-only Faculty linked to DEMO-F1B when the balancing example is included |
 
-Their generated passwords are in the sibling workspace's Git-ignored `.local/development-credentials.txt`. Do not commit/share this file or `.env`. The seed never resets existing account passwords. For a repeatable disposable demo database, see [the demo path](docs/DEMO.md); do not rerun the seed against a database containing decisions you want to preserve.
+New passwords are generated per account and written only to this repository's Git-ignored `.local/development-credentials.txt`. They are local demo credentials, never production defaults. Do not commit/share this file or `.env`. Seeds preserve existing passwords, scopes and disabled-account decisions. Existing installations may need the explicit `configure_demo_accounts --college DEMO-A` transition described in [the demo path](docs/DEMO.md); retired Dean/Chair demo accounts are not part of the supported sign-in path. The expanded demo instead uses one college-scoped `dev.staff.<college>` account per active college. Do not rerun seeds against data containing decisions you want to preserve.
 
-If the prepared database is stopped, start or stop its sibling helper from that workspace:
+If this checkout was configured with the optional Windows database helper, start or stop that helper from the repository root:
 
 ```powershell
-Push-Location 'C:\Users\PERSONAL\Documents\ChatGPT\CAPSTONE SYSTEM\faculty_sched'
 & $python scripts/dev_database.py start  # or: stop
-Pop-Location
 ```
 
 The Windows helper uses PostgreSQL 17.6 packaged by [Zonky](https://github.com/zonkyio/embedded-postgres-binaries) from Maven Central with SHA-256 verification. It is an optional isolated development helper, not a production database installer. It creates a separate cluster/database and never deletes or reinitializes an existing cluster. `--configure-env` explicitly backs up and updates `.env`; ordinary `start` leaves `.env` unchanged.
@@ -105,7 +103,7 @@ py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Use `.\.venv\Scripts\python.exe` throughout a fresh installation; this prepared checkout uses the sibling virtual environment shown above. Calling the interpreter directly avoids PowerShell activation-policy issues.
+Use `.\.venv\Scripts\python.exe` throughout a fresh installation, or the interpreter configured for your existing checkout. Calling the interpreter directly avoids PowerShell activation-policy issues.
 
 ### 2. Choose a development database
 
@@ -184,6 +182,8 @@ Faculty reuses `Faculty.user`. In Django admin, edit a User's **Teaching identit
 
 The workflow is **Prepare → Generate → Review/Edit → Finalize and Publish**. Generation/acceptance creates drafts only. Validate the current version, then use the separate Finalize and Publish action; the draft creator may publish it. No Dean, Chair or separate Admin approval is required. The locked publication transaction rechecks faculty/section/room conflicts across scopes, complete required meetings and teaching hours, complete faculty assignment shares, enforced workload maxima, department scheduling grids, revision/dependency signatures and official selection. Blocking findings include actionable remedies; remaining warnings require acknowledgement.
 
+Teaching assignment changes always require an authorized user's deliberate instructor and teaching-share selection in the manual Teaching Assignment Desk. Balancing runs may compare suggested patterns but cannot apply them, including through legacy direct requests. Recommendation history and earlier audit records remain available in scope.
+
 Publication atomically stores the immutable snapshot, finalizer/time, workflow and audit events, official selection and dated bookings. A revision remains a draft while the previous official version and bookings stay selected. Failed replacement rolls back publication writes. Historical approval snapshots/events remain unchanged. Pending legacy review versions may be validated and finalized; old submit/return/approve endpoints are unmounted.
 
 The active faculty portal is `/my-teaching/` and `/my-teaching/load/`; it reads selected official snapshots, never the latest draft or legacy dashboard/scheduler. New publications freeze teaching-load summaries calculated by the active workload service. Historical approvals without saved summaries use frozen published assignments with current workload policy, clearly labeled in views and exports. Staff **My Scheduling Work** differs from faculty **My Teaching Schedule**.
@@ -215,6 +215,8 @@ Room ownership is explicit: department-owned, college-owned or institution-owned
 The faculty URL namespace is `faculty-management`; subject and room namespaces are `subjects` and `rooms`. All expose `list`, `add`, `detail`, `edit`, and `status` names. `/faculty/dashboard/` and `/scheduling/` remain unavailable. `/my-teaching/` is the active Faculty portal. Resource records are managed through the application, not legacy model-admin screens.
 
 ## Phase 2 architecture
+
+> The phase sections below retain implementation and verification records from their dated checkpoints. Historical role names, reviewer approval flows and test totals describe those checkpoints; they do not override the current [access model](#access-model), manual-only assignment requirement or [demo path](docs/DEMO.md).
 
 Existing `faculty.Faculty`, `academics.Subject`, and `scheduling.Room` tables were extended in place. All use the existing `TrackedModel` timestamps/author fields. `resources` provides shared scoped forms, selectors, transactional save/status services and Bootstrap views/templates; it does not create a second Room table. Views delegate writes to services that recheck permissions, lock the original row, validate target ownership, save, and append the audit event atomically. A failed audit rolls back the record change. Audits identify changed fields rather than copying contact information or notes.
 
@@ -457,7 +459,7 @@ A request creates a `PENDING` run, captures source data under an advisory lock, 
 
 The generator presents readiness, aggregate input counts, effective configuration, explicit strategy and optional bounded overrides. Run history and detail show status text, runtime, score/penalties, a weekly proposal and conservative diagnostics. “Potential blocking conditions detected” is a diagnostic category, not an exact unsatisfiable core. Protected peer schedule, faculty, subject, section and entry identities never reach the HTML; only approved aggregate counts may appear.
 
-Acceptance and discard are POST-only and CSRF-protected. Acceptance re-resolves all proposal IDs within organizational scope, checks the captured source signature and exact proposal contract, repeats generation and Phase 4 validation under the scheduling lock, and atomically writes unlocked entries with generation provenance and audit. The schedule remains DRAFT. A stale, invalid or audit-failed proposal writes no entries. A terminal run cannot be accepted twice. System administrators have institution-wide scope, deans college scope, chairs department scope, and staff require the complete explicit permission bundle. Foreign direct IDs return 404 after permission checking.
+Timetable proposal acceptance and discard are POST-only and CSRF-protected. Acceptance re-resolves all proposal IDs within organizational scope, checks the captured source signature and exact proposal contract, repeats generation and Phase 4 validation under the scheduling lock, and atomically writes unlocked entries with generation provenance and audit. The schedule remains DRAFT and faculty assignments remain unchanged. A stale, invalid or audit-failed proposal writes no entries. A terminal run cannot be accepted twice. Admins have institution-wide scope; Authorized Staff require the complete explicit permission bundle and remain within their college or department and permitted term. Foreign direct IDs return 404 after permission checking.
 
 ### Routes and development examples
 
@@ -481,19 +483,19 @@ With `DEBUG=True`, run `seed_foundation --create-users --with-timetables` for th
 
 Final Phase 5 verification on 2026-09-23: **332 tests passed in 419.237 seconds** (165 prior tests and 167 Phase 5 additions); `manage.py check`, `makemigrations --check --dry-run`, `python -m pip check`, and `git diff --check` passed. Both Phase 5 migrations are applied to the prepared PostgreSQL database. The default seed ran twice, the optional zero-candidate seed ran twice, and a real request returned `PROPOSAL_READY`/`OPTIMAL` with two proposed meetings and zero persisted schedule entries. Browser review at 1440px and 390px covered readiness, proposal/detail, the weekly layout and mobile navigation without page overflow. Run the full test suite sequentially because Django uses a shared temporary PostgreSQL test database.
 
-At the Phase 5 stop point, generation did not choose faculty, balance workloads or recommend assignments. Those capabilities are now provided separately by Phase 6 below. Phase 5 still does not model holidays/date exceptions or travel, support simultaneous team teaching, approve/publish versions, run a background queue, or prove exact infeasibility.
+At the historical Phase 5 stop point, generation did not choose faculty, balance workloads or recommend assignments. Current generation still preserves manually selected faculty; the separate workload-balancing workspace provides advisory comparisons only. The historical Phase 5 limitations also included no holidays/date exceptions or travel, simultaneous team teaching, approval/publication, background queue, or proof of exact infeasibility. Later publication/versioning is described in the current [access model](#access-model).
 
 ## Phase 6 faculty workload balancing
 
-Open **Workloads → Workload Balancing** (`/workloads/balancing/`), choose an active term and an accessible department, then generate a recommendation. The run checks source readiness and records a proposal without modifying teaching assignments. Its detail page compares each faculty member's current and recommended weighted load, configured target/maximum, utilization and status, along with offering-level KEEP/REASSIGN/NEW explanations. A reviewer may accept or discard a ready proposal. Acceptance is a separate POST action; it applies all changed assignment shares atomically after repeating scope, freshness, eligibility and workload validation. A stale or invalid proposal changes no assignments and must be regenerated. Run history remains scoped to the viewer's organizational unit.
+Open **Workloads → Workload Balancing** (`/workloads/balancing/`), choose an accessible term and department, then generate a recommendation. Staff are limited to the current term when the automatic calendar is enabled. The run checks source readiness and records an advisory proposal without modifying teaching assignments. Its detail page compares each faculty member's current and suggested weighted load, configured target/maximum, utilization and status, along with offering-level KEEP/REASSIGN/NEW explanations. Recommendations may be viewed or discarded, never applied. Use **Teaching assignments** to deliberately choose an instructor and teaching share under normal validation and scope rules. Legacy/direct recommendation acceptance requests are rejected server-side without changing assignments. Run history remains scoped to the viewer's organizational unit, including preserved earlier accepted/discarded records.
 
-The scoped adapter reads active departmental faculty and subject offerings for one term, current `FacultySubjectAssignment` shares, effective `WorkloadPolicy` and `FacultyTermCapacity`, and the authoritative `workloads.calculation` service. It rejects inactive/inconsistent records, missing positive load targets, missing required component weights and partially assigned offerings. Unassigned offerings may receive a NEW full-share assignment. Existing assignments linked to timetable meetings or meeting requirements are fixed and cannot be reassigned by this feature. Recorded `FacultyQualification` links provide positive preference evidence; absent links are treated as unknown because the Phase 3 assignment workflow does not require qualification records. Academic rank, employment category and names never imply expertise. Availability is not used to decide faculty suitability because actual meeting times are chosen by Phase 5.
+The scoped adapter reads active departmental faculty and subject offerings for one term, current `FacultySubjectAssignment` shares, effective `WorkloadPolicy` and `FacultyTermCapacity`, and the authoritative `workloads.calculation` service. It rejects inactive/inconsistent records, missing positive load targets, missing required component weights and partially assigned offerings. Unassigned offerings may receive a NEW full-share suggestion in the saved recommendation only. Existing assignments linked to timetable meetings or meeting requirements are fixed in the advisory calculation. Recorded `FacultyQualification` links provide positive preference evidence; absent links are treated as unknown because the Phase 3 assignment workflow does not require qualification records. Academic rank, employment category and names never imply expertise. Availability is not used to decide faculty suitability because actual meeting times are chosen by Phase 5.
 
 The pure OR-Tools CP-SAT service chooses exactly one complete, valid share pattern per offering. It enforces active/same-department eligibility through the adapter, complete 100% teaching coverage and effective hard maxima when enforcement is configured. It minimizes target-normalized workload deviation across faculty and penalizes unnecessary changes to good existing assignments. Recorded qualification matches break otherwise equal scores. The solver is bounded to 10 seconds and one worker with a fixed seed. Its deterministic explanations report the outcome of those rules; no LLM chooses or explains assignments. Warning-only maxima remain warnings, and no unconfigured limit is invented. The comparison's imbalance number is the range in displayed faculty utilization percentages (maximum load as denominator, or recommended target if no maximum); the optimizer itself uses target-normalized deviation.
 
-`WorkloadRecommendationRun` stores the scoped source signature, solver outcome, proposal, comparisons and lifecycle. The source signature covers term, department, faculty, offerings, assignments, applicable policies, capacity overrides, qualification evidence and protected timetable dependencies. Phase 6 shares the Phase 5 PostgreSQL advisory lock for writes to those dependencies. Acceptance rechecks the signature and exact proposal shape under that lock, then audits each changed assignment and the accepted run in the same transaction. Existing schedules are never silently changed or regenerated; after acceptance, the authorized user may explicitly run the Phase 5 generator again. A changed assignment invalidates Phase 5's generation source signature.
+`WorkloadRecommendationRun` stores the scoped source signature, solver outcome, proposal, comparisons and lifecycle. The source signature covers term, department, faculty, offerings, assignments, applicable policies, capacity overrides, qualification evidence and protected timetable dependencies. Generating or viewing the recommendation changes no assignment or timetable. Earlier accepted recommendation history is retained as historical evidence, not permission to apply new recommendations. A deliberate manual assignment change invalidates Phase 5's generation source signature; staff must explicitly regenerate the timetable proposal when needed.
 
-System admins may use any department; deans are college-scoped; chairs are department-scoped. Staff need explicit recommendation permission grants and remain organizationally scoped. No new editable Django admin path bypasses the review workflow. Phase 6 does not include predictive analytics, automated approval/publication, room/time placement, a full qualification management subsystem or Phase 7 versioning.
+Admins may use any department. Authorized Staff need recommendation permissions and remain within their assigned college or department and permitted term. Faculty cannot access this staff workspace. No editable Django admin path applies recommendations. Balancing does not perform automatic assignment changes, predictive analytics, automated publication or room/time placement.
 
 On the prepared local PostgreSQL development database, run:
 
@@ -506,11 +508,11 @@ On the prepared local PostgreSQL development database, run:
 
 For verification, run `manage.py test --settings=config.test_settings --noinput`, then `manage.py check`, `manage.py makemigrations --check --dry-run`, `python -m pip check`, and `git diff --check`. Run PostgreSQL test commands sequentially because they share a test database. `--with-balancing` includes the Phase 5 examples and adds a separate `DEMO-BALANCING` term with two active same-department faculty, two unscheduled offerings, complete current shares, and effective targets/weights. It is DEBUG-only and idempotent; it never generates a recommendation or resets accepted assignments. `manage.py seed_balancing` also runs independently.
 
-Final Phase 6 verification on 2026-09-23: **376 PostgreSQL tests passed in 289.295 seconds** (332 existing and 44 Phase 6 tests). Both additive migrations applied to the prepared development database. Django system and migration-drift checks passed; `pip check` found no broken requirements. A signed-in dean generated and accepted a real `OPTIMAL` recommendation: one of two offerings moved to the second faculty member, the displayed utilization spread improved from 100 to 0 percentage points, and no timetable was generated. The repeat seed preserved the two accepted teaching assignments. Desktop at 1440px and mobile at 390px showed no horizontal page overflow; the mobile sidebar exposed balancing/history, and the temporary viewport override was reset.
+**Historical Phase 6 verification on 2026-09-23 (superseded assignment-application behavior):** **376 PostgreSQL tests passed in 289.295 seconds** (332 existing and 44 Phase 6 tests). Both additive migrations applied to the prepared development database. Django system and migration-drift checks passed; `pip check` found no broken requirements. At that checkpoint, a signed-in dean generated and accepted a real `OPTIMAL` recommendation: one of two offerings moved to the second faculty member, the displayed utilization spread improved from 100 to 0 percentage points, and no timetable was generated. The repeat seed preserved the two accepted teaching assignments. Desktop at 1440px and mobile at 390px showed no horizontal page overflow; the mobile sidebar exposed balancing/history, and the temporary viewport override was reset. This historical acceptance capability is now disabled; current balancing is advisory only.
 
-> Earlier phase records below describe historical approval behavior. The current [access model](#access-model) supersedes mandatory reviewer approval and retired roles.
+> The Phase 7 record below describes historical approval behavior and retired roles. It is not the current operating procedure. Use the current [access model](#access-model) and [demo path](docs/DEMO.md) for staff finalization/publication.
 
-## Phase 7 human review and official schedules
+## Historical Phase 7 human review and official schedules
 
 Each existing `timetabling.Schedule` is now a numbered version in a `ScheduleFamily`. A version retains its own timetable entries, validation status and revision token. Migration preserves every existing schedule and entry ID and each draft/validated status; it assigns each existing schedule a family and version 1 without inventing submissions, approvals, snapshots, active selections or bookings. A new schedule starts as an editable draft. The states are draft, validated, under review, needs revision and approved. A generated proposal remains a proposal until explicitly accepted into an editable version; generation never submits or approves it.
 
@@ -530,7 +532,7 @@ An approved version is read-only. **Revise schedule** clones its meetings into a
 
 Submit, return, approve and revise URLs accept CSRF-protected POST only. Deans have college scope and approval permission; chairs have department scope and may submit/review but cannot approve by default. System administrators have institution-wide capabilities. Authorized Staff require explicit grants, which never widen their assigned organization scope. The server enforces permissions and lifecycle even for direct URL requests. Schedule changes and workflow decisions are recorded by the transactional audit service.
 
-The optional development seed `seed_foundation --create-users --with-review` includes the timetable examples and submits the fictional manual schedule as `dev.chair`. It is DEBUG-only and idempotent, and it creates no approval, snapshot, official selection or booking. Run `seed_review` independently after `seed_foundation --create-users --with-timetables` if desired. Edited example data that cannot pass current validation causes a seed error rather than a fabricated decision.
+At the historical Phase 7 checkpoint, the optional development seed submitted the fictional manual schedule as `dev.chair`. The current DEBUG-only `seed_foundation --create-users --with-review` instead validates that timetable for `dev.staff`; it creates no publication, snapshot, official selection or booking. Edited example data that cannot pass current validation causes a seed error rather than a fabricated decision. Current demo instructions are in [docs/DEMO.md](docs/DEMO.md).
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\dev_database.py start

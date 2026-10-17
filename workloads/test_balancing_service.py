@@ -1,13 +1,15 @@
-"""Integration tests for the reviewed workload-balancing lifecycle."""
+"""Integration tests for the advisory workload-balancing lifecycle."""
 
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.models import Permission
 from django.core.exceptions import PermissionDenied
-from django.test import TestCase
+from django.http import Http404
+from django.utils import timezone
 
 from audit.models import AuditLog
+from audit.services import record_event
 from faculty.models import Faculty
 from timetabling.models import AssignmentMeetingRequirement
 
@@ -47,52 +49,57 @@ class BalancingLifecycleTests(TeachingFixture):
             user=user or self.chair, academic_term=self.term, department=self.department,
         )
 
-    def test_request_is_proposal_only_and_acceptance_balances_atomically(self):
-        before = list(FacultySubjectAssignment.objects.order_by("pk").values_list(
-            "faculty_id", "subject_offering_id", "share",
-        ))
+    def assignments(self):
+        return list(FacultySubjectAssignment.objects.order_by("pk").values())
+
+    def assert_advisory_rejection(self, run, user=None):
+        assignments = self.assignments()
+        stored_run = WorkloadRecommendationRun.objects.filter(pk=run.pk).values().get()
+        audit = list(AuditLog.objects.order_by("pk").values())
+        with self.assertRaisesMessage(BalancingError, "advisory only"):
+            accept_balancing_run(user=user or self.chair, run=run)
+        self.assertEqual(self.assignments(), assignments)
+        self.assertEqual(WorkloadRecommendationRun.objects.filter(pk=run.pk).values().get(), stored_run)
+        self.assertEqual(list(AuditLog.objects.order_by("pk").values()), audit)
+
+    def test_request_calculates_reassignment_advice_without_changing_assignments(self):
+        before = self.assignments()
         run = self.request()
         self.assertEqual(run.status, WorkloadRecommendationRun.Status.PROPOSAL_READY)
         self.assertIn(run.raw_solver_status, ("OPTIMAL", "FEASIBLE"))
-        self.assertEqual(before, list(FacultySubjectAssignment.objects.order_by("pk").values_list(
-            "faculty_id", "subject_offering_id", "share",
-        )))
+        self.assertEqual(before, self.assignments())
         self.assertEqual(sum(row["status"] == "REASSIGN" for row in run.proposed_assignments), 1)
         self.assertEqual(run.comparison["summary"]["assignment_changes"], 1)
         self.assertLessEqual(Decimal(run.comparison["summary"]["imbalance_after"]),
                              Decimal(run.comparison["summary"]["imbalance_before"]))
-        accepted = accept_balancing_run(user=self.chair, run=run)
-        self.assertEqual(accepted.status, WorkloadRecommendationRun.Status.ACCEPTED)
-        self.assertEqual(FacultySubjectAssignment.objects.filter(faculty=self.second).count(), 1)
-        self.assertEqual(FacultySubjectAssignment.objects.count(), 2)
-        self.assertTrue(AuditLog.objects.filter(action="balancing.accepted", object_id=str(run.pk)).exists())
-        self.assertTrue(AuditLog.objects.filter(action="facultysubjectassignment.created", details__balancing_run_id=run.pk).exists())
-        with self.assertRaises(BalancingError):
-            accept_balancing_run(user=self.chair, run=run)
+        self.assertTrue(AuditLog.objects.filter(action="balancing.generated", object_id=str(run.pk)).exists())
+        self.assertFalse(AuditLog.objects.filter(action__startswith="facultysubjectassignment.").exists())
+        self.assert_advisory_rejection(run)
 
-    def test_stale_change_blocks_all_assignment_writes(self):
+    def test_acceptance_rejected_for_all_authorized_roles(self):
+        run = self.request()
+        for user in (self.admin, self.chair, self.dean, self.staff, self.college_staff):
+            with self.subTest(user=user.username):
+                self.assert_advisory_rejection(run, user)
+
+    def test_policy_change_cannot_enable_legacy_acceptance(self):
         run = self.request()
         WorkloadPolicy.objects.filter(department=self.department, academic_term=self.term).update(recommended_load=2)
-        before = list(FacultySubjectAssignment.objects.values_list("pk", "faculty_id", "share"))
-        stale = accept_balancing_run(user=self.chair, run=run)
-        self.assertEqual(stale.status, WorkloadRecommendationRun.Status.STALE)
-        self.assertEqual(before, list(FacultySubjectAssignment.objects.values_list("pk", "faculty_id", "share")))
+        self.assert_advisory_rejection(run)
 
-    def test_assignment_change_makes_proposal_stale(self):
+    def test_manual_assignment_change_is_preserved_on_legacy_acceptance(self):
         run = self.request()
         FacultySubjectAssignment.objects.filter(pk=self.second_assignment.pk).update(share=Decimal("0.50"))
-        outcome = accept_balancing_run(user=self.chair, run=run)
-        self.assertEqual(outcome.status, "STALE")
+        self.assert_advisory_rejection(run)
         self.assertEqual(FacultySubjectAssignment.objects.get(pk=self.second_assignment.pk).share, Decimal("0.50"))
 
-    def test_capacity_override_change_makes_proposal_stale(self):
+    def test_capacity_override_cannot_enable_legacy_acceptance(self):
         run = self.request()
         FacultyTermCapacity.objects.create(
             faculty=self.second, academic_term=self.term,
             recommended_load=Decimal("2"), maximum_load=Decimal("3"),
         )
-        self.assertEqual(accept_balancing_run(user=self.chair, run=run).status, "STALE")
-        self.assertEqual(FacultySubjectAssignment.objects.filter(faculty=self.second).count(), 0)
+        self.assert_advisory_rejection(run)
 
     def test_discards_and_rejects_second_terminal_action(self):
         run = self.request()
@@ -110,7 +117,7 @@ class BalancingLifecycleTests(TeachingFixture):
         self.assertEqual(run.status, "PROPOSAL_READY")
         protected = next(row for row in run.proposed_assignments if row["offering_id"] == self.offering.pk)
         self.assertEqual(protected["status"], "KEEP")
-        accept_balancing_run(user=self.chair, run=run)
+        self.assert_advisory_rejection(run)
         self.assertTrue(FacultySubjectAssignment.objects.filter(pk=self.first_assignment.pk).exists())
 
     def test_protected_incomplete_offering_is_readiness_error(self):
@@ -148,16 +155,39 @@ class BalancingLifecycleTests(TeachingFixture):
         changed = list(run.proposed_assignments)
         changed[0] = {**changed[0], "reason": "tampered"}
         WorkloadRecommendationRun.objects.filter(pk=run.pk).update(proposed_assignments=changed)
-        before = list(FacultySubjectAssignment.objects.values_list("pk", "faculty_id", "share"))
-        outcome = accept_balancing_run(user=self.chair, run=run)
-        self.assertEqual(outcome.status, "VALIDATION_FAILED")
-        self.assertEqual(before, list(FacultySubjectAssignment.objects.values_list("pk", "faculty_id", "share")))
+        self.assert_advisory_rejection(run)
 
-    def test_audit_failure_rolls_back_acceptance(self):
+    def test_rejection_preserves_every_legacy_run_status(self):
         run = self.request()
-        with patch("workloads.balancing_service.record_event", side_effect=RuntimeError("audit down")):
-            with self.assertRaises(RuntimeError):
-                accept_balancing_run(user=self.chair, run=run)
+        for status in WorkloadRecommendationRun.Status.values:
+            with self.subTest(status=status):
+                WorkloadRecommendationRun.objects.filter(pk=run.pk).update(status=status)
+                self.assert_advisory_rejection(run)
+
+    def test_historical_acceptance_and_audit_are_preserved(self):
+        run = self.request()
+        accepted_at = timezone.now()
+        WorkloadRecommendationRun.objects.filter(pk=run.pk).update(
+            status="ACCEPTED", accepted_by=self.chair, accepted_at=accepted_at,
+        )
+        historical_audit = record_event("balancing.accepted", actor=self.chair, obj=run,
+                                       details={"assignment_changes": 1})
+        self.assert_advisory_rejection(run)
         run.refresh_from_db()
-        self.assertEqual(run.status, "PROPOSAL_READY")
-        self.assertEqual(FacultySubjectAssignment.objects.filter(faculty=self.second).count(), 0)
+        self.assertEqual(run.accepted_by, self.chair)
+        self.assertEqual(run.accepted_at, accepted_at)
+        self.assertTrue(AuditLog.objects.filter(pk=historical_audit.pk, action="balancing.accepted").exists())
+
+    def test_direct_acceptance_preserves_scope_and_permissions(self):
+        foreign = request_balancing_run(user=self.admin, academic_term=self.term, department=self.external)
+        with self.assertRaises(Http404):
+            accept_balancing_run(user=self.chair, run=foreign)
+        user = type(self.staff).objects.create_user(username="no-balancing-access")
+        with self.assertRaises(PermissionDenied):
+            accept_balancing_run(user=user, run=self.request())
+
+    def test_audit_outage_cannot_enable_legacy_acceptance(self):
+        run = self.request()
+        with patch("workloads.balancing_service.record_event", side_effect=RuntimeError("audit down")) as audit:
+            self.assert_advisory_rejection(run)
+            audit.assert_not_called()

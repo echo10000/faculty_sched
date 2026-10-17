@@ -357,6 +357,12 @@ h2,.h5,h3,.h6 {
 .table tbody tr:hover > * { background:var(--surface-tint); }
 .table caption { color:var(--muted); font-size:.8rem; padding-top:0; }
 .table-responsive { max-width:100%; scrollbar-width:thin; }
+.academic-calendar-table { min-width:38rem; }
+.academic-calendar-table th { white-space:nowrap; }
+.academic-calendar-table td { overflow-wrap:normal; }
+.academic-calendar-table td:not(:nth-child(2)) { white-space:nowrap; }
+.academic-calendar-table td:nth-child(2) { min-width:12rem; }
+.academic-calendar-table td:nth-child(2) small { display:block; }
 .numeric { text-align:right; font-variant-numeric:tabular-nums; }
 .table .numeric { white-space:nowrap; }
 .dropdown-menu { border-color:var(--line); border-radius:var(--radius-control); box-shadow:var(--menu-shadow); }
