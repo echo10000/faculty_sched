@@ -15,7 +15,7 @@ from accounts.permissions import require_access
 from workloads.calculation import calculate_workload
 from workloads.models import FacultyAvailability
 from workloads.selectors import accessible_terms
-from workloads.models import FacultySubjectAssignment
+from workloads.models import FacultySubjectAssignment, SubjectOffering
 from workloads.selectors import scoped_records
 from resources.selectors import available_resources
 from scheduling.models import Room
@@ -24,7 +24,7 @@ from .models import (Schedule, ScheduleEntry, ClassSection, OfferingRequirement,
                      SchedulingConfiguration, ScheduleGenerationRun, ActiveSchedule)
 from .forms import (ScheduleForm, SectionForm, RequirementForm, ClosureForm, EntryForm,
                     TimetableFilter, MeetingRequirementForm, SchedulingConfigurationForm,
-                    GenerationRequestForm)
+                    GenerationRequestForm, SectionGenerationForm)
 from .queries import authorized, scoped, get_schedule, entry_queryset
 from .generation_inputs import (GenerationOverrides, generation_run_queryset,
                                 get_generation_run, prepare_generation_input,
@@ -34,7 +34,16 @@ from .generation import (InvalidRunTransition, request_generation,
 from .locking import scheduling_lock
 from .mutations import save_record, save_entry, remove_entry, remove_closure, validate_schedule, effective_status
 from .conflicts import get_schedule_conflicts, summarize
-from .timetable import filtered_entries, week_columns
+from .timetable import filtered_entries, frozen_filter_labels, publication_rows, schedule_labels, week_columns
+from .presentation import meeting_filters, present_conflicts
+from .presentation import navigation_filters
+from .presentation import lunch_violations
+from .presentation import group_findings, meeting_coverage
+from .workspace import guided_form_class, stage_links, stage_number
+from .preparation import (task_actions, readiness_findings, preparation_counts,
+                          publication_findings, publication_groups)
+from .room_eligibility import can_preview_rooms
+from .room_rules import resolve_room_requirement
 
 SPECS = {
     "schedules": (Schedule, ScheduleForm, "Manage schedules"),
@@ -56,7 +65,7 @@ SECTION_HELP = {
 
 
 class PrepareScheduleView(ProtectedViewMixin, TemplateView):
-    """A permission-filtered guide to existing scheduling screens."""
+    """A guided workspace over existing scoped scheduling operations."""
 
     permission = "timetabling.view_schedule"
     template_name = "timetabling/prepare.html"
@@ -78,7 +87,19 @@ class PrepareScheduleView(ProtectedViewMixin, TemplateView):
                 raise Http404("Invalid term")
         else:
             term = accessible_terms(user, active=True).first() or terms.first()
+        from accounts.permissions import department_scoped_queryset
+        from core.models import Department
+        departments = department_scoped_queryset(user, Department.objects.select_related("college"), "pk")
+        raw_department = self.request.GET.get("department")
+        department = None
+        if raw_department:
+            try:
+                department = get_object_or_404(departments, pk=int(raw_department))
+            except ValueError:
+                raise Http404("Invalid department")
         schedules = scoped(user, Schedule.objects.filter(academic_term=term).select_related("department", "academic_term")) if term else Schedule.objects.none()
+        if department:
+            schedules = schedules.filter(department=department)
         raw_schedule = self.request.GET.get("schedule")
         if raw_schedule:
             try:
@@ -87,15 +108,50 @@ class PrepareScheduleView(ProtectedViewMixin, TemplateView):
                 raise Http404("Invalid schedule")
         else:
             schedule = schedules.order_by("-updated_at", "-pk").first()
+        department = department or (schedule.department if schedule else departments.first() if departments.count() == 1 else None)
+        if department:
+            schedules = schedules.filter(department=department)
+        stages = stage_links(term, department, schedule)
+        stage = stage_number(self.request.GET.get("stage"))
         editable = schedule and schedule.status in ("draft", "validated", "needs_revision")
         display_status = effective_status(schedule) if schedule and schedule.status in ("draft", "validated") else schedule.status if schedule else None
         context.update(terms=terms, term=term, schedules=schedules.order_by("department__name", "name"), schedule=schedule,
+            departments=departments, department=department, stages=stages, current_stage=stages[stage - 1],
+            previous_stage=stages[stage - 2] if stage > 1 else None,
+            next_stage=stages[stage] if stage < 7 else None,
+            task_actions=task_actions(user, term, department, schedule, stage),
+            readiness_findings=readiness_findings(user, schedule) if editable and stage in (3, 4, 5) else None,
             editable=editable, display_status=display_status,
             display_status_label=dict(Schedule.Status.choices).get(display_status, "Unknown"),
             can_generate=bool(editable and _can_generate(user)),
             can_check=bool(editable and user.has_perm("timetabling.validate_schedule")),
             can_submit=bool(editable and user.has_perm("timetabling.finalize_schedule") and user.has_perm("timetabling.change_schedule")),
             can_add_meeting=bool(editable and user.has_perm("timetabling.add_scheduleentry")))
+        if schedule:
+            context["scheduling_workspace"] = {"schedule": schedule, "stage": stage}
+            context["break_configuration"] = scoped(user, SchedulingConfiguration.objects.filter(
+                academic_term_id=schedule.academic_term_id, department_id=schedule.department_id)).first() if stage in (4, 5) and user.has_perm("timetabling.view_schedulingconfiguration") else None
+            context["preparation_counts"] = preparation_counts(user, schedule) if stage == 2 else {}
+            context["can_generate_section"] = context["can_generate"] and all(user.has_perm(item) for item in (
+                "timetabling.view_classsection", "workloads.view_subjectoffering", "academics.view_subject"))
+            context["can_view_proposals"] = _can_view_runs(user)
+            if stage == 6 and context["can_view_proposals"]:
+                runs = generation_run_queryset(user).filter(schedule=schedule).order_by("-pk")
+                context["recent_proposals"] = runs[:5]
+                context["review_proposal"] = runs.filter(status=ScheduleGenerationRun.Status.PROPOSAL_READY).first()
+            if stage in (6, 7):
+                context["publication_findings"] = publication_findings(user, schedule) if display_status != "approved" else None
+                if context["publication_findings"] is not None:
+                    context["publication_groups"] = publication_groups(context["publication_findings"])
+                context["draft_meeting_count"] = scoped(user, entry_queryset()).filter(schedule=schedule).count() if user.has_perm("timetabling.view_scheduleentry") else None
+            if display_status == "approved":
+                context["is_current_official"] = ActiveSchedule.objects.filter(schedule=schedule).exists()
+        findings = context.get("readiness_findings") if stage in (3, 4, 5) else context.get("publication_findings")
+        if findings is not None:
+            context["finding_summary"] = {
+                "errors": sum(row["severity"] == "ERROR" for row in findings),
+                "warnings": sum(row["severity"] == "WARNING" for row in findings),
+            }
         return context
 
 
@@ -113,6 +169,7 @@ class TimetableMixin(ProtectedViewMixin):
         model, _, title = SPECS[self.section]
         item_name = SECTION_HELP[self.section][1].removeprefix("Add ").removeprefix("Create ")
         return {"title": title, "section": self.section, "list_url": reverse(f"timetabling:{self.section}"),
+            "can_preview_rooms": can_preview_rooms(self.request.user),
             "description": SECTION_HELP[self.section][0], "add_label": SECTION_HELP[self.section][1],
             "empty_message": SECTION_HELP[self.section][2],
             "save_label": "Save " + item_name.lower(), "edit_label": "Edit " + item_name.lower(),
@@ -123,21 +180,35 @@ class TimetableMixin(ProtectedViewMixin):
 class RecordList(TimetableMixin, View):
     def get(self, request):
         model = SPECS[self.section][0]
-        form = TimetableFilter(request.GET, user=request.user)
+        academic_browse = self.section in ("sections", "requirements", "meeting-requirements")
+        form = TimetableFilter(request.GET, user=request.user, academic_browse=academic_browse)
         keep = {"academic_term", "department", "q"}
+        if academic_browse:
+            keep.add("year_level")
+            if self.section != "sections":
+                keep.add("section")
         if self.section == "closures":
             keep = {"academic_term", "room", "day_of_week"}
         form.fields = {k: v for k, v in form.fields.items() if k in keep}
+        if academic_browse:
+            form.fields = {name: form.fields[name] for name in
+                ("academic_term", "department", "year_level", "section", "q") if name in form.fields}
         if self.section == "schedules":
             form.fields["version_status"] = forms.ChoiceField(required=False, label="Version status", choices=[
                 ("", "All versions"), ("editable", "Drafts and revisions"), ("under_review", "Under review"), ("approved", "Published"),
             ], widget=forms.Select(attrs={"class": "form-select"}))
         qs = scoped(request.user, model.objects.all())
         if self.section == "schedules":
-            qs = qs.select_related("family", "academic_term", "department")
+            qs = qs.select_related("family", "academic_term", "department", "approval_snapshot")
         elif self.section == "meeting-requirements":
             qs = qs.select_related("assignment__faculty", "assignment__subject_offering__subject",
-                                   "assignment__subject_offering__academic_term", "assignment__subject_offering__department")
+                "assignment__subject_offering__academic_term__academic_year", "assignment__subject_offering__academic_term__semester", "assignment__subject_offering__department__college",
+                "assignment__subject_offering__scheduling_requirement__section")
+        elif self.section == "requirements":
+            qs = qs.select_related("section", "room_type", "subject_offering__subject", "subject_offering__academic_term__academic_year", "subject_offering__academic_term__semester",
+                "subject_offering__department__college")
+        elif self.section == "sections":
+            qs = qs.select_related("department__college", "academic_term__academic_year", "academic_term__semester", "program")
         elif self.section == "configurations":
             qs = qs.select_related("academic_term", "department")
         if form.is_valid():
@@ -147,6 +218,15 @@ class RecordList(TimetableMixin, View):
             for field in ("academic_term", "department", "room", "day_of_week"):
                 if data.get(field):
                     qs = qs.filter(**{prefix + field: data[field]})
+            if academic_browse:
+                section_prefix = {"sections": "", "requirements": "section__",
+                    "meeting-requirements": "assignment__subject_offering__scheduling_requirement__section__"}[self.section]
+                if data.get("year_level"):
+                    qs = qs.filter(**{section_prefix + "year_level": int(data["year_level"])})
+                if data.get("section"):
+                    qs = qs.filter(**{section_prefix + "pk": data["section"].pk})
+                qs = qs.order_by(prefix + "department__college__name", prefix + "department__name",
+                    section_prefix + "year_level", section_prefix + "code", "pk")
             if self.section == "schedules" and data.get("version_status"):
                 statuses = ("draft", "validated", "needs_revision") if data["version_status"] == "editable" else (data["version_status"],)
                 qs = qs.filter(status__in=statuses)
@@ -163,16 +243,48 @@ class RecordList(TimetableMixin, View):
         official_ids = set(ActiveSchedule.objects.filter(
             schedule_id__in=[obj.pk for obj in page if isinstance(obj, Schedule)],
         ).values_list("schedule_id", flat=True)) if self.section == "schedules" else set()
+        active_room_types = {}
+        if self.section == "requirements":
+            from resources.models import RoomType
+            active_room_types = {item.code: item for item in RoomType.objects.filter(is_active=True)}
         for obj in page:
             owner = getattr(obj, "department", None) or getattr(obj, "college", None)
             obj.owner_label = owner.name if owner else "Institution"
             obj.detail_url = reverse("timetabling:schedules-detail", args=[obj.pk]) if self.section == "schedules" else reverse(f"timetabling:{self.section}-edit", args=[obj.pk])
+            if academic_browse:
+                from resources.browsing import academic_group_label
+                section_record = obj if self.section == "sections" else obj.section if self.section == "requirements" else None
+                if self.section == "meeting-requirements":
+                    requirement = getattr(obj.assignment.subject_offering, "scheduling_requirement", None)
+                    section_record = requirement.section if requirement else None
+                obj.browse_group = academic_group_label(request.user, owner,
+                    (section_record.year_level,) if section_record else ())
+                if self.section == "sections":
+                    obj.browse_title = obj.code
+                    obj.browse_detail = f"Expected students: {obj.expected_size}" if obj.expected_size is not None else "Class size not recorded"
+                else:
+                    offering = obj.subject_offering if self.section == "requirements" else obj.assignment.subject_offering
+                    obj.browse_title = offering.subject.title
+                    section_label = section_record.code if section_record else "Section not assigned"
+                    obj.browse_detail = f"{offering.subject.code} · {section_label}"
+                    if self.section == "meeting-requirements":
+                        obj.browse_detail += f" · {obj.assignment.faculty}"
+                        obj.browse_summary = f"{obj.get_meeting_type_display()}: {obj.meetings_per_week} × {obj.duration_minutes} min/week"
+                    else:
+                        need = resolve_room_requirement(offering, obj, active_room_types)
+                        obj.browse_summary = f"{need.name} ({'required' if need.mandatory else 'preferred'})" if need.code else "No room specialization required"
+                        if obj.capacity_is_hard:
+                            obj.browse_summary += " · Capacity must fit the section"
             if isinstance(obj, Schedule):
+                obj.publication_labels = schedule_labels(obj)
                 obj.display_status = effective_status(obj) if obj.status in ("draft", "validated") else obj.status
+                obj.display_status_label = dict(Schedule.Status.choices).get(obj.display_status, "Unknown")
                 obj.is_official = obj.pk in official_ids
         query = request.GET.copy()
         query.pop("page", None)
-        return render(request, "timetabling/list.html", {**self.context(), "page_obj": page, "page_query": query.urlencode(), "filter_form": form})
+        return render(request, "timetabling/list.html", {**self.context(), "page_obj": page, "page_query": query.urlencode(),
+            "filter_form": form, "academic_browse": academic_browse,
+            "browse_year_filter": form.cleaned_data.get("year_level", "")})
 
 
 class RecordForm(TimetableMixin, View):
@@ -197,13 +309,32 @@ class RecordForm(TimetableMixin, View):
 
     def get(self, request, pk=None):
         obj = self.get_original(request, pk)
-        form = SPECS[self.section][1](user=request.user, instance=obj, term=self.selected_term(request, obj))
-        return render(request, "timetabling/form.html", {**self.context(), "form": form, "editing": bool(pk)})
+        term = self.selected_term(request, obj)
+        form = guided_form_class(request, SPECS[self.section][1])(user=request.user, instance=obj, term=term)
+        if not obj:
+            for name in ("department", "subject_offering", "assignment"):
+                raw = request.GET.get(name)
+                field = form.fields.get(name)
+                if raw and field and hasattr(field, "queryset"):
+                    try:
+                        form.initial[name] = get_object_or_404(field.queryset, pk=int(raw)).pk
+                    except ValueError:
+                        raise Http404("Invalid form context")
+            if "meeting_type" in form.fields and request.GET.get("meeting_type") in ("lecture", "laboratory"):
+                form.initial["meeting_type"] = request.GET["meeting_type"]
+        room_preview_offering = None
+        if isinstance(obj, OfferingRequirement):
+            room_preview_offering = obj.subject_offering_id
+        elif isinstance(obj, AssignmentMeetingRequirement):
+            room_preview_offering = obj.assignment.subject_offering_id
+        return render(request, "timetabling/form.html", {**self.context(), "form": form, "editing": bool(pk),
+            "term": term, "room_preview_offering": room_preview_offering,
+            "saved_lunch_violations": lunch_violations(request.user, obj) if isinstance(obj, SchedulingConfiguration) else None})
 
     def post(self, request, pk=None):
         original = self.get_original(request, pk)
         term = self.selected_term(request, original)
-        form_class = SPECS[self.section][1]
+        form_class = guided_form_class(request, SPECS[self.section][1])
         try:
             obj, form = save_record(user=request.user, form_class=form_class, data=request.POST, pk=pk, term=term)
         except (ValidationError, IntegrityError) as error:
@@ -213,8 +344,12 @@ class RecordForm(TimetableMixin, View):
             obj = None
         if obj:
             messages.success(request, "Record saved. Revalidate affected schedules after changing scheduling requirements or availability.")
+            if isinstance(obj, SchedulingConfiguration) and obj.lunch_break_enabled and set(form.changed_data) & {"lunch_break_enabled", "lunch_start", "lunch_end"}:
+                messages.warning(request, "Existing meetings were not moved or deleted. Reopen these generation settings to review lunch overlaps, then validate affected schedules before generation or publication.")
             return redirect("timetabling:schedules-detail", obj.pk) if self.section == "schedules" else redirect(f"timetabling:{self.section}")
-        return render(request, "timetabling/form.html", {**self.context(), "form": form, "editing": bool(pk)})
+        saved = self.get_original(request, pk) if pk and self.section == "configurations" else None
+        return render(request, "timetabling/form.html", {**self.context(), "form": form, "editing": bool(pk),
+            "saved_lunch_violations": lunch_violations(request.user, saved) if saved else None})
 
 
 class ScheduleDetail(TimetableMixin, View):
@@ -230,11 +365,13 @@ class ScheduleDetail(TimetableMixin, View):
         ).first()
         is_official = bool(active and active.schedule_id == schedule.pk)
         form = TimetableFilter(request.GET, user=request.user)
+        form.fields["q"].label = "Subject code or title"
+        frozen_filter_labels(form, schedule)
         entries = filtered_entries(request.user, schedule, form)
         report = summarize(get_schedule_conflicts(
             schedule, user=request.user,
             excluded_schedule_ids=(active.schedule_id,) if active and not is_official else (),
-        ), schedule.entries.count()) if self.mode in ("detail", "conflicts", "unscheduled") else None
+        ), schedule.entries.count())
         # Presentation reads reuse the canonical validator and scoped records.
         all_entries = scoped(request.user, entry_queryset()).filter(schedule=schedule)
         summary = {"meetings": all_entries.count(), "scheduled_assignments": all_entries.values("assignment_id").distinct().count()}
@@ -246,22 +383,41 @@ class ScheduleDetail(TimetableMixin, View):
             )).select_related("faculty", "subject_offering__subject")
             unscheduled = assignments.exclude(pk__in=all_entries.values("assignment_id"))
             summary["without_meetings"] = unscheduled.count()
-        requirement_findings = [item for item in report["conflicts"] if item.code in (
+        findings = present_conflicts(request.user, report["conflicts"], meeting_filters(form))
+        requirement_findings = [item for item in findings if item["code"] in (
             "MEETING_REQUIREMENT_MISSING", "MEETING_REQUIREMENT_COUNT", "MEETING_REQUIREMENT_DURATION", "MEETING_HOURS_WARNING",
         )] if report else []
-        conflict_groups = []
-        if report:
-            for severity, label in (("ERROR", "Blocking errors"), ("WARNING", "Warnings"), ("INFO", "Information")):
-                findings = [item for item in report["conflicts"] if item.severity == severity]
-                if findings:
-                    conflict_groups.append({"label": label, "findings": sorted(findings, key=lambda item: item.code)})
+        conflict_groups = group_findings(findings)
+        coverage = meeting_coverage(request.user, assignments, all_entries) if unscheduled is not None and self.mode in ("detail", "unscheduled") else None
+        if coverage is not None:
+            summary["coverage_attention"] = len(coverage)
+        filters = meeting_filters(form)
+        selected_faculty = form.cleaned_data.get("faculty") if form.is_valid() else None
+        faculty_choices = []
+        if self.mode == "timetable" and request.user.has_perm("faculty.view_faculty"):
+            from workloads.selectors import scoped_faculty
+            from django.db.models import Q
+            faculty_ids = all_entries.values("assignment__faculty_id")
+            assignment_ids = assignments.values("faculty_id") if unscheduled is not None else faculty_ids
+            faculty_choices = scoped_faculty(request.user).filter(Q(pk__in=faculty_ids) | Q(pk__in=assignment_ids))
+            frozen_names = {row.get("faculty_id"): row.get("faculty_name") or "Not recorded at publication"
+                            for row in publication_rows(schedule)}
+            for person in faculty_choices:
+                person.timetable_label = frozen_names.get(person.pk, "Not recorded at publication") if schedule.status == Schedule.Status.APPROVED else str(person)
+            if selected_faculty:
+                selected_faculty.timetable_label = frozen_names.get(selected_faculty.pk, "Not recorded at publication") if schedule.status == Schedule.Status.APPROVED else str(selected_faculty)
         display_status = effective_status(schedule) if editable and schedule.status in ("draft", "validated") else schedule.status
         return render(request, "timetabling/detail.html", {**self.context(), "schedule": schedule, "status": display_status,
+            "schedule_labels": schedule_labels(schedule),
+            "status_label": dict(Schedule.Status.choices).get(display_status, "Unknown"),
             "filter_form": form, "entries": entries, "week": week_columns(entries), "mode": self.mode, "report": report,
             "can_generate": editable and _can_generate(request.user), "can_view_generation_runs": _can_view_runs(request.user),
             "can_edit_version": editable, "can_submit_action": editable and request.user.has_perm("timetabling.finalize_schedule") and request.user.has_perm("timetabling.change_schedule"),
             "is_official": is_official, "summary": summary, "unscheduled_assignments": unscheduled,
-            "requirement_findings": requirement_findings, "conflict_groups": conflict_groups})
+            "requirement_findings": requirement_findings, "conflict_groups": conflict_groups,
+            "coverage_rows": coverage,
+            "conflict_count": report["errors"] + report["warnings"],
+            "meeting_filters": filters, "selected_faculty": selected_faculty, "faculty_choices": faculty_choices})
 
 
 class EntryEditor(TimetableMixin, View):
@@ -281,8 +437,12 @@ class EntryEditor(TimetableMixin, View):
     def context_entry(self, form, conflicts=None, preview=False, editing=False):
         context = {**self.context(), "title": "Manual meeting", "schedule": self.schedule, "form": form, "is_entry": True,
             "description": "Add a class meeting to this schedule and check it for conflicts before saving.",
-            "conflicts": conflicts or [], "previewed": preview, "editing": editing,
-            "list_url": reverse("timetabling:schedules-detail", args=[self.schedule.pk])}
+            "conflicts": present_conflicts(self.request.user, conflicts or [], navigation_filters(self.request)), "previewed": preview, "editing": editing,
+            "list_url": reverse("timetabling:schedules-detail", args=[self.schedule.pk]),
+            "meeting_filters": navigation_filters(self.request)}
+        if context["meeting_filters"]:
+            from urllib.parse import urlencode
+            context["list_url"] += "?" + urlencode(context["meeting_filters"])
         assignment = form.cleaned_data.get("assignment") if hasattr(form, "cleaned_data") else form.instance.assignment if form.instance.assignment_id else None
         if assignment:
             context["assignment_context"] = assignment
@@ -296,6 +456,13 @@ class EntryEditor(TimetableMixin, View):
 
     def get(self, request, schedule_id, pk=None):
         form = EntryForm(user=request.user, schedule=self.schedule, instance=self.original(request, pk))
+        if not pk and request.GET.get("assignment"):
+            try:
+                assignment = get_object_or_404(form.fields["assignment"].queryset, pk=int(request.GET["assignment"]))
+            except (ValueError, TypeError):
+                raise Http404("Invalid teaching assignment")
+            form.initial["assignment"] = assignment.pk
+            form.instance.assignment = assignment
         return render(request, "timetabling/form.html", self.context_entry(form, editing=bool(pk)))
 
     def post(self, request, schedule_id, pk=None):
@@ -311,7 +478,10 @@ class EntryEditor(TimetableMixin, View):
             messages.success(request, "Meeting saved. The schedule is now a draft.")
             for conflict in conflicts:
                 messages.warning(request, conflict.message)
-            return redirect("timetabling:schedules-detail", schedule_id)
+            from urllib.parse import urlencode
+            filters = navigation_filters(request)
+            suffix = "?" + urlencode(filters) if filters else ""
+            return redirect(reverse("timetabling:schedules-detail", args=[schedule_id]) + suffix)
         return render(request, "timetabling/form.html", self.context_entry(form, conflicts, preview=preview and bool(obj), editing=bool(pk)))
 
 
@@ -326,12 +496,18 @@ class EntryDelete(TimetableMixin, View):
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request, schedule_id, pk):
-        return render(request, "timetabling/delete.html", {"object": self.entry, "list_url": reverse("timetabling:schedules-detail", args=[schedule_id])})
+        from urllib.parse import urlencode
+        filters = navigation_filters(request)
+        url = reverse("timetabling:schedules-detail", args=[schedule_id])
+        return render(request, "timetabling/delete.html", {"object": self.entry,
+            "list_url": url + ("?" + urlencode(filters) if filters else "")})
 
     def post(self, request, schedule_id, pk):
         remove_entry(user=request.user, schedule_id=schedule_id, pk=pk)
         messages.success(request, "Meeting removed; audit history retained.")
-        return redirect("timetabling:schedules-detail", schedule_id)
+        from urllib.parse import urlencode
+        filters = navigation_filters(request)
+        return redirect(reverse("timetabling:schedules-detail", args=[schedule_id]) + ("?" + urlencode(filters) if filters else ""))
 
 
 class ValidateView(TimetableMixin, View):
@@ -345,7 +521,10 @@ class ValidateView(TimetableMixin, View):
     def post(self, request, pk):
         report = validate_schedule(user=request.user, schedule_id=pk)
         messages.info(request, f"Validation finished: {report['errors']} errors, {report['warnings']} warnings. Validation does not publish a schedule.")
-        return redirect("timetabling:conflicts", pk)
+        from urllib.parse import urlencode
+        filters = navigation_filters(request)
+        suffix = "?" + urlencode(filters) if filters else ""
+        return redirect(reverse("timetabling:conflicts", args=[pk]) + suffix)
 
 
 class ClosureDelete(TimetableMixin, View):
@@ -437,7 +616,14 @@ class GeneratorView(ProtectedViewMixin, View):
                         ("peer_occupancy_count", "Protected peer occupancy"),
                         ("candidate_count", "Candidate positions"))]
                     configuration_rows = _configuration_rows(snapshot)
-        return {"form": form, "selected_schedule": selected,
+        term = selected.academic_term if selected else None
+        raw_term = (request.POST if request.method == "POST" else request.GET).get("academic_term")
+        if term is None and raw_term:
+            try:
+                term = form.fields["academic_term"].queryset.filter(pk=int(raw_term)).first()
+            except (TypeError, ValueError):
+                pass
+        return {"form": form, "selected_schedule": selected, "term": term,
                 "configuration": configuration, "counts": counts, "readiness_issues": readiness_issues,
                 "configuration_rows": configuration_rows, "input_rows": input_rows,
                 "can_view_generation_runs": _can_view_runs(request.user),
@@ -463,14 +649,119 @@ class GeneratorView(ProtectedViewMixin, View):
         return redirect("timetabling:generation-run-detail", pk=run.pk)
 
 
+class SectionGeneratorView(ProtectedViewMixin, View):
+    permission = "timetabling.generate_schedule"
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            require_generation_access(request.user, ScheduleGenerationRun.Strategy.FILL_GAPS)
+            authorized(request.user, ClassSection)
+            require_access(request.user, "workloads.view_subjectoffering")
+            require_access(request.user, "academics.view_subject")
+        return super().dispatch(request, *args, **kwargs)
+
+    def _form(self, request):
+        if request.method == "GET" and not request.GET:
+            term = accessible_terms(request.user, active=True).first()
+            return SectionGenerationForm(user=request.user,
+                initial={"academic_term": term.pk if term else None, "year_level": 1,
+                         "strategy": ScheduleGenerationRun.Strategy.FILL_GAPS})
+        data = (request.POST if request.method == "POST" else request.GET).copy()
+        data.setdefault("strategy", ScheduleGenerationRun.Strategy.FILL_GAPS)
+        # Loading a section selects the latest editable draft for its department.
+        # POST always uses the explicit draft displayed to the user.
+        if request.method == "GET" and not data.get("schedule"):
+            try:
+                schedule = scoped(request.user, Schedule.objects.filter(
+                    academic_term_id=int(data.get("academic_term", "")),
+                    department_id=int(data.get("department", "")),
+                    status__in=("draft", "validated", "needs_revision"),
+                )).order_by("-updated_at", "-pk").first()
+            except (ValueError, TypeError):
+                schedule = None
+            if schedule:
+                data["schedule"] = str(schedule.pk)
+        return SectionGenerationForm(data, user=request.user)
+
+    def _context(self, request, form):
+        section = schedule = None
+        rows = []
+        if form.is_bound and form.is_valid():
+            section, schedule = form.cleaned_data.get("section"), form.cleaned_data.get("schedule")
+            if section:
+                offerings = scoped_records(request.user, SubjectOffering.objects.filter(is_active=True,
+                    academic_term=section.academic_term, department=section.department,
+                    scheduling_requirement__section=section)).select_related("subject").prefetch_related(
+                        "teaching_assignments__faculty", "teaching_assignments__meeting_requirements")
+                entries = scoped(request.user, entry_queryset()).filter(schedule=schedule,
+                    assignment__subject_offering__scheduling_requirement__section=section) if schedule else []
+                by_offering = {}
+                for entry in entries:
+                    by_offering.setdefault(entry.assignment.subject_offering_id, []).append(entry)
+                for offering in offerings:
+                    meetings = sorted(by_offering.get(offering.pk, []),
+                                      key=lambda item: (item.day_of_week, item.start_time))
+                    expected = sum(requirement.meetings_per_week for assignment in
+                        offering.teaching_assignments.all() for requirement in assignment.meeting_requirements.all())
+                    rows.append({"offering": offering, "meetings": meetings,
+                        "faculty": [assignment.faculty for assignment in offering.teaching_assignments.all()],
+                        "expected": expected,
+                        "status": "Not scheduled" if not meetings else
+                                  "Scheduled" if expected and len(meetings) == expected else "Partly scheduled"})
+        return {"form": form, "selected_section": section, "selected_schedule": schedule,
+                "configuration": scoped(request.user, SchedulingConfiguration.objects.filter(
+                    academic_term_id=section.academic_term_id, department_id=section.department_id)).first() if section else None,
+                "subject_rows": rows, "term": section.academic_term if section else None,
+                "can_generate_section": bool(section and schedule and rows),
+                "can_create_schedule": request.user.has_perm("timetabling.add_schedule")}
+
+    def get(self, request):
+        form = self._form(request)
+        return render(request, "timetabling/section_generator.html", self._context(request, form))
+
+    def post(self, request):
+        form = self._form(request)
+        if form.is_valid():
+            if not form.cleaned_data.get("section"):
+                form.add_error("section", "Select a section before generating.")
+            if not form.cleaned_data.get("schedule"):
+                form.add_error("schedule", "Select an editable draft before generating.")
+        if form.errors:
+            return render(request, "timetabling/section_generator.html", self._context(request, form))
+        try:
+            run = request_generation(user=request.user,
+                schedule_id=form.cleaned_data["schedule"].pk,
+                section_id=form.cleaned_data["section"].pk,
+                strategy=form.cleaned_data["strategy"], overrides=GenerationOverrides())
+        except (InvalidRunTransition, ValidationError):
+            form.add_error(None, "This draft changed or is no longer editable. Reload the section and select an editable draft.")
+            return render(request, "timetabling/section_generator.html", self._context(request, form), status=409)
+        return redirect("timetabling:generation-run-detail", pk=run.pk)
+
+
 class GenerationRunList(ProtectedViewMixin, View):
     permission = "timetabling.view_schedulegenerationrun"
 
     def get(self, request):
         runs = generation_run_queryset(request.user).order_by("-requested_at", "-pk")
+        workspace = getattr(request, "scheduling_workspace", None)
+        if workspace:
+            runs = runs.filter(schedule=workspace["schedule"])
+        schedule = workspace["schedule"] if workspace else None
+        if request.GET.get("schedule"):
+            try:
+                schedule = get_schedule(request.user, int(request.GET["schedule"]))
+            except (ValueError, TypeError):
+                raise Http404("Invalid schedule context")
+            runs = runs.filter(schedule=schedule)
         page = Paginator(runs, 20).get_page(request.GET.get("page"))
+        query = request.GET.copy()
+        query.pop("page", None)
         return render(request, "timetabling/generation_run_list.html", {
             "page_obj": page, "can_generate": _can_generate(request.user),
+            "page_query": query.urlencode(),
+            "schedule": schedule,
+            "meeting_filters": navigation_filters(request) if request.user.has_perm("timetabling.view_scheduleentry") else {},
         })
 
 
@@ -550,11 +841,17 @@ def _configuration_rows(snapshot):
         ("solver_time_limit_seconds", "Time limit (seconds)"),
         ("random_seed", "Random seed"), ("worker_count", "Workers"),
         ("faculty_preference_weight", "Faculty preference weight"),
-        ("faculty_gap_weight", "Faculty gap weight"),
+        ("faculty_gap_weight", "Faculty compactness weight"),
         ("section_gap_weight", "Section gap weight"),
         ("meeting_distribution_weight", "Meeting distribution weight"),
         ("room_fit_weight", "Room fit weight"),
     )]
+    rows += [("Daily lunch break", "Not recorded (legacy run)" if "lunch_break_enabled" not in snapshot else
+        f"Enabled: {snapshot.get('lunch_start')}–{snapshot.get('lunch_end')} (hard rule)" if snapshot.get("lunch_break_enabled") else "Disabled"),
+        ("Faculty rest preference", "Not recorded (legacy run)" if "faculty_rest_minutes" not in snapshot else
+         f"Prefer {snapshot['faculty_rest_minutes']} minutes (soft)" if snapshot.get("faculty_rest_minutes") else "No minimum preference"),
+        ("Optimization priority", "Short rest gaps first; existing weighted preferences second"
+         if snapshot.get("faculty_rest_minutes") else "Existing weighted preferences")]
     return [(label, ", ".join(str(item) for item in value) if type(value) is list
              else value) for label, value in rows]
 
@@ -588,10 +885,15 @@ class GenerationRunDetail(LoginRequiredMixin, View):
         statistics = run.solver_statistics if type(run.solver_statistics) is dict else {}
         summary = run.input_summary if type(run.input_summary) is dict else {}
         snapshot = run.configuration_snapshot if type(run.configuration_snapshot) is dict else {}
+        section = None
+        if snapshot.get("generation_section_id"):
+            section = scoped(request.user, ClassSection.objects.filter(
+                pk=snapshot["generation_section_id"], academic_term_id=run.academic_term_id,
+                department_id=run.department_id)).first()
         penalty_rows = [(label, penalties.get(key, 0)) for key, label in (
             ("faculty_preference", "Faculty preference"), ("faculty_gap", "Faculty gaps"),
             ("section_gap", "Section gaps"), ("meeting_distribution", "Meeting distribution"),
-            ("room_fit", "Room fit"))]
+            ("room_fit", "Room fit"), ("faculty_rest", "Short consecutive faculty gaps (count)"))]
         source_rows = [(label, summary.get(key, 0)) for key, label in (
             ("current_entry_count", "Current meetings"), ("retained_entry_count", "Retained meetings"),
             ("replace_entry_count", "Replaceable meetings"), ("peer_occupancy_count", "Protected peer occupancy"),
@@ -602,6 +904,9 @@ class GenerationRunDetail(LoginRequiredMixin, View):
             ("conflicts", "Conflicts"), ("candidate_count", "Candidates"), ("variable_count", "Variables"))]
         return render(request, "timetabling/generation_run_detail.html", {
             "run": run, "status_explanation": STATUS_EXPLANATIONS.get(run.status, "Status unavailable."),
+            "schedule": run.schedule, "term": run.academic_term,
+            "meeting_filters": navigation_filters(request) if request.user.has_perm("timetabling.view_scheduleentry") else {},
+            "generation_section": section,
             "solver_explanation": SOLVER_EXPLANATIONS.get(run.solver_status, "The solver has not started."),
             "proposal_week": week, "proposal_display_warnings": display_warnings,
             "diagnostic_errors": [d["message"] for d in diagnostics if d["severity"] == "ERROR"],
@@ -611,7 +916,10 @@ class GenerationRunDetail(LoginRequiredMixin, View):
             "objective_available": run.objective_value is not None,
             "bound_available": run.best_bound is not None,
             "runtime_available": run.runtime_seconds is not None,
+            "rest_preference_minutes": snapshot.get("faculty_rest_minutes", 0) if snapshot.get("faculty_rest_minutes") in (30, 60) else 0,
+            "rest_shortfalls": penalties.get("faculty_rest", 0) if type(penalties.get("faculty_rest", 0)) is int else None,
             "can_finalize": run.status == "PROPOSAL_READY" and _can_generate(request.user, run.strategy),
+            "can_accept_proposal": run.schedule.status in ("draft", "validated", "needs_revision"),
             "can_view_generation_runs": _can_view_runs(request.user),
         })
 
@@ -641,7 +949,9 @@ class GenerationTerminalView(ProtectedViewMixin, View):
             messages.info(request, "The proposal was discarded.")
         else:
             messages.warning(request, STATUS_EXPLANATIONS.get(run.status, "The proposal was not applied."))
-        return redirect("timetabling:generation-run-detail", pk=run.pk)
+        from urllib.parse import urlencode
+        filters = navigation_filters(request) if request.user.has_perm("timetabling.view_scheduleentry") else {}
+        return redirect(reverse("timetabling:generation-run-detail", args=[run.pk]) + ("?" + urlencode(filters) if filters else ""))
 
 
 class GenerationAcceptView(GenerationTerminalView):

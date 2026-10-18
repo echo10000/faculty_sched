@@ -12,7 +12,7 @@ from workloads.selectors import scoped_records
 
 from .conflicts import Conflict
 from .models import AssignmentMeetingRequirement, ScheduleEntry, ScheduleGenerationRun
-from .queries import get_schedule, scoped
+from .queries import get_schedule, scoped, entry_queryset
 
 
 PROPOSAL_KEYS = frozenset({
@@ -150,6 +150,9 @@ def _resolve_generation_contract(*, run, prepared, proposal_rows, user) -> _Reso
         for key in ("retained_entry_ids", "replace_entry_ids", "eligible_room_ids")
     ) or not _valid_manifest(summary.get("remaining_demands")) or summary.get("remaining_demands") != fresh_summary.get("remaining_demands"):
         conflicts.append(_conflict("PROPOSAL_DEMAND"))
+    if (type(summary) is dict and summary.get("generation_section_id") !=
+            fresh_summary.get("generation_section_id")):
+        conflicts.append(_conflict("PROPOSAL_DEMAND"))
     if run.strategy == ScheduleGenerationRun.Strategy.FILL_GAPS and prepared.replace_entry_ids:
         conflicts.append(_conflict("PROPOSAL_DEMAND"))
     manifest = tuple(tuple(item) for item in fresh_summary.get("remaining_demands", []))
@@ -177,7 +180,7 @@ def _resolve_generation_contract(*, run, prepared, proposal_rows, user) -> _Reso
     rooms = {item.pk: item for item in available_resources(user, Room).filter(
         pk__in=set(eligible_ids) & {row["room_id"] for row in valid_rows}
     )}
-    retained = tuple(scoped(user, ScheduleEntry.objects.filter(
+    retained = tuple(scoped(user, entry_queryset().filter(
         pk__in=prepared.retained_entry_ids, schedule=schedule,
     )).order_by("pk"))
     if tuple(item.pk for item in retained) != tuple(prepared.retained_entry_ids):

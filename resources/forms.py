@@ -7,6 +7,7 @@ from core.models import College, Department
 from faculty.models import AcademicRank, EmploymentCategory, Faculty
 from scheduling.models import Room
 from .models import Building, RoomType
+from workloads.widgets import TeachingLoadInput
 
 
 class StyledFormMixin:
@@ -51,11 +52,25 @@ class FacultyForm(ScopedModelForm):
     class Meta:
         model = Faculty
         fields = ["employee_id", "first_name", "middle_name", "last_name", "suffix", "email", "contact_number", "college", "home_department", "employment_category", "academic_rank", "recommended_load", "maximum_load", "notes"]
-        help_texts = {"recommended_load": "Teaching load units. Blank inherits a term policy; zero means zero.", "maximum_load": "Teaching load units. Blank inherits a term policy."}
+        help_texts = {"recommended_load": "Optional baseline in weighted workload units. Blank inherits a term policy; zero means zero. A faculty-term override takes precedence.", "maximum_load": "Optional baseline in weighted workload units. Blank inherits a term policy. A faculty-term override takes precedence."}
+        widgets = {"recommended_load": TeachingLoadInput("Recommended teaching target"),
+                   "maximum_load": TeachingLoadInput("Configured maximum load")}
+        labels = {"recommended_load": "Recommended teaching target", "maximum_load": "Configured maximum load"}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["employment_category"].required = True
+        if not is_system_admin(self.user):
+            # Exclude these from ModelForm writes, including forged POST values.
+            self.fields.pop("recommended_load")
+            self.fields.pop("maximum_load")
+
+    def clean(self):
+        cleaned = super().clean()
+        recommended, maximum = cleaned.get("recommended_load"), cleaned.get("maximum_load")
+        if recommended is not None and maximum is not None and recommended > maximum:
+            self.add_error("recommended_load", "Recommended teaching target cannot exceed the configured maximum load.")
+        return cleaned
 
 
 class SubjectForm(ScopedModelForm):
@@ -74,6 +89,13 @@ class RoomForm(ScopedModelForm):
     class Meta:
         model = Room
         fields = ["code", "name", "building", "category", "capacity", "college", "owner_department"]
+        labels = {"category": "Room specialization / type", "capacity": "Seating capacity", "owner_department": "Owning department (optional)"}
+        help_texts = {
+            "category": "Choose the configured category that reflects verified room equipment. A name alone does not establish suitability.",
+            "capacity": "Recorded number of seats. Scheduling excludes undersized rooms only when mandatory capacity is configured for the class.",
+            "building": "Optional. Rooms in an inactive building cannot be used by the generator.",
+            "owner_department": "Optional. Existing ownership and user scope determine which schedulers can use this room.",
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -112,7 +134,25 @@ class ResourceFilterForm(StyledFormMixin, forms.Form):
                 self.fields["academic_term"] = forms.ModelChoiceField(queryset=accessible_terms(user), required=False, label="Workload term")
             self.fields["employment_category"] = forms.ModelChoiceField(queryset=EmploymentCategory.objects.all(), required=False)
             self.fields["academic_rank"] = forms.ModelChoiceField(queryset=AcademicRank.objects.all(), required=False)
+        if kind == "subjects" and all(user.has_perm(permission) for permission in (
+                "academics.view_academicterm", "workloads.view_subjectoffering",
+                "timetabling.view_offeringrequirement", "timetabling.view_classsection")):
+            from workloads.selectors import accessible_terms
+            from .browsing import YEAR_CHOICES
+            self.fields["academic_term"] = forms.ModelChoiceField(
+                queryset=accessible_terms(user), required=False, label="Academic term")
+            if self.is_bound and "academic_term" not in self.data:
+                term = accessible_terms(user, active=True).first()
+                self.data = self.data.copy()
+                self.data["academic_term"] = term.pk if term else ""
+            self.fields["year_level"] = forms.ChoiceField(required=False,
+                choices=[*YEAR_CHOICES, ("unplaced", "Year not assigned")], label="Year level")
+            self.fields["department"].label = "Program / department"
         if kind == "rooms":
-            self.fields["category"] = forms.ModelChoiceField(queryset=RoomType.objects.all(), required=False, label="Room type")
+            self.fields["q"].label = "Search rooms"
+            self.fields["q"].widget.attrs["placeholder"] = "Name, code or building"
+            self.fields["category"] = forms.ModelChoiceField(queryset=RoomType.objects.all(), required=False, label="Room specialization / type")
             self.fields["building"] = forms.ModelChoiceField(queryset=Building.objects.all(), required=False)
+        from academics.calendar import use_current_term_field
+        use_current_term_field(self, user)
         self.style_fields()

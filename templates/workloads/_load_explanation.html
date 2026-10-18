@@ -1,0 +1,9 @@
+<details class="mt-3"><summary>How workload is calculated</summary>
+  <dl class="mt-3 small">
+    <dt>Academic teaching units</dt><dd>Lecture and laboratory academic units from assigned classes, multiplied by the instructor's teaching share.</dd>
+    <dt>Weekly contact hours</dt><dd>The class's weekly lecture and laboratory hours, multiplied by the teaching share. These describe teaching time, not weighted load or faculty availability.</dd>
+    <dt>Weighted teaching load</dt><dd>Lecture units × lecture weight plus laboratory units × laboratory weight, multiplied by the teaching share, summed across the instructor's classes. The target and maximum use this measure.</dd>
+  </dl>
+  {% if report %}<p class="small">Lecture weight: {{ report.policy.lecture_weight|default_if_none:'Not configured' }} · {{ report.policy.sources.lecture_weight|default:'Not configured' }}<br>Laboratory weight: {{ report.policy.laboratory_weight|default_if_none:'Not configured' }} · {{ report.policy.sources.laboratory_weight|default:'Not configured' }}</p>{% endif %}
+  <p class="small text-secondary mb-0">Each limit inherits independently: faculty-term override → faculty baseline → department policy → college policy → institution policy. Blank means inherit; zero is an explicit limit. Displayed totals are rounded to two decimals; saves check the full precision on the server.</p>
+</details>

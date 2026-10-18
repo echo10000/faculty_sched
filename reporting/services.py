@@ -83,7 +83,10 @@ def _selected(user, params, name, queryset, label, *, required=False):
 
 
 def _filter_context(user, kind, params):
-    term_qs = accessible_terms(user).order_by("-start_date", "-pk")
+    from academics.calendar import calendar_enabled
+    term_qs = accessible_terms(user)
+    if not calendar_enabled():
+        term_qs = term_qs.order_by("-start_date", "-pk")
     term, term_filter = _selected(user, params, "term", term_qs, "Academic term")
     if not params.get("term"):
         term = term_qs.filter(is_active=True).first() or term_qs.first()

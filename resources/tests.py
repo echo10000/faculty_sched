@@ -154,6 +154,7 @@ class ResourceManagementTests(ResourceFixture):
     def test_validation_empty_form_and_invalid_numbers_never_500(self):
         self.client.force_login(self.chair)
         for namespace, numeric in [("faculty-management", "recommended_load"), ("subjects", "lecture_units"), ("rooms", "capacity")]:
+            self.client.force_login(self.admin if namespace == "faculty-management" else self.chair)
             for value in ("", "-1", "nan", "Infinity", "bad", "99999999999999999999"):
                 with self.subTest(namespace=namespace, value=value):
                     data = self.payload(namespace)
@@ -181,6 +182,7 @@ class ResourceManagementTests(ResourceFixture):
         for field in ("lecture_units", "laboratory_units", "lecture_hours", "laboratory_hours"):
             response = self.client.post(reverse("subjects:add"), {**self.payload("subjects"), field: "-0.5"})
             self.assertTrue(response.context["form"].errors)
+        self.client.force_login(self.admin)
         response = self.client.post(reverse("faculty-management:add"), {**self.payload("faculty-management"), "recommended_load": "25", "maximum_load": "20"})
         self.assertTrue(response.context["form"].errors)
 
@@ -340,7 +342,7 @@ class ResourceIsolationTests(ResourceFixture):
         self.client.force_login(self.staff)
         response = self.client.get(reverse("faculty-management:detail", args=[self.faculty.pk]))
         self.assertContains(response, "Teaching capacity by active term")
-        self.assertContains(response, 'aria-current="page" href="/faculty/"')
+        self.assertContains(response, f'aria-current="page" href="/faculty/?academic_term={self.term.pk}"')
         self.client.force_login(self.chair)
         self.assertContains(self.client.get(reverse("faculty-management:detail", args=[self.faculty.pk])), "Teaching capacity by active term")
 
@@ -475,7 +477,7 @@ class ResourceSeedTests(TestCase):
             self.assertEqual([model.objects.count() for model in (Faculty, Subject, Room, WorkloadPolicy, FacultyTermCapacity)], counts)
             faculty.refresh_from_db()
             self.assertEqual(faculty.first_name, "Preserve my edit")
-            self.assertEqual(set(hashes), {"dev.admin", "dev.dean", "dev.chair", "dev.staff", "dev.faculty"})
+            self.assertEqual(set(hashes), {"dev.admin", "dev.staff", "dev.faculty", "dev.faculty2"})
             self.assertEqual(Assignment.objects.count(), 0)
             self.assertEqual(Faculty.objects.count(), 2)
 

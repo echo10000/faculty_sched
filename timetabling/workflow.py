@@ -145,6 +145,7 @@ def _snapshot_payload(schedule, warnings, reviewer):
         "allowed_weekdays", "earliest_start", "latest_end", "slot_increment_minutes",
         "faculty_preference_weight", "faculty_gap_weight", "section_gap_weight",
         "meeting_distribution_weight", "room_fit_weight",
+        "lunch_break_enabled", "lunch_start", "lunch_end", "faculty_rest_minutes",
     ).first()
     if configuration:
         configuration = {key: value.isoformat() if hasattr(value, "isoformat") else value

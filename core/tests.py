@@ -67,7 +67,7 @@ class FoundationTests(TestCase):
             user.refresh_from_db()
             self.assertEqual(user.password, initial_hash)
             self.assertEqual(College.objects.count(), first_count)
-            self.assertEqual(get_user_model().objects.count(), 4)
+            self.assertEqual(get_user_model().objects.count(), 2)
             self.assertEqual(Faculty.objects.count(), 0)
             self.assertEqual(Assignment.objects.count(), 0)
             self.assertTrue((Path(directory) / ".local/development-credentials.txt").exists())

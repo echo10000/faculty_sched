@@ -8,7 +8,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from accounts.models import AdminProfile
-from timetabling.conflicts import get_schedule_conflicts
+from accounts.permissions import department_scoped_queryset
 from timetabling.models import Schedule
 from timetabling.mutations import validate_schedule
 
@@ -20,20 +20,21 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if not settings.DEBUG:
             raise CommandError("Development seeding requires DEBUG=True.")
-        chair = get_user_model().objects.filter(username="dev.chair", is_active=True).first()
+        staff = get_user_model().objects.filter(username="dev.staff", is_active=True).first()
         profile = AdminProfile.objects.filter(
-            user=chair, role=AdminProfile.Role.STAFF, is_enabled=True,
-        ).first() if chair else None
+            user=staff, role=AdminProfile.Role.STAFF, is_enabled=True,
+        ).first() if staff else None
         if not profile:
-            raise CommandError("Create the optional dev.chair account with seed_foundation --create-users first.")
-        schedule = Schedule.objects.filter(
-            name="Example manual timetable", department_id=profile.department_id,
+            raise CommandError("Create the optional dev.staff account with seed_foundation --create-users first.")
+        schedules = department_scoped_queryset(staff, Schedule.objects.all())
+        schedule = schedules.filter(
+            name="Example manual timetable",
             academic_term__code="DEMO-TERM",
         ).order_by("pk").first()
         if schedule is None:
             call_command("seed_timetables", stdout=self.stdout)
-            schedule = Schedule.objects.filter(
-                name="Example manual timetable", department_id=profile.department_id,
+            schedule = schedules.filter(
+                name="Example manual timetable",
                 academic_term__code="DEMO-TERM",
             ).order_by("pk").first()
         if schedule is None:
@@ -44,10 +45,8 @@ class Command(BaseCommand):
         if schedule.status == Schedule.Status.NEEDS_REVISION:
             self.stdout.write("Review example was returned; preserving its reviewer decision.")
             return
-        warnings = {item.code for item in get_schedule_conflicts(schedule, user=chair)
-                    if item.severity == "WARNING"}
         try:
-            validate_schedule(user=chair, schedule_id=schedule.pk)
+            validate_schedule(user=staff, schedule_id=schedule.pk)
         except ValidationError as error:
             raise CommandError("The fictional schedule cannot be submitted: " + "; ".join(error.messages)) from error
         self.stdout.write(self.style.SUCCESS(

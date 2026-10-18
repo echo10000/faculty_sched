@@ -1,0 +1,22 @@
+<div class="assignment-preview-heading"><p>{{ report.faculty }} · All assigned classes in this term</p>{% include 'workloads/status.html' with status=report.status %}</div>
+<table class="assignment-load-comparison">
+  <caption class="visually-hidden">Current and projected workload for {{ report.faculty }}</caption>
+  <thead><tr><th scope="col">Measure</th><th scope="col">Current</th><th scope="col">Change</th><th scope="col">Projected</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Assigned academic teaching units</th><td>{{ report.current_teaching_units|floatformat:2 }}</td><td>+{{ report.assignment_teaching_units|floatformat:2 }}</td><td>{{ report.teaching_units|floatformat:2 }}</td></tr>
+    <tr><th scope="row">Weekly contact hours</th><td>{{ report.current_teaching_hours|floatformat:2 }}</td><td>+{{ report.assignment_teaching_hours|floatformat:2 }}</td><td>{{ report.teaching_hours|floatformat:2 }}</td></tr>
+    <tr class="assignment-weighted"><th scope="row">Weighted teaching load</th><td>{% if report.current_load != None %}{{ report.current_load|floatformat:2 }}{% else %}Not configured{% endif %}</td><td>{% if report.change_load != None %}+{{ report.change_load|floatformat:2 }}{% else %}Unknown{% endif %}</td><td>{% if report.assigned_load != None %}{{ report.assigned_load|floatformat:2 }}{% else %}Not configured{% endif %}</td></tr>
+  </tbody>
+</table>
+<dl class="assignment-policy-grid">
+  <div><dt>Recommended teaching target</dt><dd>{{ report.policy.recommended_load|default_if_none:'Not configured' }}<small>{{ report.policy.sources.recommended_load|default:'Not configured' }} · Weighted load</small></dd></div>
+  <div><dt>Configured maximum load</dt><dd>{{ report.policy.maximum_load|default_if_none:'Not configured' }}<small>{{ report.policy.sources.maximum_load|default:'Not configured' }} · Weighted load</small></dd></div>
+  <div><dt>Remaining capacity after assignment</dt><dd>{% if report.remaining_capacity != None %}{{ report.remaining_capacity|floatformat:2 }}<small>Weighted workload units{% if report.remaining_capacity < 0 %} · Maximum exceeded{% endif %}</small>{% else %}Cannot calculate<small>Requires maximum and teaching weights</small>{% endif %}</dd></div>
+</dl>
+<p class="assignment-enforcement"><strong>Maximum enforcement: {% if report.policy.enforce_maximum %}Hard limit{% else %}Warnings only{% endif %}</strong> · {{ report.policy.enforcement_source }}</p>
+<p class="assignment-policy-note">The recommended target is a workload goal. The maximum is a separate limit; its configured enforcement decides whether an overload blocks saving.</p>
+{% for warning in report.warnings %}<div class="alert alert-warning py-2" role="status">{{ warning }}</div>{% endfor %}
+{% if report.status == 'UNCONFIGURED' %}<p class="assignment-policy-note">Missing configuration is not workload approval. Unknown capacity is not zero or unlimited.</p>{% endif %}
+{% include 'workloads/_load_explanation.html' with report=report %}
+{% include 'workloads/_designation.html' with faculty=report.faculty compact=True %}
+<p class="assignment-preview-note">Preview only. Nothing has been saved. Saving rechecks the latest workload policy and teaching shares.</p>

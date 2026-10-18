@@ -1,0 +1,1 @@
+{% if row.assignment_state == 'full' %}<span class="badge status-badge status-active">Fully assigned</span>{% elif row.assignment_state == 'partial' %}<span class="badge status-badge status-unconfigured">Partially assigned</span>{% else %}<span class="badge status-badge status-draft">Needs instructor</span>{% endif %}

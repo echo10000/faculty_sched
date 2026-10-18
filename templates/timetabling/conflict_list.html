@@ -1,1 +1,10 @@
-{% for conflict in conflicts %}<div class="alert {% if conflict.severity == 'ERROR' %}alert-danger{% elif conflict.severity == 'WARNING' %}alert-warning{% else %}alert-info{% endif %}"><strong>{{ conflict.severity }} · {{ conflict.code }}</strong><p class="mb-1">{{ conflict.message }}</p><small>{{ conflict.remedy }}</small>{% if conflict.entry_id %}<small class="d-block">Affected meeting: {{ conflict.entry_id }}{% if conflict.other_entry_id %} · Other meeting: {{ conflict.other_entry_id }}{% endif %}</small>{% endif %}</div>{% endfor %}
+{% load workspace %}
+{% for conflict in conflicts %}
+<div class="alert conflict-finding {% if conflict.severity == 'ERROR' %}alert-danger{% elif conflict.severity == 'WARNING' %}alert-warning{% else %}alert-info{% endif %}">
+  <strong>{% if conflict.severity == 'ERROR' %}Blocking error{% elif conflict.severity == 'WARNING' %}Warning{% else %}Information{% endif %}</strong>
+  <p class="mb-1">{{ conflict.message }}</p>
+  <p class="small mb-0">{{ conflict.remedy }}</p>
+  {% if conflict.meetings %}<ul class="conflict-meetings list-unstyled mb-0 mt-3">{% for meeting in conflict.meetings %}<li><span>{{ meeting.label }}</span><a href="{% guided_link meeting.url %}">{{ meeting.action }}</a></li>{% endfor %}</ul>{% endif %}
+  <details class="small mt-2"><summary>Validation code</summary><code>{{ conflict.code }}</code></details>
+</div>
+{% endfor %}

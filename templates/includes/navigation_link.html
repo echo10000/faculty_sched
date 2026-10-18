@@ -1,0 +1,5 @@
+{% load static workspace %}
+<a class="nav-link {% if link.active %}active{% endif %} {% if link.route == 'timetabling:prepare' %}nav-workflow-entry{% endif %}" {% if link.active %}aria-current="page"{% endif %} href="{% workspace_url link.route %}" title="{{ link.label }}" aria-label="{{ link.label }}">
+  <svg class="nav-link-icon" aria-hidden="true" focusable="false"><use href="{% static 'icons/campusload.svg' %}#{{ link.icon }}"></use></svg>
+  <span class="nav-link-label">{{ link.label }}{% if link.route == 'admin:index' %} <span aria-hidden="true">↗</span>{% endif %}</span>
+</a>

@@ -55,8 +55,13 @@ class FrontendIntegrationAuditTests(TimetableFixture):
         self.client.force_login(self.chair)
         page = self.client.get(reverse('timetabling:prepare'), {'academic_term':self.term.pk})
         forms = PageMarkup(page.content.decode()).forms
-        term_form = next(form for form in forms if 'academic_term' in form['names'] and 'schedule' not in form['names'])
+        term_form = next(form for form in forms if 'academic_term' in form['names'])
         self.assertIsNotNone(term_form)
+        self.assertContains(page, 'data-prepare-context')
+        from django.contrib.staticfiles import finders
+        from pathlib import Path
+        script = Path(finders.find('js/app.js')).read_text(encoding='utf-8')
+        self.assertIn("schedule.value = ''", script)
         changed = self.client.get(reverse('timetabling:prepare'), {'academic_term':self.later.pk})
         self.assertEqual(changed.status_code,200)
         self.assertEqual(changed.context['term'],self.later)

@@ -1,0 +1,13 @@
+{% if guide_current %}
+<nav class="surface scheduling-guide mb-4" aria-label="Scheduling workflow">
+  <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+    <div><strong>Step {{ guide_current.number }} of 7 · {{ guide_current.label }}</strong><small class="d-block text-secondary">{{ scheduling_workspace.schedule.academic_term }} · {{ scheduling_workspace.schedule.department.name }} · {{ scheduling_workspace.schedule.name }} · v{{ scheduling_workspace.schedule.version_number }}</small></div>
+    <div><a href="{{ guide_current.url }}">Return to scheduling workspace</a><a class="small d-block" href="{{ guide_stages.0.url }}">Change term, department or version</a></div>
+  </div>
+  <p class="small text-secondary mb-2">{{ guide_current.description }} {% if request.resolver_match.url_name == 'room-eligibility' %}This comparison is read-only; no changes need to be saved here.{% else %}Save changes on this page before continuing.{% endif %}</p>
+  <div class="d-flex flex-wrap justify-content-between gap-2">
+    {% if guide_back %}<a class="btn btn-outline-secondary btn-sm" href="{{ guide_back.url }}">Back: {{ guide_back.label }}</a>{% endif %}
+    {% if guide_continue %}<a class="btn btn-outline-primary btn-sm ms-auto" href="{{ guide_continue.url }}">Continue: {{ guide_continue.label }}</a>{% endif %}
+  </div>
+</nav>
+{% endif %}

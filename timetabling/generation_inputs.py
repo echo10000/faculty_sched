@@ -23,9 +23,10 @@ from workloads.models import (
 from workloads.selectors import scoped_records
 
 from .conflicts import validate_candidate_schedule
-from .intervals import duration_minutes, terms_share_weekday
+from .intervals import duration_minutes, terms_share_weekday, time_microseconds
 from .models import (
     AssignmentMeetingRequirement,
+    ClassSection,
     OfferingRequirement,
     RoomUnavailability,
     ScheduleGenerationRun,
@@ -35,6 +36,7 @@ from .occupancy import authoritative_occupancy
 from .queries import authorized, entry_queryset, get_schedule, scoped
 from .signatures import dependency_signature
 from .solver.candidates import build_candidates
+from .room_rules import resolve_room_requirement, room_resource_failures, room_fit_failures
 from .solver.contracts import (
     CandidateLimits,
     FixedMeeting,
@@ -243,6 +245,10 @@ def _configuration_snapshot(configuration: SchedulingConfiguration) -> dict:
         "section_gap_weight": configuration.section_gap_weight,
         "meeting_distribution_weight": configuration.meeting_distribution_weight,
         "room_fit_weight": configuration.room_fit_weight,
+        "lunch_break_enabled": configuration.lunch_break_enabled,
+        "lunch_start": configuration.lunch_start.strftime("%H:%M") if configuration.lunch_start else None,
+        "lunch_end": configuration.lunch_end.strftime("%H:%M") if configuration.lunch_end else None,
+        "faculty_rest_minutes": configuration.faculty_rest_minutes,
     }
 
 
@@ -268,6 +274,9 @@ def _policy_for(configuration, term) -> SchedulingPolicy:
             meeting_distribution=configuration.meeting_distribution_weight,
             room_fit=configuration.room_fit_weight,
         ),
+        lunch_start_minute=_minute(configuration.lunch_start) if configuration.lunch_break_enabled else None,
+        lunch_end_minute=_minute(configuration.lunch_end) if configuration.lunch_break_enabled else None,
+        faculty_rest_minutes=configuration.faculty_rest_minutes,
     )
 
 
@@ -480,6 +489,8 @@ def _peer_fixed_meeting(entry, policy) -> FixedMeeting:
         ),
         meeting_type=None,
         counts_for_distribution=False,
+        actual_start_microsecond=time_microseconds(entry.start_time),
+        actual_end_microsecond=time_microseconds(entry.end_time),
     )
 
 
@@ -513,6 +524,7 @@ def prepare_generation_input(
     schedule_id: int,
     strategy: str,
     overrides: GenerationOverrides,
+    section_id: int | None = None,
 ) -> PreparedGeneration:
     if strategy not in ScheduleGenerationRun.Strategy.values:
         raise ValueError("Unknown timetable generation strategy.")
@@ -521,6 +533,12 @@ def prepare_generation_input(
 
     require_generation_access(user, strategy)
     schedule = get_schedule(user, schedule_id, action="change")
+    if section_id is not None:
+        authorized(user, ClassSection)
+        get_object_or_404(scoped(user, ClassSection.objects.filter(
+            academic_term_id=schedule.academic_term_id,
+            department_id=schedule.department_id, is_active=True,
+        )), pk=section_id)
     issues = _Issues()
     _schedule_readiness(schedule, issues)
 
@@ -566,6 +584,8 @@ def prepare_generation_input(
             configuration_snapshot = _configuration_snapshot(
                 effective_configuration
             )
+            if section_id is not None:
+                configuration_snapshot["generation_section_id"] = section_id
             policy = _policy_for(effective_configuration, schedule.academic_term)
 
     offerings = list(
@@ -575,6 +595,7 @@ def prepare_generation_input(
                 academic_term_id=schedule.academic_term_id,
                 department_id=schedule.department_id,
                 is_active=True,
+                **({"scheduling_requirement__section_id": section_id} if section_id is not None else {}),
             ),
         )
         .select_related(
@@ -586,6 +607,9 @@ def prepare_generation_input(
         .order_by("pk")
     )
     offering_ids = tuple(offering.pk for offering in offerings)
+    if section_id is not None and not offerings:
+        issues.add("SECTION_EMPTY", "ERROR", "This section has no active classes to schedule.",
+                   ("section", section_id))
 
     assignments = list(
         scoped_records(
@@ -666,9 +690,7 @@ def prepare_generation_input(
     )
     eligible_rooms = []
     for room in candidate_rooms:
-        if (room.category_id and not room.category.is_active) or (
-            room.building_id and not room.building.is_active
-        ):
+        if room_resource_failures(room):
             issues.add(
                 "INACTIVE_RESOURCE",
                 "ERROR",
@@ -705,8 +727,15 @@ def prepare_generation_input(
         retained_entries = current_entries
         replace_entries = []
     else:
-        retained_entries = [entry for entry in current_entries if entry.is_locked]
-        replace_entries = [entry for entry in current_entries if not entry.is_locked]
+        selected_offering_ids = {requirement.subject_offering_id for requirement in
+                                 offering_requirements if section_id is None or
+                                 requirement.section_id == section_id}
+        retained_entries = [entry for entry in current_entries if entry.is_locked or
+                            (section_id is not None and
+                             entry.assignment.subject_offering_id not in selected_offering_ids)]
+        replace_entries = [entry for entry in current_entries if not entry.is_locked and
+                           (section_id is None or
+                            entry.assignment.subject_offering_id in selected_offering_ids)]
     retained_entry_ids = tuple(entry.pk for entry in retained_entries)
     replace_entry_ids = tuple(entry.pk for entry in replace_entries)
 
@@ -858,6 +887,7 @@ def prepare_generation_input(
             retained_entries=retained_entries,
             proposed_entries=(),
             user=user,
+            section_id=section_id,
         )
         if retained_entries
         else ()
@@ -876,6 +906,9 @@ def prepare_generation_input(
     consumed = defaultdict(int)
     if policy is not None:
         for entry in retained_entries:
+            if section_id is not None and entry.assignment.subject_offering_id not in offering_ids:
+                fixed_meetings.append(_peer_fixed_meeting(entry, policy))
+                continue
             requirement = valid_requirements.get(
                 (entry.assignment_id, entry.meeting_type)
             )
@@ -934,29 +967,20 @@ def prepare_generation_input(
     for assignment in assignments:
         offering = assignment.subject_offering
         offering_requirement = offering_requirement_by_offering.get(offering.pk)
+        if section_id is not None and (offering_requirement is None or
+                                       offering_requirement.section_id != section_id):
+            continue
         if (
             not assignment_validity.get(assignment.pk)
             or not offering_validity.get(offering.pk)
             or offering_requirement is None
         ):
             continue
-        explicit_room_type = (
-            offering_requirement.room_type
-            if offering_requirement.room_type_id
-            else None
-        )
-        required_code = (
-            explicit_room_type.code
-            if explicit_room_type is not None
-            else offering.subject.required_room_type
-        )
-        if explicit_room_type is not None:
-            required_room_type_id = explicit_room_type.pk
-            room_type_mandatory = offering_requirement.room_type_mandatory
-        else:
-            resolved = active_room_types.get(required_code)
-            required_room_type_id = resolved.pk if resolved else None
-            room_type_mandatory = bool(required_code)
+        room_requirement = resolve_room_requirement(offering, offering_requirement, active_room_types)
+        required_code = room_requirement.code
+        required_room_type_id = room_requirement.type_id
+        room_type_mandatory = room_requirement.mandatory
+        if not offering_requirement.room_type_id:
             if required_code in inactive_room_type_codes:
                 issues.add(
                     "INACTIVE_RESOURCE",
@@ -1005,17 +1029,12 @@ def prepare_generation_input(
     )
     for demand in demands:
         feasible = any(
-            (
-                not demand.room_type_mandatory
-                or (
-                    demand.required_room_type_id is not None
-                    and room.room_type_id == demand.required_room_type_id
-                )
-            )
-            and (
-                not demand.capacity_is_hard
-                or demand.expected_size is None
-                or room.capacity >= demand.expected_size
+            (not demand.room_type_mandatory or demand.required_room_type_id is not None)
+            and not room_fit_failures(
+                room_type_id=room.room_type_id, capacity=room.capacity,
+                required_room_type_id=demand.required_room_type_id,
+                room_type_mandatory=demand.room_type_mandatory,
+                expected_size=demand.expected_size, capacity_is_hard=demand.capacity_is_hard,
             )
             for room in room_options
         )
@@ -1097,6 +1116,8 @@ def prepare_generation_input(
             "current_entry_count": len(current_entries),
         }
     )
+    if section_id is not None:
+        summary["generation_section_id"] = section_id
 
     solver_input = None
     if not issues.has_errors() and policy is not None:

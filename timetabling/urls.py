@@ -1,11 +1,13 @@
 from django.urls import path
 from . import views
 from . import workflow_views
+from .room_views import RoomEligibilityView
 
 app_name = "timetabling"
 urlpatterns = [
     path("", views.RecordList.as_view(), name="schedules"),
     path("prepare/", views.PrepareScheduleView.as_view(), name="prepare"),
+    path("room-eligibility/", RoomEligibilityView.as_view(), name="room-eligibility"),
     path("my-schedules/", workflow_views.my_submissions, name="my-schedules"),
     path("review/", workflow_views.review_queue, name="review-queue"),
     path("official/", workflow_views.official_schedules, name="official-schedules"),
@@ -23,6 +25,7 @@ urlpatterns = [
     path("schedules/<int:schedule_id>/entries/<int:pk>/delete/", views.EntryDelete.as_view(), name="entries-delete"),
     path("closures/<int:pk>/delete/", views.ClosureDelete.as_view(), name="closures-delete"),
     path("generator/", views.GeneratorView.as_view(), name="generator"),
+    path("by-section/", views.SectionGeneratorView.as_view(), name="section-generator"),
     path("generation-runs/", views.GenerationRunList.as_view(), name="generation-runs"),
     path("generation-runs/<int:pk>/", views.GenerationRunDetail.as_view(), name="generation-run-detail"),
     path("generation-runs/<int:pk>/accept/", views.GenerationAcceptView.as_view(), name="generation-run-accept"),

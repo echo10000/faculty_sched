@@ -1,0 +1,4 @@
+{% for field in fields %}{% if scheduling_workspace and field.name == 'academic_term' or scheduling_workspace and field.name == 'department' and request.resolver_match.namespace != 'rooms' %}<div class="col-12 col-sm-6 col-xl-3"><span class="form-label d-block">{{ field.label }}</span>{% include 'timetabling/_context_field.html' %}</div>{% elif field.is_hidden %}{{ field }}{% if field.errors %}<div class="col-12 alert alert-danger" role="alert">{{ field.label }}: {{ field.errors }}</div>{% endif %}{% else %}<div class="col-12 col-sm-6 col-xl-3">
+<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+{% if field.errors %}<div class="form-errors" id="{{ field.auto_id }}_error" role="alert">{% for error in field.errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
+</div>{% endif %}{% endfor %}

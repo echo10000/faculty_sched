@@ -1,0 +1,63 @@
+/* Timetable results reuse the Academic Workbench / Arctic Emerald tokens. */
+.timetable-workspace { min-width:0; }
+.timetable-workspace .page-heading { align-items:flex-start; }
+.timetable-workspace .page-heading h1 { font-family:var(--font-heading); font-weight:400; letter-spacing:-.035em; overflow-wrap:anywhere; }
+.timetable-workspace .page-heading p,.timetable-workspace .surface { overflow-wrap:anywhere; }
+.timetable-workspace .schedule-toolbar { background:var(--surface); }
+.timetable-workspace .faculty-schedule-workspace.has-faculty-panel { grid-template-columns:minmax(0,1fr); }
+.timetable-workspace .faculty-picker { padding:12px 16px; }
+.timetable-workspace .faculty-picker summary { font-weight:600; cursor:pointer; }
+.timetable-workspace .faculty-picker-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); max-height:220px; gap:4px; }
+.timetable-workspace .faculty-picker input { max-width:380px; margin-top:14px; }
+.timetable-workspace .week-grid { grid-template-columns:repeat(7,minmax(150px,1fr)); gap:10px; min-width:0; max-width:100%; padding:2px 2px 12px; scroll-snap-type:x proximity; }
+.timetable-workspace .week-day { min-width:0; padding:12px; scroll-margin-top:90px; scroll-snap-align:start; background:var(--surface-muted); }
+.timetable-workspace .day-heading { display:block; padding:0 0 12px; border-bottom:1px solid var(--line); }
+.timetable-workspace .day-heading h3 { margin:0; padding:0; border:0; background:none; font:600 .875rem/1.4 var(--font-body); }
+.timetable-workspace .day-heading>span { font-size:var(--type-small); color:var(--muted); }
+.timetable-workspace .meeting-card { background:var(--surface); margin-top:12px; padding:12px; border:1px solid var(--line); border-left:3px solid var(--teal); border-radius:var(--radius-small); }
+.timetable-workspace .meeting-time { font-size:.875rem; font-weight:650; color:var(--navy); font-variant-numeric:tabular-nums; }
+.timetable-workspace .meeting-kind { display:inline-block; font-size:.75rem; padding:2px 6px; background:var(--surface-tint); color:var(--teal-ink); border-radius:var(--radius-small); text-transform:capitalize; }
+.timetable-workspace .meeting-subject { display:block; margin:9px 0 3px; font:650 .9375rem/1.4 var(--font-body); }
+.timetable-workspace .meeting-title { font-size:var(--type-small); color:var(--muted); margin:0 0 12px; }
+.timetable-workspace .meeting-facts { margin:0; }
+.timetable-workspace .meeting-facts>div { margin-top:9px; }
+.timetable-workspace .meeting-facts dt { font-size:.75rem; font-weight:400; color:var(--muted); }
+.timetable-workspace .meeting-facts dd { margin:0; font-size:var(--type-small); }
+.timetable-workspace .meeting-footer { display:flex; flex-wrap:wrap; gap:8px; justify-content:space-between; border-top:1px solid var(--line); margin-top:12px; padding-top:10px; font-size:.75rem; }
+.timetable-workspace .day-empty { font-size:var(--type-small); color:var(--muted); padding:16px 0 4px; margin:0; }
+.timetable-days { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0; }
+.timetable-days a { display:flex; align-items:center; gap:9px; min-height:44px; padding:8px 12px; text-decoration:none; color:var(--navy); border:1px solid var(--line); border-radius:var(--radius-control); background:var(--surface); }
+.timetable-days a:hover { background:var(--surface-tint); border-color:var(--teal); }
+.timetable-days small { color:var(--muted); font-variant-numeric:tabular-nums; }
+.timetable-workspace .finding-group { margin-top:22px; }
+.timetable-workspace .finding-category { border-top:1px solid var(--line); padding:12px 0; }
+.timetable-workspace .finding-category>summary { cursor:pointer; font-size:var(--type-small); overflow-wrap:anywhere; }
+.timetable-workspace .conflict-finding { border-left-width:3px; }
+.timetable-workspace .conflict-finding:last-child { margin-bottom:0; }
+.timetable-workspace .coverage-item { border-top:1px solid var(--line); padding:18px 0; }
+.timetable-workspace .coverage-item summary { cursor:pointer; margin-top:12px; }
+.timetable-workspace .proposal-state { border-left:3px solid var(--teal); background:var(--surface-tint); padding:20px; }
+.timetable-workspace .proposal-stages { display:flex; flex-wrap:wrap; gap:8px 20px; padding-left:20px; margin:16px 0 0; font-size:var(--type-small); }
+.timetable-workspace .proposal-stages li { padding-left:3px; }
+.timetable-workspace .form-select,.timetable-workspace .form-control { min-width:0; max-width:100%; }
+.timetable-workspace .week-day:focus { outline:3px solid var(--focus); outline-offset:2px; }
+@media(max-width:767px) {
+  .timetable-workspace .week-grid { display:grid; grid-template-columns:minmax(0,1fr); overflow:visible; padding:2px 0; }
+  .timetable-workspace .week-day { scroll-margin-top:145px; }
+  .timetable-days { position:sticky; top:0; z-index:5; display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px; padding:8px 0; background:var(--canvas); }
+  .timetable-days a { flex-direction:column; justify-content:center; padding:7px 2px; gap:1px; font-size:.8125rem; }
+  .timetable-days small { font-size:.75rem; }
+  .timetable-workspace .meeting-card { padding:16px; }
+  .timetable-workspace .meeting-time { font-size:1rem; }
+  .timetable-workspace .meeting-subject { font-size:1.0625rem; }
+  .timetable-workspace .meeting-title,.timetable-workspace .meeting-facts dd { font-size:.875rem; }
+  .timetable-workspace .meeting-facts { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:0 14px; }
+  .timetable-workspace .meeting-facts>div:nth-child(2) { grid-column:1/-1; grid-row:2; }
+  .timetable-workspace .meeting-footer a,.timetable-workspace .btn { min-height:44px; display:inline-flex; align-items:center; }
+  .timetable-workspace .workspace-tabs { overflow:visible; flex-wrap:wrap; }
+  .timetable-workspace .workspace-tabs a { min-height:44px; }
+  .timetable-workspace .responsive-record-table { min-width:0; }
+  .timetable-workspace .coverage-table th,.timetable-workspace .coverage-table td { text-align:left; }
+  .timetable-workspace .proposal-stages { display:grid; grid-template-columns:minmax(0,1fr); }
+}
+@media print { .timetable-days { position:static; } .timetable-workspace .week-grid { grid-template-columns:repeat(2,minmax(0,1fr)); overflow:visible; } }

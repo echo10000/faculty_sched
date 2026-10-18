@@ -300,6 +300,10 @@ class GenerationInputTests(TimetableFixture):
                 "section_gap_weight": 30,
                 "meeting_distribution_weight": 40,
                 "room_fit_weight": 50,
+                "lunch_break_enabled": False,
+                "lunch_start": None,
+                "lunch_end": None,
+                "faculty_rest_minutes": 0,
             },
         )
         self.configuration.refresh_from_db()

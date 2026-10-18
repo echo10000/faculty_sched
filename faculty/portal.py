@@ -30,6 +30,7 @@ def teaching_records(user, term_id=None):
         entries = [dict(row) for row in payload.get('entries', []) if row.get('faculty_id') == person.pk]
         for row in entries:
             row['day_label'] = dict(DAYS).get(row['day_of_week'], row['day_of_week'])
+            row['publication'] = payload.get('schedule', {})
         if entries:
             published.append((selection, payload, entries))
     terms = list({item[0].academic_term_id: item[0].academic_term for item in published}.values())
@@ -66,7 +67,14 @@ def teaching_records(user, term_id=None):
 @never_cache
 def schedule(request, kind='schedule'):
     context = teaching_records(request.user, request.GET.get('term'))
-    return render(request, 'faculty/teaching_portal.html', {**context, 'kind': kind})
+    from timetabling.timetable import week_columns
+    view_mode = request.GET.get('view', 'calendar')
+    if view_mode not in ('calendar', 'table'):
+        view_mode = 'calendar'
+    week = week_columns([SimpleNamespace(**row) for row in context['entries']])
+    return render(request, 'faculty/teaching_portal.html', {
+        **context, 'kind': kind, 'view_mode': view_mode, 'week': week,
+    })
 
 
 @login_required

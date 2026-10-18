@@ -318,6 +318,8 @@ class AssignmentMeetingRequirement(CheckedRecord):
 
 
 class SchedulingConfiguration(CheckedRecord):
+    REST_CHOICES = ((0, "No minimum preference"), (30, "Prefer at least 30 minutes"),
+                    (60, "Prefer at least 60 minutes"))
     MAX_SOLVER_TIME_LIMIT_SECONDS = 300
     MAX_WORKER_COUNT = 64
     WEIGHT_FIELDS = (
@@ -342,6 +344,10 @@ class SchedulingConfiguration(CheckedRecord):
     section_gap_weight = models.PositiveIntegerField(default=0)
     meeting_distribution_weight = models.PositiveIntegerField(default=0)
     room_fit_weight = models.PositiveIntegerField(default=0)
+    lunch_break_enabled = models.BooleanField(default=False)
+    lunch_start = models.TimeField(null=True, blank=True)
+    lunch_end = models.TimeField(null=True, blank=True)
+    faculty_rest_minutes = models.PositiveSmallIntegerField(default=0, choices=REST_CHOICES)
 
     class Meta:
         ordering = ["-academic_term__start_date", "department", "pk"]
@@ -389,6 +395,14 @@ class SchedulingConfiguration(CheckedRecord):
                 condition=models.Q(room_fit_weight__gte=0),
                 name="scheduling_room_fit_weight_nonnegative",
             ),
+            models.CheckConstraint(
+                condition=models.Q(lunch_break_enabled=False) | (
+                    models.Q(lunch_start__isnull=False, lunch_end__isnull=False)
+                    & models.Q(lunch_start__lt=models.F("lunch_end"))),
+                name="scheduling_enabled_lunch_interval",
+            ),
+            models.CheckConstraint(condition=models.Q(faculty_rest_minutes__in=[0, 30, 60]),
+                name="scheduling_faculty_rest_choice"),
         ]
 
     @staticmethod
@@ -399,6 +413,19 @@ class SchedulingConfiguration(CheckedRecord):
         super().clean()
         fixed_identity(self, ("academic_term_id", "department_id"))
         errors = {}
+        if self.lunch_break_enabled:
+            if not self.lunch_start:
+                errors["lunch_start"] = "Choose the lunch start time before enabling the daily break."
+            if not self.lunch_end:
+                errors["lunch_end"] = "Choose the lunch end time before enabling the daily break."
+            if self.lunch_start and self.lunch_end and self.lunch_start >= self.lunch_end:
+                errors["lunch_end"] = "Lunch must end after it starts on the same day."
+        for name in ("lunch_start", "lunch_end"):
+            value = getattr(self, name)
+            if value and (value.second or value.microsecond):
+                errors[name] = "Lunch times must use whole minutes; they do not need to align to the slot grid."
+        if type(self.faculty_rest_minutes) is not int or self.faculty_rest_minutes not in (0, 30, 60):
+            errors["faculty_rest_minutes"] = "Choose no minimum preference, 30 minutes or 60 minutes."
 
         weekdays = self.allowed_weekdays
         if not isinstance(weekdays, list) or not weekdays:

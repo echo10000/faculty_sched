@@ -1,0 +1,6 @@
+<section class="surface surface-secondary mb-4" aria-labelledby="break-rules-title">
+  <h2 id="break-rules-title" class="h5">Lunch and faculty rest</h2>
+  <p><strong>Hard rule:</strong> enabled lunch blocks any overlapping meeting in this department and term, including classes that start before lunch. A class can end exactly when lunch starts, or begin exactly when lunch ends. Existing meetings are flagged, not moved or deleted. Published snapshots stay unchanged.</p>
+  <p><strong>Soft preference:</strong> faculty rest is the time from one class's actual end to the next class's start on the same day, across sections. It is distinct from total daily idle time. Choose no minimum, 30 or 60 minutes.</p>
+  <p class="mb-0">When rest is enabled, generation minimizes the number of short consecutive gaps first, then applies existing weighted preferences. The faculty compactness weight still favors fewer idle slots. Rest is not guaranteed: locked meetings, other sections, available times and solver limits can leave shortfalls that must be reviewed. No lunch or rest policy is assumed until an authorized configuration manager saves it.</p>
+</section>

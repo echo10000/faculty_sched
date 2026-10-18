@@ -371,6 +371,7 @@ class HardConstraintSolverTests(SimpleTestCase):
                         "section_gap": 0,
                         "meeting_distribution": 0,
                         "room_fit": 0,
+                        "faculty_rest": 0,
                     },
                 )
                 self.assertEqual(fake.value_reads, 0)
@@ -475,6 +476,7 @@ class HardConstraintSolverTests(SimpleTestCase):
                 "section_gap": 0,
                 "meeting_distribution": 0,
                 "room_fit": 0,
+                "faculty_rest": 0,
             },
         )
         self.assertEqual(result.issues, ())

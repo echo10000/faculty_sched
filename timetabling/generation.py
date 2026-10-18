@@ -19,9 +19,9 @@ from .generation_inputs import (
 )
 from .generation_validation import _resolve_generation_contract, serialize_proposals
 from .locking import scheduling_lock
-from .models import ScheduleEntry, ScheduleGenerationRun
+from .models import ClassSection, ScheduleEntry, ScheduleGenerationRun
 from .mutations import mark_draft, require_editable
-from .queries import get_schedule, scoped
+from .queries import authorized, get_schedule, scoped
 
 
 class InvalidRunTransition(Exception):
@@ -168,6 +168,7 @@ def finish_generation_if_expected(run_id, result, prepared, user):
                 conflicts.extend(validate_candidate_schedule(
                     schedule, retained_entries=resolved.retained_entries,
                     proposed_entries=resolved.entries, user=user,
+                    section_id=prepared.input_summary.get("generation_section_id"),
                 ))
             run.diagnostics.extend(map(_conflict_json, conflicts))
             if _has_errors(conflicts):
@@ -193,7 +194,7 @@ def finish_generation_if_expected(run_id, result, prepared, user):
         return run
 
 
-def request_generation(*, user, schedule_id, strategy, overrides):
+def request_generation(*, user, schedule_id, strategy, overrides, section_id=None):
     if strategy not in ScheduleGenerationRun.Strategy.values:
         raise ValueError("Unknown timetable generation strategy.")
     if not isinstance(overrides, GenerationOverrides):
@@ -202,6 +203,12 @@ def request_generation(*, user, schedule_id, strategy, overrides):
     with transaction.atomic():
         schedule = get_schedule(user, schedule_id, action="change")
         require_editable(schedule)
+        if section_id is not None:
+            authorized(user, ClassSection)
+            get_object_or_404(scoped(user, ClassSection.objects.filter(
+                academic_term_id=schedule.academic_term_id,
+                department_id=schedule.department_id, is_active=True,
+            )), pk=section_id)
         run = ScheduleGenerationRun.objects.create(
             schedule=schedule, academic_term=schedule.academic_term,
             department=schedule.department, requested_by=user,
@@ -214,6 +221,7 @@ def request_generation(*, user, schedule_id, strategy, overrides):
             scheduling_lock()
             prepared = prepare_generation_input(
                 user=user, schedule_id=schedule_id, strategy=strategy, overrides=overrides,
+                section_id=section_id,
             )
             persist_snapshots_if_expected(run.pk, "PENDING", prepared)
         if _has_errors(prepared.issues) or prepared.solver_input is None:
@@ -285,6 +293,7 @@ def _accept_locked(*, user, run_id):
         prepared = prepare_generation_input(
             user=user, schedule_id=run.schedule_id, strategy=run.strategy,
             overrides=overrides,
+            section_id=run.configuration_snapshot.get("generation_section_id"),
         )
         if prepared.source_signature != run.source_signature:
             raise StaleProposal("Scheduling dependencies changed.")
@@ -301,6 +310,7 @@ def _accept_locked(*, user, run_id):
             conflicts.extend(validate_candidate_schedule(
                 schedule, retained_entries=resolved.retained_entries,
                 proposed_entries=resolved.entries, user=user,
+                section_id=prepared.input_summary.get("generation_section_id"),
             ))
         if _has_errors(conflicts):
             raise _InvalidProposal(conflicts)
@@ -319,7 +329,8 @@ def _accept_locked(*, user, run_id):
             entry.generation_run = run
             entry.is_locked = False
         ScheduleEntry.objects.bulk_create(resolved.entries)
-        persisted = get_schedule_conflicts(schedule, user=user)
+        persisted = get_schedule_conflicts(schedule, user=user,
+            section_id=prepared.input_summary.get("generation_section_id"))
         if _has_errors(persisted):
             raise _InvalidProposal(persisted)
         mark_draft(schedule, user)

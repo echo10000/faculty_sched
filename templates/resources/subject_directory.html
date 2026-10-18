@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% load workspace %}
+{% block title %}Subjects{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">ACADEMIC RESOURCES</p><h1>Subjects</h1><p class="text-secondary mb-1">Browse the subject catalog by program and year within {{ access_scope }}.</p><p class="small text-secondary mb-0">The catalog stores subject details. Classes offered are the subjects running for a term and section.</p></div>{% if can_add %}<a class="btn btn-primary" href="{{ add_url }}">Add subject</a>{% endif %}</div>
+{% include 'includes/academic_browse_navigation.html' %}
+<section class="surface filter-bar mb-4" aria-label="Search and filters"><form method="get"><div class="row g-3">{% include 'includes/filter_fields.html' with fields=primary_filters %}</div>
+<details class="mt-3" {% if more_filters_open %}open{% endif %}><summary>More filters</summary><div class="row g-3 mt-1">{% include 'includes/filter_fields.html' with fields=secondary_filters %}</div></details>
+<div class="filter-actions"><button class="btn btn-outline-primary" type="submit">Apply filters</button><a class="btn btn-outline-secondary" href="{{ list_url }}">Reset</a><span class="small text-secondary align-self-center">{{ paginator.count }} matching subject{{ paginator.count|pluralize }}</span></div></form></section>
+{% if subject_term %}<p class="small text-secondary">Year groups come from sections linked to classes offered in {{ subject_term }}. A subject can appear in several years. “Year not assigned” means no year placement is recorded for this term; the catalog record remains available.</p>{% endif %}
+<section class="surface"><div class="d-flex flex-wrap gap-2 justify-content-between mb-3"><h2 class="h5 mb-0">Subjects by program and year</h2><span class="small text-secondary">{% if paginator.count %}{{ page_obj.start_index }}–{{ page_obj.end_index }} of {% endif %}{{ paginator.count }} subject{{ paginator.count|pluralize }}</span></div>
+<div class="table-responsive" tabindex="0" role="region" aria-label="Subjects grouped by program and year"><table class="table align-middle resource-table"><thead><tr><th scope="col">Subject</th><th scope="col">Code</th><th scope="col" class="numeric">Total units</th><th scope="col">Status</th></tr></thead><tbody>
+{% for obj in object_list %}{% ifchanged obj.browse_group %}<tr class="table-light"><th colspan="4" scope="colgroup">{{ obj.browse_group }}</th></tr>{% endifchanged %}
+<tr><td><a href="{% url 'subjects:detail' obj.pk %}">{{ obj.title }}</a></td><td>{{ obj.code }}</td><td class="numeric">{{ obj.total_units }}</td><td>{% if obj.is_active %}<span class="badge status-badge status-active">Active</span>{% else %}<span class="badge status-badge status-inactive">Inactive</span>{% endif %}</td></tr>
+{% empty %}<tr><td colspan="4"><div class="empty-state">{% if filter_form.errors %}The selected filters could not be applied.<small>Check the highlighted fields and try again.</small>{% elif subject_filters_active %}No subjects match the current filters.<small>Choose another program or year, or use Reset.</small>{% else %}No subjects are available in your scope.<small>{% if can_add %}Add a subject to the catalog, then offer it for a term and link it to a section.{% else %}Contact your administrator if a subject is missing.{% endif %}</small>{% endif %}</div></td></tr>{% endfor %}
+</tbody></table></div>{% include 'includes/pagination.html' %}</section>
+{% endblock %}

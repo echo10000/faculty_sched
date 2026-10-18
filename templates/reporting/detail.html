@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load workspace %}
 {% block title %}{{ report.title }}{% endblock %}
 {% block content %}
 <div class="page-heading report-heading">
@@ -6,16 +7,22 @@
     {% include 'reporting/_formal_identity.html' %}
     <p class="eyebrow">REPORTING</p>
     <h1>{{ report.title }}</h1>
-    <p class="text-secondary mb-0">{{ report.source_label }}</p>
+    <p class="report-source mb-0">{{ report.source_label }}</p>
   </div>
   <span class="scope-badge">{{ scope_label }}</span>
 </div>
+<div class="d-flex flex-wrap gap-3 mb-3">
+  <a href="{% workspace_url 'reporting:index' %}">All reports</a>
+  {% if schedule and perms.timetabling.view_scheduleentry %}<a href="{% workspace_url 'timetabling:timetable' schedule.pk faculty=selected_faculty.pk %}">Return to timetable · {{ schedule.name }}</a>{% endif %}
+  {% if selected_faculty and perms.faculty.view_faculty %}<a href="{% workspace_url 'faculty-management:detail' selected_faculty.pk %}">Faculty overview</a>{% endif %}
+</div>
 
 {% if filters %}
-<section class="surface mb-4" aria-label="Report filters">
+<section class="surface filter-bar mb-4" aria-label="Report filters">
   <form method="get" action="">
     <div class="report-filter-grid">
       {% for filter in filters %}
+      {% if filter.name == 'term' and current_term_only %}<input type="hidden" name="term" value="{{ filter.selected }}">{% else %}
       <div>
         <label class="form-label" for="report-filter-{{ forloop.counter }}">{{ filter.label }}</label>
         <select class="form-select" id="report-filter-{{ forloop.counter }}" name="{{ filter.name }}">
@@ -24,14 +31,14 @@
           {% endfor %}
         </select>
       </div>
-      {% endfor %}
+      {% endif %}{% endfor %}
     </div>
-    <button class="btn btn-primary mt-3" type="submit">Apply Filters</button>
+    <div class="filter-actions"><button class="btn btn-outline-primary" type="submit">Apply Filters</button><a class="btn btn-outline-secondary" href="{{ request.path }}">Reset</a></div>
   </form>
 </section>
 {% endif %}
 
-<section class="surface mb-4" aria-label="Report details">
+<section class="surface surface-secondary mb-4" aria-label="Report details">
   <div class="report-section-top">
     <div>
       <h2 class="h5 mb-1">Report details</h2>
@@ -57,7 +64,7 @@
     <span class="text-secondary">{{ report.rows|length }} record{{ report.rows|length|pluralize }}</span>
   </div>
   {% if report.rows %}
-  <div class="table-responsive report-table-wrap">
+  <div class="table-responsive report-table-wrap" tabindex="0" role="region" aria-label="Report results">
     <table class="table align-middle report-table mb-0">
       <caption class="visually-hidden">{{ report.title }} results</caption>
       <thead><tr>{% for header in report.headers %}<th scope="col">{{ header }}</th>{% endfor %}</tr></thead>

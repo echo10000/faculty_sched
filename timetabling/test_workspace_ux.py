@@ -61,7 +61,10 @@ class WorkspaceUXTests(TimetableFixture):
                 self.assertGreater(len(groups), 1)
             else:
                 self.assertEqual(len([link for group in groups for link in group["links"]]), len(page.context["navigation_links"]))
-                self.assertEqual(page.context["workflow_groups"][0]["label"], "Academic setup")
+                self.assertEqual([group["label"] for group in groups], [
+                    "Dashboard", "Prepare Academic Schedule", "Faculty & Teaching",
+                    "Schedules & Publication", "Reports", "Management & Settings",
+                ])
 
     def test_directory_workload_matches_existing_calculation(self):
         self.policy(recommended_load=12, maximum_load=18)
@@ -72,7 +75,8 @@ class WorkspaceUXTests(TimetableFixture):
         expected = calculate_workload(self.faculty, self.term)
         self.assertEqual(person.workload["assigned_load"], expected["assigned_load"])
         self.assertEqual(person.workload["status"], expected["status"])
-        self.assertNotContains(page, self.records[self.external.pk]["faculty-management"].employee_id)
+        # Check visible text; short fixture IDs can occur inside random CSRF tokens.
+        self.assertNotContains(page, f'>{self.records[self.external.pk]["faculty-management"].employee_id}<')
 
     def test_qualification_tab_checks_explicit_permission_and_scope(self):
         FacultyQualification.objects.create(faculty=self.faculty, subject=self.offering.subject)

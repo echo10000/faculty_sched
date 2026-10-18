@@ -433,12 +433,12 @@ class TeachingSecurityTests(TeachingFixture):
         AcademicTerm.objects.filter(pk=self.later.pk).update(is_active=False)
         dashboard = self.client.get("/dashboard/")
         self.assertEqual(dashboard.context["teaching_assignment_count"], 1)
-        self.assertContains(dashboard, 'href="/workloads/availability/"')
+        self.assertContains(dashboard, f'href="/workloads/assignments/by-section/?academic_term={self.term.pk}"')
         response = self.client.get(self.url("monitor") + "&workload_status=UNDERLOAD&q=Person1")
         self.assertEqual(response.context["page_obj"].paginator.count, 1)
         self.assertContains(self.client.get(self.url("faculty", self.faculty.pk)), "Department workload policy")
         self.client.force_login(self.staff)
-        self.assertContains(self.client.get("/dashboard/"), 'href="/workloads/availability/"')
+        self.assertContains(self.client.get("/dashboard/"), f'href="/workloads/assignments/by-section/?academic_term={self.term.pk}"')
 
     def test_future_datasets_are_scoped_and_permission_checked(self):
         self.assertEqual(len(list(faculty_candidates(self.chair, self.term))), 1)

@@ -350,11 +350,35 @@ class IntegrationTests(TimetableFixture):
     def test_scheduled_teaching_assignment_removal_explains_dependency(self):
         from django.urls import reverse
         from audit.models import AuditLog
-        self.candidate().save()
+        from workloads.models import FacultySubjectAssignment
+        from timetabling.models import ScheduleEntry
+        entry = self.candidate()
+        entry.save()
         self.client.force_login(self.chair)
         response = self.client.post(reverse("workloads:assignments-delete", args=[self.assignment.pk]) + f"?academic_term={self.term.pk}")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Remove its timetable meetings first")
+        self.assertContains(response, "used by class meeting requirements or a timetable")
+        self.assertContains(response, "Review those dependent records before removing it")
+        self.assertTrue(FacultySubjectAssignment.objects.filter(pk=self.assignment.pk).exists())
+        self.assertTrue(ScheduleEntry.objects.filter(pk=entry.pk, assignment=self.assignment).exists())
+        self.assertFalse(AuditLog.objects.filter(action="facultysubjectassignment.deleted").exists())
+
+    def test_teaching_assignment_with_only_meeting_requirements_cannot_be_removed(self):
+        from django.urls import reverse
+        from audit.models import AuditLog
+        from workloads.models import FacultySubjectAssignment
+        from timetabling.models import AssignmentMeetingRequirement, ScheduleEntry
+        requirement = AssignmentMeetingRequirement.objects.create(
+            assignment=self.assignment, meeting_type="lecture", meetings_per_week=1, duration_minutes=120,
+        )
+        self.assertFalse(ScheduleEntry.objects.filter(assignment=self.assignment).exists())
+        self.client.force_login(self.staff)
+        response = self.client.post(reverse("workloads:assignments-delete", args=[self.assignment.pk]),
+                                    QUERY_STRING=f"academic_term={self.term.pk}")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "used by class meeting requirements or a timetable")
+        self.assertTrue(FacultySubjectAssignment.objects.filter(pk=self.assignment.pk).exists())
+        self.assertTrue(AssignmentMeetingRequirement.objects.filter(pk=requirement.pk).exists())
         self.assertFalse(AuditLog.objects.filter(action="facultysubjectassignment.deleted").exists())
 
     def test_full_validation_does_not_leak_imported_outside_entry(self):

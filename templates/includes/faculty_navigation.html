@@ -1,5 +1,17 @@
+{% load workspace %}
 <nav class="workspace-tabs" aria-label="Faculty views">
-{% if perms.faculty.view_faculty %}<a href="{% url 'faculty-management:detail' person.pk %}{% if term %}?academic_term={{ term.pk }}{% endif %}" {% if faculty_tab == 'overview' %}aria-current="page"{% endif %}>Overview</a>{% if perms.faculty.view_facultyqualification and perms.academics.view_subject %}<a href="{% url 'faculty-management:detail' person.pk %}?tab=qualifications{% if term %}&amp;academic_term={{ term.pk }}{% endif %}" {% if faculty_tab == 'qualifications' %}aria-current="page"{% endif %}>Qualifications</a>{% endif %}{% endif %}
-{% if perms.academics.view_academicterm %}{% if perms.workloads.view_workload %}<a href="{% url 'workloads:faculty' person.pk %}{% if term %}?academic_term={{ term.pk }}{% endif %}" {% if request.resolver_match.url_name == 'faculty' %}aria-current="page"{% endif %}>Workload</a>{% endif %}{% if perms.workloads.view_facultyavailability %}<a href="{% url 'workloads:faculty-availability' person.pk %}{% if term %}?academic_term={{ term.pk }}{% endif %}" {% if request.resolver_match.url_name == 'faculty-availability' %}aria-current="page"{% endif %}>Availability</a>{% endif %}{% endif %}
-{% if faculty_schedule_report %}<a href="{% url 'reporting:detail' 'faculty-schedule' %}?faculty={{ person.pk }}{% if term %}&amp;term={{ term.pk }}{% endif %}">Schedule report</a>{% endif %}
+{% if not can_administer %}
+{% if perms.workloads.view_workload and perms.academics.view_academicterm %}<a href="{% workspace_url 'workloads:faculty' person.pk %}" {% if request.resolver_match.url_name == 'faculty' %}aria-current="page"{% endif %}>Teaching summary</a>{% endif %}
+{% if perms.workloads.view_facultyavailability and perms.academics.view_academicterm %}<a href="{% workspace_url 'workloads:faculty-availability' person.pk %}" {% if section == 'availability' and faculty_context %}aria-current="page"{% endif %}>Available times</a>{% endif %}
+{% if perms.faculty.view_faculty %}<a href="{% workspace_url 'faculty-management:detail' person.pk %}" {% if faculty_tab == 'overview' %}aria-current="page"{% endif %}>Faculty details</a>{% endif %}
+{% else %}
+{% if perms.faculty.view_faculty %}<a href="{% workspace_url 'faculty-management:detail' person.pk %}" {% if faculty_tab == 'overview' %}aria-current="page"{% endif %}>Overview</a>{% if perms.faculty.view_facultyqualification and perms.academics.view_subject %}<a href="{% workspace_url 'faculty-management:detail' person.pk tab='qualifications' %}" {% if faculty_tab == 'qualifications' %}aria-current="page"{% endif %}>Qualifications</a>{% endif %}{% endif %}
+{% if perms.academics.view_academicterm %}
+  {% if perms.workloads.view_facultysubjectassignment %}<a href="{% workspace_url 'workloads:assignments' faculty=person.pk %}" {% if section == 'assignments' and faculty_context %}aria-current="page"{% endif %}>Assignments</a>{% endif %}
+  {% if perms.workloads.view_workload %}<a href="{% workspace_url 'workloads:faculty' person.pk %}" {% if request.resolver_match.url_name == 'faculty' %}aria-current="page"{% endif %}>Workload</a>{% endif %}
+  {% if perms.workloads.view_facultyavailability %}<a href="{% workspace_url 'workloads:faculty-availability' person.pk %}" {% if section == 'availability' and faculty_context %}aria-current="page"{% endif %}>Availability</a>{% endif %}
+{% endif %}
+{% available_report 'faculty-schedule' as can_view_faculty_schedule %}
+{% if can_view_faculty_schedule %}<a href="{% workspace_url 'reporting:detail' 'faculty-schedule' faculty=person.pk %}">Schedule report</a>{% endif %}
+{% endif %}
 </nav>

@@ -1,0 +1,20 @@
+{% load l10n %}
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+  <h3 class="h6 mb-0">{% if compact %}Resulting teaching load{% else %}Teaching load for this term{% endif %}</h3>
+  {% include 'workloads/status.html' with status=report.status %}
+</div>
+<dl class="row g-3 mb-3 load-summary">
+  <div class="col-12 col-sm-4"><dt>Assigned academic teaching units</dt><dd class="fs-5 mb-0 fw-semibold">{{ report.teaching_units|floatformat:2 }}</dd></div>
+  <div class="col-12 col-sm-4"><dt>Weekly contact hours</dt><dd class="fs-5 mb-0 fw-semibold">{{ report.teaching_hours|floatformat:2 }}</dd></div>
+  <div class="col-12 col-sm-4"><dt>Weighted teaching load</dt><dd class="fs-5 mb-0 fw-semibold">{% if report.assigned_load != None %}{{ report.assigned_load|floatformat:2 }}{% else %}Not configured{% endif %}</dd></div>
+  <div class="col-12 col-sm-4"><dt>Recommended teaching target</dt><dd class="mb-0">{{ report.policy.recommended_load|default_if_none:'Not configured' }}<small class="d-block text-secondary">Source: {{ report.policy.sources.recommended_load|default:'Not configured' }}</small></dd></div>
+  <div class="col-12 col-sm-4"><dt>Configured maximum load</dt><dd class="mb-0">{{ report.policy.maximum_load|default_if_none:'Not configured' }}<small class="d-block text-secondary">Source: {{ report.policy.sources.maximum_load|default:'Not configured' }}</small></dd></div>
+  <div class="col-12 col-sm-4"><dt>Remaining capacity</dt><dd class="mb-0">{% if report.remaining_capacity != None %}{{ report.remaining_capacity|floatformat:2 }} weighted workload units{% if report.remaining_capacity < 0 %}<small class="d-block text-danger">Negative capacity means the maximum is exceeded.</small>{% endif %}{% else %}Cannot calculate without a maximum and teaching weights{% endif %}</dd></div>
+</dl>
+{% if report.utilization != None %}
+<p class="small mb-1">{{ report.utilization|floatformat:1 }}% of {% if report.policy.maximum_load != None %}maximum{% else %}recommended{% endif %} load{% if report.utilization > 100 %} · Above limit{% endif %}</p>
+<progress class="load-meter" max="100" value="{{ report.utilization|unlocalize }}" aria-label="Weighted teaching load utilization" aria-valuetext="{{ report.utilization|floatformat:1 }} percent of {% if report.policy.maximum_load != None %}maximum{% else %}recommended{% endif %} load">{{ report.utilization|floatformat:1 }}%</progress>
+{% endif %}
+<p class="small mt-3 mb-2"><strong>Maximum enforcement:</strong> {% if report.policy.enforce_maximum %}Hard limit{% else %}Warnings only{% endif %} · {{ report.policy.enforcement_source }}</p>
+{% for warning in report.warnings %}<div class="alert alert-warning py-2" role="status">{{ warning }}</div>{% endfor %}
+{% include 'workloads/_designation.html' with faculty=report.faculty compact=compact %}
