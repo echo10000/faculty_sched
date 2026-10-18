@@ -190,9 +190,13 @@ class SectionGenerationTests(TestCase):
         self.assertEqual(SubjectOffering.objects.count(), 24)
 
     def test_default_department_generation_still_covers_every_section(self):
+        # Three sections need more solver headroom than the section-only fixtures.
         run = request_generation(user=self.admin, schedule_id=self.schedule.pk,
-                                 strategy="FILL_GAPS", overrides=GenerationOverrides())
+                                 strategy="FILL_GAPS",
+                                 overrides=GenerationOverrides(solver_time_limit_seconds=10))
         self.assertEqual(run.status, "PROPOSAL_READY", run.diagnostics)
+        self.assertFalse([issue for issue in run.diagnostics if issue["severity"] == "ERROR"],
+                         run.diagnostics)
         self.assertEqual(run.proposed_meeting_count, 15)
         self.assertNotIn("generation_section_id", run.configuration_snapshot)
 
