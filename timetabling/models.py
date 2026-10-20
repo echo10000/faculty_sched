@@ -5,7 +5,7 @@ from django.conf import settings
 from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import DateTimeRangeField
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Func
 from django.db.models.functions import Lower
 from django.utils import timezone
@@ -48,6 +48,16 @@ class ClassSection(CheckedRecord):
         fixed_identity(self, ("academic_term_id", "department_id"))
         if self.program_id and self.program.department_id != self.department_id:
             raise ValidationError({"program": "Program must belong to the section department."})
+
+    @transaction.atomic
+    def save(self, *args, **kwargs):
+        from .locking import scheduling_lock
+        scheduling_lock()
+        # A Program object selected before waiting for the lock may be stale.
+        program_field = self._meta.get_field("program")
+        if self.program_id is not None and program_field.is_cached(self):
+            program_field.delete_cached_value(self)
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.code} · {self.academic_term.code}"

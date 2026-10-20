@@ -1,12 +1,17 @@
 """Program setup reuses the existing system-admin boundary and audit trail."""
+from datetime import date
+
+from django.contrib.admin.models import LogEntry
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
 
 from accounts.models import AdminProfile
+from academics.models import AcademicTerm, AcademicYear, Semester
 from audit.models import AuditLog
 from faculty.models import Faculty
+from timetabling.models import ClassSection
 from .models import College, Department, Program
 
 
@@ -28,6 +33,83 @@ class ProgramAdminTests(TestCase):
 
     def setUp(self):
         self.client.force_login(self.admin)
+
+    def linked_program(self, *, active=True, historical=False):
+        year = 2020 if historical else 2026
+        academic_year = AcademicYear.objects.create(label=f'Fictional {year}',
+            start_date=date(year, 1, 1), end_date=date(year, 12, 31))
+        semester = Semester.objects.create(code='PROG', name='Fictional semester')
+        term = AcademicTerm.objects.create(academic_year=academic_year, semester=semester,
+            code='PROG', start_date=date(year, 1, 1), end_date=date(year, 5, 31))
+        program = Program.objects.create(code='LINKED', name='Fictional linked program', department=self.department)
+        section = ClassSection.objects.create(academic_term=term, department=self.department,
+            program=program, code='LINKED-1A', is_active=active)
+        return program, section
+
+    def change_program(self, program, **changes):
+        return self.client.post(reverse('admin:core_program_change', args=[program.pk]), {
+            'code': program.code, 'name': program.name, 'department': program.department_id,
+            '_save': 'Save', **changes})
+
+    def assert_department_move_rejected(self, program, section):
+        before = Program.objects.values().get(pk=program.pk)
+        references = ClassSection.objects.values().get(pk=section.pk)
+        audit_count, admin_log_count = AuditLog.objects.count(), LogEntry.objects.count()
+        response = self.change_program(program, department=self.other.pk, name='Unsaved name', code='UNSAVED')
+        self.assertEqual(response.status_code, 200)
+        form = response.context['adminform'].form
+        self.assertIn('department', form.errors)
+        self.assertIn('cannot change departments', form.errors['department'][0])
+        self.assertEqual(str(form['department'].value()), str(self.other.pk))
+        self.assertEqual(form['name'].value(), 'Unsaved name')
+        self.assertEqual(form['code'].value(), 'UNSAVED')
+        self.assertEqual(Program.objects.values().get(pk=program.pk), before)
+        self.assertEqual(ClassSection.objects.values().get(pk=section.pk), references)
+        self.assertEqual((AuditLog.objects.count(), LogEntry.objects.count()), (audit_count, admin_log_count))
+        section.refresh_from_db()
+        section.full_clean()
+
+    def test_active_linked_section_blocks_department_edit_without_writes_or_success_audit(self):
+        self.assert_department_move_rejected(*self.linked_program())
+
+    def test_inactive_linked_section_still_blocks_department_edit(self):
+        self.assert_department_move_rejected(*self.linked_program(active=False))
+
+    def test_historical_linked_section_still_blocks_department_edit(self):
+        self.assert_department_move_rejected(*self.linked_program(historical=True))
+
+    def test_linked_program_name_code_and_same_department_saves_remain_allowed(self):
+        program, section = self.linked_program()
+        for changes in ({'name': 'Revised name'}, {'code': 'REVISED'}, {}):
+            with self.subTest(changes=changes):
+                self.assertEqual(self.change_program(program, **changes).status_code, 302)
+                program.refresh_from_db()
+                for field, value in changes.items():
+                    self.assertEqual(getattr(program, field), value)
+                self.assertEqual(program.department_id, section.department_id)
+                section.refresh_from_db()
+                section.full_clean()
+        self.assertEqual(AuditLog.objects.filter(action='record.update', object_type='core.Program',
+            object_id=str(program.pk), actor=self.admin).count(), 3)
+
+    def test_linked_program_edit_still_enforces_duplicate_code_and_rolls_back(self):
+        program, section = self.linked_program()
+        Program.objects.create(code='DUPLICATE', name='Other example', department=self.department)
+        response = self.change_program(program, code='DUPLICATE')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['adminform'].form.non_field_errors())
+        program.refresh_from_db()
+        self.assertEqual(program.code, 'LINKED')
+        self.assertFalse(AuditLog.objects.filter(action='record.update', object_type='core.Program').exists())
+
+    def test_staff_and_faculty_cannot_edit_a_linked_program(self):
+        program, section = self.linked_program()
+        for user in (self.staff, self.faculty_user):
+            self.client.force_login(user)
+            self.assertEqual(self.change_program(program, department=self.other.pk).status_code, 302)
+        program.refresh_from_db()
+        self.assertEqual(program.department_id, section.department_id)
+        self.assertFalse(AuditLog.objects.filter(action='record.update', object_type='core.Program').exists())
 
     def test_admin_navigation_and_create_are_available_and_audited(self):
         self.assertContains(self.client.get(reverse('home')), reverse('admin:core_program_changelist'))
