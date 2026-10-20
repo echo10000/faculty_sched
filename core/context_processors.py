@@ -89,6 +89,8 @@ def navigation(request):
             links.append({'label': label, 'route': route, 'active': bool(request.resolver_match and request.resolver_match.view_name == route)})
     can_administer = authorized and user.is_staff and is_system_admin(user)
     if can_administer:
+        if user.has_perm("core.view_program"):
+            links.append({"label": "Programs", "route": "admin:core_program_changelist", "active": False})
         links.append({"label": "System administration", "route": "admin:index", "active": False})
     # Icons are presentation metadata; permissions and destinations stay above.
     icons = {
@@ -107,7 +109,7 @@ def navigation(request):
         "timetabling:official-schedules": "check", "reporting:index": "file",
         "college-list": "building", "department-list": "people",
         "academic-calendar": "calendar",
-        "admin:index": "settings", "faculty-portal:schedule": "calendar",
+        "admin:index": "settings", "admin:core_program_changelist": "book", "faculty-portal:schedule": "calendar",
         "faculty-portal:workload": "chart",
     }
     for link in links:
@@ -126,7 +128,7 @@ def navigation(request):
             "timetabling:official-schedules"), False),
         ("Reports", "file", ("reporting:index",), True),
         ("Management & Settings", "settings", (
-            "academic-calendar", "college-list", "department-list", "subjects:list",
+            "academic-calendar", "college-list", "department-list", "admin:core_program_changelist", "subjects:list",
             "workloads:offerings", "timetabling:sections", "rooms:list", "timetabling:requirements",
             "timetabling:meeting-requirements", "timetabling:closures", "timetabling:configurations",
             "admin:index"), False),

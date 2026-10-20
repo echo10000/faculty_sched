@@ -162,14 +162,10 @@ def render_pdf(report):
         "Institution", parent=styles["Normal"], fontName="Helvetica-Bold",
         fontSize=10, leading=13, textColor=colors.HexColor("#15364A"),
     )
-    campus_style = ParagraphStyle(
-        "Campus", parent=styles["Normal"], fontSize=8, leading=11,
-        textColor=colors.HexColor("#526579"),
-    )
+    institution = dict(report["meta"]).get("Institution") or settings.INSTITUTION_NAME
     identity = Table([[
         Image(str(seal_path), width=15 * mm, height=15 * mm),
-        [Paragraph("NEGROS ORIENTAL STATE UNIVERSITY", institution_style),
-         Paragraph("Bayawan–Santa Catalina Campus", campus_style)],
+        _pdf_paragraph(institution, institution_style),
     ]], colWidths=[19 * mm, pagesize[0] - document.leftMargin - document.rightMargin - 19 * mm])
     identity.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -220,7 +216,7 @@ def render_pdf(report):
         canvas.saveState()
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(colors.HexColor("#526579"))
-        canvas.drawString(doc.leftMargin, pagesize[1] - 12 * mm, "NORSU · Bayawan–Santa Catalina Campus")
+        canvas.drawString(doc.leftMargin, pagesize[1] - 12 * mm, "CampusLoad")
         canvas.drawRightString(pagesize[0] - doc.rightMargin, 9 * mm, f"Page {doc.page}")
         canvas.restoreState()
 

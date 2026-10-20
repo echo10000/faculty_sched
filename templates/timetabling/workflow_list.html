@@ -2,7 +2,7 @@
 {% load workspace %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
-{% if kind == 'official' %}<p class="formal-context">Negros Oriental State University · Bayawan–Santa Catalina Campus</p>{% endif %}
+{% if kind == 'official' %}<p class="formal-context">{{ institution_name }}</p>{% endif %}
 <div class="page-heading"><div><p class="eyebrow">SCHEDULE WORKFLOW</p><h1>{{ title }}</h1><p class="text-secondary mb-0">{% if kind == 'review' %}Review and edit drafts in your scope, validate them, then finalize and publish.{% elif kind == 'official' %}See the schedule versions currently selected for official use in your scope.{% else %}Track schedule versions you prepared and published.{% endif %}</p></div><a class="btn btn-outline-secondary" href="{% workspace_url 'timetabling:schedules' %}">All schedules</a></div>
 <form method="get" class="meeting-filters mb-3"><div class="row g-3">{% include 'resources/fields.html' with form=filter_form %}</div><div class="filter-actions"><button class="btn btn-outline-primary btn-sm">Apply filters</button><a class="btn btn-outline-secondary btn-sm" href="{{ request.path }}">Clear filters</a></div></form>
 <section class="surface"><div class="table-responsive"><table class="table responsive-record-table align-middle">

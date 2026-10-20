@@ -1,6 +1,6 @@
 # CampusLoad
 
-Faculty Workload and Academic Scheduling System for Negros Oriental State University - Bais Campus (NORSU-BSC).
+Faculty Workload and Academic Scheduling System for Negros Oriental State University - Bayawan–Santa Catalina Campus.
 
 **Phases 1–10 are implemented.** The application provides authentication, scoped RBAC, faculty/subject/room management, term availability, subject offerings, faculty teaching assignments, workload monitoring, configurable capacity enforcement, manual weekly timetables, deterministic conflict validation, bounded automated timetable generation, reviewed workload balancing recommendations, staff schedule finalization and publication, active official selection, dated resource bookings, role-aware dashboard monitoring, administrative reporting and transactional auditing in the existing Bootstrap 5 shell. Retained legacy scheduling routes are not exposed.
 

@@ -18,7 +18,9 @@ class DepartmentAdmin(AuditedAdmin):
 
 
 @admin.register(Program)
-class ProgramAdmin(admin.ModelAdmin):
+class ProgramAdmin(AuditedAdmin):
+    readonly_fields = ()  # Program has no tracking columns; mutations are audited.
+    list_select_related = ("department__college",)
     list_display = ("code", "name", "department", "college")
     list_filter = ("department__college", "department")
     search_fields = ("code", "name", "department__code")

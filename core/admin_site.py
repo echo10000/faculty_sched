@@ -11,7 +11,7 @@ class FoundationAdminSite(AdminSite):
     def register(self, model_or_iterable, admin_class=None, **options):
         # Keep legacy models/migrations intact without exposing unfinished modules.
         allowed = {"auth.user", "auth.group", "accounts.adminprofile", "core.college", "core.department",
-                   "core.systemsetting", "academics.academicyear", "academics.academicterm", "academics.semester", "academics.academiccalendar", "audit.auditlog",
+                   "core.program", "core.systemsetting", "academics.academicyear", "academics.academicterm", "academics.semester", "academics.academiccalendar", "audit.auditlog",
                    "faculty.employmentcategory", "faculty.academicrank", "resources.roomtype", "resources.building",
                    "workloads.workloadpolicy", "workloads.facultytermcapacity",
                    "timetabling.assignmentmeetingrequirement", "timetabling.schedulingconfiguration",

@@ -1,13 +1,25 @@
 """Public landing and protected dashboard route regressions."""
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from core.models import College, Department
+from core.models import College, Department, SystemSetting
 
 
 class LandingPageTests(TestCase):
+    @override_settings(INSTITUTION_NAME='Fictional configured campus')
+    def test_configured_identity_and_registered_override_are_escaped_and_consistent(self):
+        for url in (reverse('landing'), reverse('accounts:login')):
+            self.assertContains(self.client.get(url), 'Fictional configured campus')
+        SystemSetting.objects.create(key='institution_name', value='Fictional <Campus> & Review')
+        user = get_user_model().objects.create_superuser('identity-admin', '', 'test-only')
+        self.client.force_login(user)
+        for url in (reverse('landing'), reverse('home'), reverse('accounts:login')):
+            response = self.client.get(url)
+            self.assertContains(response, 'Fictional &lt;Campus&gt; &amp; Review')
+            self.assertNotContains(response, 'Bais Campus')
+
     def test_public_landing_is_available_without_login(self):
         response = self.client.get(reverse("landing"))
         self.assertEqual(response.status_code, 200)

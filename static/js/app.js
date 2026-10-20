@@ -118,6 +118,12 @@
     const save = form.querySelector('[value="save"]');
     const check = form.querySelector('[value="preview"]');
     const guidance = form.querySelector('[data-save-guidance]');
+    const shareErrors = form.querySelector('[data-share-errors]');
+    const share = form.elements.namedItem('share');
+    const clearShareErrors = () => {
+      if (shareErrors) shareErrors.textContent = '';
+      share.removeAttribute('aria-invalid');
+    };
     let controller;
     const formatLoad = value => value == null ? 'Not configured' :
       Number(value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -131,6 +137,7 @@
       }
       controller = new AbortController();
       const active = controller;
+      clearShareErrors();
       output.textContent = 'Checking workload…';
       if (desk) { check.setAttribute('aria-disabled', 'true'); form.setAttribute('aria-busy', 'true'); }
       const data = new FormData(form);
@@ -143,6 +150,12 @@
         if (controller !== active) return;
         const errors = Object.values(result.errors).flat().map(error => error.message);
         const report = result.preview;
+        if (shareErrors && result.errors.share?.length) {
+          shareErrors.textContent = result.errors.share.map(error => error.message).join(' ');
+          shareErrors.classList.add('text-danger');
+          share.setAttribute('aria-invalid', 'true');
+          shareErrors.closest('details').open = true;
+        }
         output.classList.toggle('text-danger', errors.length > 0);
         if (errors.length) output.textContent = errors.join(' ');
         else if (report?.summary_html) {
@@ -169,6 +182,7 @@
       }
     };
     const invalidate = () => {
+      clearShareErrors();
       controller?.abort();
       controller = null;
       save.disabled = true;
