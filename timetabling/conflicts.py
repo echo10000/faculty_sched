@@ -53,7 +53,9 @@ def _visible_entry_ids(user):
     )
 
 
-def _entry_rule_conflicts(entry, *, schedule, peers, visible_entry_ids, configuration):
+def _entry_rule_conflicts(
+    entry, *, schedule, peers, visible_entry_ids, configuration, peer_requirements,
+):
     detected = []
 
     def add(
@@ -293,9 +295,12 @@ def _entry_rule_conflicts(entry, *, schedule, peers, visible_entry_ids, configur
         ):
             continue
 
-        other_requirement = OfferingRequirement.objects.filter(
-            subject_offering_id=other.assignment.subject_offering_id
-        ).first()
+        offering_id = other.assignment.subject_offering_id
+        if offering_id not in peer_requirements:
+            peer_requirements[offering_id] = OfferingRequirement.objects.filter(
+                subject_offering_id=offering_id
+            ).first()
+        other_requirement = peer_requirements[offering_id]
         matches = (
             (
                 "FACULTY_OVERLAP",
@@ -372,6 +377,7 @@ def detect_entry_conflicts(entry, *, user=None, peers=None):
             peers=tuple(peers),
             visible_entry_ids=_visible_entry_ids(user),
             configuration=_break_configuration(entry.schedule),
+            peer_requirements={},
         )
     ]
 
@@ -546,6 +552,8 @@ def validate_candidate_schedule(
     result = []
     seen = set()
     configuration = _break_configuration(schedule)
+    # Operation-local, including missing rows; never reuse stale requirements.
+    peer_requirements = {}
     for entry in candidates:
         identity = _entry_identity(entry, candidate_indexes)
         if (
@@ -572,6 +580,7 @@ def validate_candidate_schedule(
             peers=peers,
             visible_entry_ids=visible_entry_ids,
             configuration=configuration,
+            peer_requirements=peer_requirements,
         ):
             conflict = detected.conflict
             if detected.other is None:
