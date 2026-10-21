@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
-{% block title %}CampusLoad · NORSU Bayawan–Santa Catalina Campus{% endblock %}
+{% block title %}CampusLoad · {{ institution_name }}{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'css/landing.css' %}?v=1">{% endblock %}
 {% block layout %}
 <div class="landing-page">
@@ -9,7 +9,7 @@
       <div class="container landing-container">
         <a class="public-brand" href="{% url 'landing' %}" aria-label="CampusLoad home">
           <img src="{% static 'images/landing/norsu-seal.png' %}" alt="Negros Oriental State University seal" width="48" height="48">
-          <span><strong>CampusLoad</strong><small>Negros Oriental State University<br>Bayawan–Santa Catalina Campus</small></span>
+          <span><strong>CampusLoad</strong><small>{{ institution_name }}</small></span>
         </a>
         <button class="navbar-toggler public-menu-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#public-menu" aria-controls="public-menu" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
         <div class="collapse navbar-collapse" id="public-menu">
@@ -30,7 +30,7 @@
       <div class="landing-hero-image" aria-hidden="true"></div>
       <div class="landing-container landing-hero-inner">
         <div class="landing-hero-copy">
-          <p class="landing-overline">NEGROS ORIENTAL STATE UNIVERSITY <span aria-hidden="true">/</span> BAYAWAN–SANTA CATALINA CAMPUS</p>
+          <p class="landing-overline">{{ institution_name }}</p>
           <h1 id="landing-title">A clearer way to manage the academic workload.</h1>
           <p class="landing-hero-lead"><strong>CampusLoad</strong> is an AI-powered faculty workload and academic scheduling system for one accountable university workspace.</p>
           <p class="landing-hero-support">Prepare timetables, identify conflicts, review proposed schedules, and make informed administrative decisions.</p>
@@ -38,7 +38,7 @@
             {% if user.is_authenticated %}<a class="btn btn-light btn-lg" href="{% url 'home' %}">Open Dashboard <span aria-hidden="true">→</span></a>{% else %}<a class="btn btn-light btn-lg" href="{% url 'accounts:login' %}">Login to CampusLoad <span aria-hidden="true">→</span></a>{% endif %}
             <a class="landing-text-link" href="#about">Learn more <span aria-hidden="true">↓</span></a>
           </div>
-          <span class="landing-hero-caption">NORSU Bayawan–Santa Catalina Campus</span>
+          <span class="landing-hero-caption">{{ institution_name }}</span>
         </div>
       </div>
     </section>
@@ -67,13 +67,13 @@
     <section class="landing-section campus-section" id="campus" aria-labelledby="campus-title">
       <div class="landing-container campus-grid">
         <div class="campus-photos"><img class="campus-building" src="{% static 'images/landing/campus-building.webp' %}" alt="NORSU campus building with the university seal above its entrance" width="515" height="388" loading="lazy"><img class="campus-grounds" src="{% static 'images/landing/campus-grounds.webp' %}" alt="Open-air seating area on the NORSU campus" width="330" height="219" loading="lazy"></div>
-        <div class="campus-copy"><p class="landing-section-label">OUR CAMPUS</p><h2 id="campus-title">Rooted in NORSU Bayawan–Santa Catalina.</h2><p>CampusLoad was developed to support faculty workload and academic scheduling operations for the colleges and departments of Negros Oriental State University’s Bayawan–Santa Catalina Campus.</p><div class="campus-identity"><img src="{% static 'images/landing/norsu-seal.png' %}" alt="" width="42" height="42" loading="lazy"><span>Negros Oriental State University<small>Bayawan–Santa Catalina Campus</small></span></div></div>
+        <div class="campus-copy"><p class="landing-section-label">OUR CAMPUS</p><h2 id="campus-title">Supporting our academic community.</h2><p>CampusLoad was developed to support faculty workload and academic scheduling operations for the colleges and departments of {{ institution_name }}.</p><div class="campus-identity"><img src="{% static 'images/landing/norsu-seal.png' %}" alt="" width="42" height="42" loading="lazy"><span>{{ institution_name }}</span></div></div>
       </div>
     </section>
 
     <section class="landing-cta" aria-labelledby="cta-title"><div class="landing-container landing-cta-inner"><div><p class="landing-section-label">CAMPUSLOAD ACCESS</p><h2 id="cta-title">Your academic workspace is ready.</h2><p>Authorized university personnel can manage faculty workloads, prepare timetables, and review official schedules.</p></div>{% if user.is_authenticated %}<a class="btn btn-light btn-lg" href="{% url 'home' %}">Open Dashboard <span aria-hidden="true">→</span></a>{% else %}<a class="btn btn-light btn-lg" href="{% url 'accounts:login' %}">Login to CampusLoad <span aria-hidden="true">→</span></a>{% endif %}</div></section>
   </main>
 
-  <footer class="landing-footer"><div class="landing-container landing-footer-inner"><div><strong>CampusLoad</strong><span>AI-Powered Faculty Workload and Academic Scheduling System</span></div><p>Negros Oriental State University<br>Bayawan–Santa Catalina Campus</p><small>© {% now 'Y' %} Negros Oriental State University</small></div></footer>
+  <footer class="landing-footer"><div class="landing-container landing-footer-inner"><div><strong>CampusLoad</strong><span>AI-Powered Faculty Workload and Academic Scheduling System</span></div><p>{{ institution_name }}</p><small>© {% now 'Y' %} {{ institution_name }}</small></div></footer>
 </div>
 {% endblock %}

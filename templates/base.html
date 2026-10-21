@@ -16,7 +16,7 @@
   <aside class="offcanvas-lg offcanvas-start sidebar" tabindex="-1" id="sidebar" aria-labelledby="sidebar-title">
     <div class="offcanvas-header"><h2 class="h5" id="sidebar-title">CampusLoad</h2><button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close navigation"></button></div>
     <div class="offcanvas-body d-flex flex-column">
-      <a class="brand" href="{% url 'home' %}" aria-label="CampusLoad dashboard" title="CampusLoad · NORSU Bayawan–Santa Catalina Campus">{% include 'core/_norsu_seal.html' with seal_class='sidebar-seal' %}<span class="brand-copy">CampusLoad<small>Academic workspace</small></span></a>
+      <a class="brand" href="{% url 'home' %}" aria-label="CampusLoad dashboard" title="CampusLoad · {{ institution_name }}">{% include 'core/_norsu_seal.html' with seal_class='sidebar-seal' %}<span class="brand-copy">CampusLoad<small>Academic workspace</small></span></a>
       {% include "includes/sidebar_navigation.html" %}
       <div class="sidebar-footer mt-auto"><span class="scope-dot" aria-hidden="true"></span><span class="sidebar-footer-text">{{ role_label }}<small>{{ access_scope }}</small></span></div>
     </div>
@@ -30,7 +30,7 @@
       {% block current_term_notice %}{% if current_term_only %}<div class="alert alert-light border mb-3" role="status">{% if staff_current_term %}<strong>Current term:</strong> {{ staff_current_term }}<small class="d-block text-secondary">Selected automatically from the academic calendar. Your administrator manages the dates.</small>{% else %}<strong>No term is currently in progress.</strong> Your administrator can review the academic calendar. Scheduling will resume when the next term begins.{% endif %}</div>{% endif %}{% endblock %}
       {% block content %}{% endblock %}
     </main>
-    <footer class="page-footer">CampusLoad <span>· Negros Oriental State University · Bayawan–Santa Catalina Campus</span></footer>
+    <footer class="page-footer">CampusLoad <span>· {{ institution_name }}</span></footer>
   </div>
 </div>
 {% endblock %}

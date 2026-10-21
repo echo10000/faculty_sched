@@ -1,5 +1,84 @@
 # Capstone demonstration path
 
+## Demonstration readiness and repaired setup screens
+
+The approved identity is **Negros Oriental State University - Bayawan–Santa Catalina Campus**.
+The `SystemSetting` entry with key `institution_name` takes precedence over `INSTITUTION_NAME`; the
+public landing page, login, workspace and report identity use that existing
+configuration. The environment examples now match the approved default. Changing
+an example file does not update an existing installation's private environment or
+registered setting; an Admin should review its current value before presenting.
+
+Admin can open **Management & Settings → Programs** to use the existing Django
+administration forms. Choose a department, name and code; the same code cannot be
+duplicated within a department. Editing uses the same interface and records an
+audit event. Authorized Staff and Faculty cannot access Program administration,
+including through direct URLs. This is a focused setup tool with Django Admin's
+existing appearance.
+
+In Teaching assignments, **1 means 100%** and **0.5 means 50%**. Shared teaching
+shows the remaining available fraction. Invalid shares and combined totals are
+rejected beside the share field, with the instructor and entered value retained.
+Correct the value and use **Check workload** again before saving. Saving rechecks
+the latest assignments and hard workload limits. Instructor selection remains
+manual; balancing recommendations cannot apply or reassign faculty.
+
+### A 10–15 minute presentation
+
+Prepare a fresh fictional PostgreSQL database first. Follow the installation
+instructions with an explicit disposable database name and temporary credentials;
+apply migrations and seeds only after verifying that connection. Keep credentials
+in a private local file and never project or commit them. Serve with normal
+application settings, never `config.test_settings`. Pre-check the current academic
+calendar, room requirements, availability and weekly meeting patterns. Seeded
+dates are examples, not official institutional dates.
+
+| Time | Demonstration | Expected outcome |
+| --- | --- | --- |
+| 0–2 min | Admin: calendar, college/department and Programs create/edit | Correct term and department linkage; duplicate program codes rejected |
+| 2–5 min | Authorized Staff: manually choose instructors and full/shared teaching fractions | Preview makes no writes; shares total 100%; clear rejection and recovery for an excessive share |
+| 5–7 min | Workload, availability, eligible rooms, meeting patterns and lunch/rest settings | Target is advisory; configured hard maximum is enforced; room comparison is separate from time availability |
+| 7–9 min | Generate, review and accept a small section proposal | Existing instructors retained; proposal acceptance populates an editable draft, not an official schedule |
+| 9–11 min | Validate, review findings, publish and create a revision | Explicit publication creates official bookings and a frozen snapshot; old publication remains official while its replacement is a draft |
+| 11–13 min | Reports and Faculty's own published timetable; show mobile evidence | Scoped exports and read-only personal records; unpublished replacement excluded |
+| 13–15 min | Recovery and limitations | Explain server restart, preserved records and separate production staging requirements |
+
+For server failure, stop repeated generation/publication clicks, inspect the
+private server log and restart the same local server with the same isolated
+database configuration. Reopen version history to establish what committed before
+retrying. Keep screenshots and authorized fictional exports ready as clearly
+identified fallback evidence. To repeat the whole workflow, use another empty
+disposable database; seeds preserve existing decisions and immutable history.
+
+Linux/Gunicorn execution, proxy TLS/header/static handling, supervision, monitoring,
+scheduled off-host backups and target recovery still need separate staging and
+operational sign-off. Local demo acceptance does not establish production readiness.
+Holidays/date exceptions and separate lecture/laboratory room-type overrides remain
+outside the current model. A solver time limit is not a whole-request SQL deadline.
+
+### Step 6B verification
+
+On 2026-10-20, fresh isolated Windows/PostgreSQL 17.6 verification passed **145
+focused tests** and **791 full regression tests** (641.517 seconds of test
+execution; 705.463 seconds including setup/teardown). The full run
+allowed 90 minutes, logged each test and skipped no expensive tests to obtain a pass.
+Django, migration-drift, dependency integrity, all five JavaScript syntax checks and
+Git whitespace checks passed. Real browser smoke checks at 1440px and 390px passed
+Program create/edit/duplicate validation and role denial, teaching-share rejection
+and correction, manual full/shared assignment saves and configured identity.
+Sampled keyboard menu/focus checks passed; no console warnings/errors were captured.
+These are local repair checks, not stakeholder sign-off or a complete accessibility audit.
+
+The Step 6A full run ended at an external 1,800-second harness deadline, without a
+final test assertion result. Its 430 completed markers place the interruption at
+the expanded-college repeatability test by discovery order; the old log did not
+record test names. Its sampled ScheduleEntry SELECT was active without lock blockers.
+That test passed here in 79.781 seconds. The historical very long SQL latency was
+not reproduced; its underlying timing variance remains unexplained. No solver,
+schema, database optimizer or production timeout changes were used to obtain this result.
+
+## Existing fictional seeds
+
 Use a disposable `DEBUG=True` PostgreSQL database. Run `migrate`, then `seed_foundation --create-users --with-review --with-balancing`. The seed is idempotent, creates fictional teaching, timetable, generator and balancing examples, and validates one manual schedule for staff review. It creates no publication, official booking or generated/accepted recommendation. Credentials are written only to the ignored `.local/development-credentials.txt` when accounts are first created.
 
 The sample accounts use the application's three existing roles:

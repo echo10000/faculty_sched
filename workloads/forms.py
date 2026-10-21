@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django import forms
 
 from accounts.permissions import department_scoped_queryset
@@ -86,6 +88,14 @@ class AssignmentForm(TermForm):
         if offering:
             self.fields["faculty"].queryset = self.fields["faculty"].queryset.filter(home_department_id=offering.department_id)
         self.fields["faculty"].empty_label = "Choose an instructor"
+
+    def clean_share(self):
+        share = self.cleaned_data["share"]
+        if not Decimal("0") < share <= Decimal("1"):
+            raise forms.ValidationError(
+                "Enter a teaching share greater than 0 and at most 1 (100%). "
+                "Use 1 for the whole class or 0.5 for half (50%).")
+        return share
 
 
 class WorkloadFilterForm(ResourceFilterForm):

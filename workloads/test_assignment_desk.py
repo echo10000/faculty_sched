@@ -181,3 +181,46 @@ class AssignmentDeskTests(TeachingFixture):
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.chair)
         self.assertEqual(client.post(self.url(), self.payload(intent="save")).status_code, 403)
+
+    def test_invalid_share_has_field_error_and_preserves_input_without_writes(self):
+        for share in ('0', '-0.5', '1.5'):
+            for intent in ('preview', 'save'):
+                with self.subTest(share=share, intent=intent):
+                    response = self.client.post(self.url(), self.payload(share=share, intent=intent))
+                    row = next(row for row in response.context['rows'] if row['offering'] == self.offering)
+                    self.assertIn('share', row['form'].errors)
+                    self.assertEqual(row['form']['share'].value(), share)
+                    self.assertEqual(str(row['form']['faculty'].value()), str(self.faculty.pk))
+                    self.assertContains(response, 'at most 1 (100%)')
+                    self.assertNotContains(response, 'assignment_valid_share')
+        self.assertFalse(FacultySubjectAssignment.objects.exists())
+
+    def test_json_share_error_is_keyed_to_field_and_correction_recovers(self):
+        result = self.client.post(self.url(), self.payload(share='1.5'), HTTP_ACCEPT='application/json').json()
+        self.assertIsNone(result['preview'])
+        self.assertIn('share', result['errors'])
+        corrected = self.client.post(self.url(), self.payload(share='1'), HTTP_ACCEPT='application/json').json()
+        self.assertFalse(corrected['errors'])
+        self.assertIsNotNone(corrected['preview'])
+        self.assertFalse(FacultySubjectAssignment.objects.exists())
+
+    def test_combined_share_error_explains_remaining_and_keeps_both_identities(self):
+        first, _ = self.save_assignment(share='0.5')
+        result = self.client.post(self.url(), self.payload(faculty=self.colleague.pk, share='0.75'),
+                                  HTTP_ACCEPT='application/json').json()
+        self.assertIsNone(result['preview'])
+        self.assertIn('0.50 (50%)', result['errors']['share'][0]['message'])
+        self.assertNotIn('__all__', result['errors'])
+        first.refresh_from_db()
+        self.assertEqual((first.faculty_id, first.share), (self.faculty.pk, Decimal('0.50')))
+        self.assertEqual(FacultySubjectAssignment.objects.count(), 1)
+        page = self.client.get(self.url(), self.selection())
+        self.assertContains(page, 'Remaining available share: 0.50 (50%)')
+
+    def test_full_coverage_cannot_accept_another_share(self):
+        self.save_assignment()
+        result = self.client.post(self.url(), self.payload(faculty=self.colleague.pk, share='0.5'),
+                                  HTTP_ACCEPT='application/json').json()
+        self.assertIsNone(result['preview'])
+        self.assertIn('0.00 (0%)', result['errors']['share'][0]['message'])
+        self.assertEqual(FacultySubjectAssignment.objects.count(), 1)

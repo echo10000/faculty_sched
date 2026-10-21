@@ -263,7 +263,7 @@ class TeachingFormView(TeachingMixin, View):
             original = scoped_object(request.user, model, pk, self.term) if pk else None
             form = form_class(request.POST, user=request.user, term=self.term, instance=original)
             form.is_valid()
-            form.add_error(None, "; ".join(error.messages) if isinstance(error, ValidationError) else "The record conflicts with existing data. Refresh and check duplicates, time ranges or teaching shares.")
+            form.add_error(None, error if isinstance(error, ValidationError) else "The record conflicts with existing data. Refresh and check duplicates, time ranges or teaching shares.")
             obj, report = None, None
         if obj and not preview:
             messages.success(request, "Teaching record saved.")

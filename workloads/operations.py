@@ -32,7 +32,11 @@ def scoped_object(user, model, pk, term, *, lock=False):
 def check_share(obj):
     used = FacultySubjectAssignment.objects.filter(subject_offering=obj.subject_offering).exclude(pk=obj.pk).aggregate(total=Sum("share"))["total"] or 0
     if used + obj.share > 1:
-        raise ValidationError("Total assigned teaching shares for this offering would exceed 1. Reduce the share or create a separate offering.")
+        remaining = 1 - used
+        raise ValidationError({"share": (
+            f"Saved shares plus this share would exceed 1 (100%). "
+            f"The remaining available share is {remaining:.2f} ({remaining * 100:.0f}%). "
+            "Reduce this share or review the existing assignments.")})
 
 
 @transaction.atomic

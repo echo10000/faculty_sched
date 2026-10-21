@@ -81,6 +81,8 @@ class SectionAssignmentsView(TeachingMixin, View):
         # Bound choices remain available in HTML after an invalid submission.
         form.fields["faculty"].widget.attrs["aria-label"] = f"Instructor for {offering.subject.title}"
         form.fields["share"].widget.attrs["aria-label"] = f"Teaching share for {offering.subject.title}"
+        share_id = f"id_share_{offering.pk}"
+        form.fields["share"].widget.attrs["aria-describedby"] = f"{share_id}_helptext {share_id}_errors"
         form.fields.pop("notes", None)
 
     def render_workspace(self, request, selection, *, submitted=None, preview=None):
@@ -159,7 +161,7 @@ class SectionAssignmentsView(TeachingMixin, View):
         except (ValidationError, IntegrityError) as error:
             form = self.row_form(request, requirement.subject_offering, Decimal("1"), data)
             form.is_valid()
-            form.add_error(None, "; ".join(error.messages) if isinstance(error, ValidationError)
+            form.add_error(None, error if isinstance(error, ValidationError)
                            else "This instructor is already assigned to this subject. Reload the section to review its teaching shares.")
             obj, report = None, None
         self.style_row_form(form, requirement.subject_offering)

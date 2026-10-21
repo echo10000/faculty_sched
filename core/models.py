@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.core.exceptions import ValidationError
 
 from .base import TrackedModel
@@ -49,6 +49,27 @@ class Program(models.Model):
     class Meta:
         ordering = ["name"]
         constraints = [models.UniqueConstraint(fields=["department", "code"], name="unique_program_code_per_department")]
+
+    def clean(self):
+        super().clean()
+        if self.pk is not None:
+            original_department = type(self).objects.filter(pk=self.pk).values_list("department_id", flat=True).first()
+            if (original_department is not None and original_department != self.department_id
+                    and self.classsection_set.exists()):
+                raise ValidationError({"department": (
+                    "This program is linked to class sections, including inactive or historical sections, "
+                    "and cannot change departments. Keep its department or create a separate program.")})
+
+    @transaction.atomic
+    def save(self, *args, **kwargs):
+        from timetabling.locking import scheduling_lock
+        scheduling_lock()
+        fields = kwargs.get("update_fields")
+        if fields is not None:
+            fields = kwargs["update_fields"] = frozenset(fields)
+        if fields is None or {"department", "department_id"}.intersection(fields):
+            self.clean()
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.code
